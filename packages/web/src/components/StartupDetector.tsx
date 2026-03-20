@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { platform } from '@/adapters'
 import type { SystemInfo } from '@/lib/types'
 
 interface StartupDetectorProps {
@@ -8,21 +7,68 @@ interface StartupDetectorProps {
   onError: (error: string) => void
 }
 
+// 直接检测 Tauri 环境
+async function invokeTauri<T>(cmd: string, args?: Record<string, any>): Promise<T> {
+  if (typeof window !== 'undefined' && '__TAURI__' in window) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    return invoke(cmd, args)
+  }
+  throw new Error('Not in Tauri environment')
+}
+
+// Tauri 后端检测
+async function detectTauri(): Promise<SystemInfo> {
+  return invokeTauri<SystemInfo>('detect_system')
+}
+
+// Web API 检测（备用）
+async function detectWeb(): Promise<SystemInfo> {
+  const res = await fetch('/api/system/detect')
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
 export default function StartupDetector({ onDetected, onNewInstall, onError }: StartupDetectorProps) {
   const [status, setStatus] = useState<'checking' | 'detected' | 'not-installed' | 'error'>('checking')
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [message, setMessage] = useState('正在检测环境...')
+  const [isTauriDetected, setIsTauriDetected] = useState<boolean | null>(null)
 
   useEffect(() => {
+    // 先检测是否在 Tauri 环境中
+    const inTauri = typeof window !== 'undefined' && '__TAURI__' in window
+    setIsTauriDetected(inTauri)
+    console.log('[StartupDetector] Tauri environment detected:', inTauri)
+    
     detect()
   }, [])
 
   async function detect() {
     try {
-      setMessage('正在检测后端服务...')
+      setMessage('正在检测系统环境...')
       setStatus('checking')
       
-      const info = await platform.detectSystem()
+      // 先尝试 Tauri
+      if (typeof window !== 'undefined' && '__TAURI__' in window) {
+        console.log('[StartupDetector] Using Tauri adapter')
+        setMessage('正在通过 Tauri 检测系统...')
+        const info = await detectTauri()
+        setSystemInfo(info)
+        
+        if (info.openclaw.installed) {
+          setStatus('detected')
+          setMessage('检测到 OpenClaw 已安装')
+        } else {
+          setStatus('not-installed')
+          setMessage('未检测到 OpenClaw')
+        }
+        return
+      }
+      
+      // 回退到 Web API
+      console.log('[StartupDetector] Using Web API adapter')
+      setMessage('正在通过 Web API 检测系统...')
+      const info = await detectWeb()
       setSystemInfo(info)
       
       if (info.openclaw.installed) {
@@ -33,16 +79,10 @@ export default function StartupDetector({ onDetected, onNewInstall, onError }: S
         setMessage('未检测到 OpenClaw')
       }
     } catch (err: any) {
+      console.error('[StartupDetector] Detection error:', err)
       setStatus('error')
       const errorMsg = err.message || '检测失败'
-      
-      // 检测是否是后端未启动
-      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('后端服务未启动')) {
-        setMessage('后端服务未启动。桌面版需要先运行后端服务 (npm run dev:backend)')
-      } else {
-        setMessage(errorMsg)
-      }
-      
+      setMessage(errorMsg)
       onError(errorMsg)
     }
   }
@@ -55,6 +95,11 @@ export default function StartupDetector({ onDetected, onNewInstall, onError }: S
         </div>
         <h1 className="text-xl font-bold mb-2">龙虾管家</h1>
         <p className="text-muted-foreground">{message}</p>
+        {isTauriDetected !== null && (
+          <p className="text-xs text-muted-foreground mt-2">
+            模式: {isTauriDetected ? '桌面版' : 'Web版'}
+          </p>
+        )}
       </div>
     )
   }
@@ -174,16 +219,15 @@ export default function StartupDetector({ onDetected, onNewInstall, onError }: S
       <h1 className="text-xl font-bold mb-2">检测失败</h1>
       <p className="text-red-500 mb-4 text-center max-w-md">{message}</p>
       
-      {message.includes('后端服务未启动') && (
+      {isTauriDetected === false && (
         <div className="bg-card border border-border rounded-lg p-4 w-full max-w-md mb-6">
-          <h3 className="font-medium mb-2">🚀 启动方法</h3>
+          <h3 className="font-medium mb-2">⚠️ Tauri 环境未检测到</h3>
           <p className="text-sm text-muted-foreground mb-3">
-            桌面版需要先启动后端服务。请打开终端运行：
+            应用未能检测到 Tauri 桌面环境。这可能是安装问题。
           </p>
-          <code className="block bg-muted p-3 rounded text-sm font-mono">
-            cd openclaw-desktop<br/>
-            npm run dev:backend
-          </code>
+          <p className="text-sm text-muted-foreground">
+            请确保从正确的安装包安装，并重新启动应用。
+          </p>
         </div>
       )}
       
