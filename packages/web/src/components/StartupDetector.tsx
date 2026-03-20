@@ -19,7 +19,7 @@ export default function StartupDetector({ onDetected, onNewInstall, onError }: S
 
   async function detect() {
     try {
-      setMessage('正在检测 Node.js...')
+      setMessage('正在检测后端服务...')
       setStatus('checking')
       
       const info = await platform.detectSystem()
@@ -34,8 +34,16 @@ export default function StartupDetector({ onDetected, onNewInstall, onError }: S
       }
     } catch (err: any) {
       setStatus('error')
-      setMessage(err.message || '检测失败')
-      onError(err.message)
+      const errorMsg = err.message || '检测失败'
+      
+      // 检测是否是后端未启动
+      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('后端服务未启动')) {
+        setMessage('后端服务未启动。桌面版需要先运行后端服务 (npm run dev:backend)')
+      } else {
+        setMessage(errorMsg)
+      }
+      
+      onError(errorMsg)
     }
   }
 
@@ -164,7 +172,21 @@ export default function StartupDetector({ onDetected, onNewInstall, onError }: S
         ❌
       </div>
       <h1 className="text-xl font-bold mb-2">检测失败</h1>
-      <p className="text-red-500 mb-6">{message}</p>
+      <p className="text-red-500 mb-4 text-center max-w-md">{message}</p>
+      
+      {message.includes('后端服务未启动') && (
+        <div className="bg-card border border-border rounded-lg p-4 w-full max-w-md mb-6">
+          <h3 className="font-medium mb-2">🚀 启动方法</h3>
+          <p className="text-sm text-muted-foreground mb-3">
+            桌面版需要先启动后端服务。请打开终端运行：
+          </p>
+          <code className="block bg-muted p-3 rounded text-sm font-mono">
+            cd openclaw-desktop<br/>
+            npm run dev:backend
+          </code>
+        </div>
+      )}
+      
       <button
         onClick={detect}
         className="px-6 py-2 border border-border rounded-lg hover:bg-accent"
