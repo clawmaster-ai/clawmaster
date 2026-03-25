@@ -7,6 +7,7 @@ interface LayoutProps {
 
 const navItems = [
   { path: '/', label: '概览', icon: '📊' },
+  { path: '/observe', label: '可观测', icon: '💰' },
   { path: '/gateway', label: '网关', icon: '🔌' },
   { path: '/channels', label: '通道', icon: '📡' },
   { path: '/models', label: '模型', icon: '🤖' },
@@ -33,8 +34,8 @@ export default function Layout({ children }: LayoutProps) {
               🦞
             </div>
             <div>
-              <h1 className="font-semibold text-sm">龙虾管家</h1>
-              <p className="text-xs text-muted-foreground">OpenClaw Manager</p>
+              <h1 className="font-semibold text-sm">龙虾管理大师</h1>
+              <p className="text-xs text-muted-foreground">ClawMaster</p>
             </div>
           </div>
         </div>

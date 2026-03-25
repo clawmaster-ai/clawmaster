@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Layout from './components/layout/Layout'
 import { SetupWizard } from './modules/setup'
+import { LoadingState } from './shared/components/LoadingState'
 import Dashboard from './pages/Dashboard'
 import Gateway from './pages/Gateway'
 import Channels from './pages/Channels'
@@ -12,6 +13,9 @@ import Config from './pages/Config'
 import Docs from './pages/Docs'
 import Logs from './pages/Logs'
 import Settings from './pages/Settings'
+import observeModule from './modules/observe'
+
+const ObservePage = observeModule.route.component
 
 function App() {
   const [appReady, setAppReady] = useState(false)
@@ -22,8 +26,10 @@ function App() {
 
   return (
     <Layout>
+      <Suspense fallback={<LoadingState />}>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/observe" element={<ObservePage />} />
         <Route path="/gateway" element={<Gateway />} />
         <Route path="/channels" element={<Channels />} />
         <Route path="/models" element={<Models />} />
@@ -34,6 +40,7 @@ function App() {
         <Route path="/logs" element={<Logs />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
+      </Suspense>
     </Layout>
   )
 }
