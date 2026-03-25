@@ -1,8 +1,10 @@
 {
-  "name": "openclaw-manager",
-  "version": "0.2.3",
-  "private": true,
-  "description": "龙虾管家 - OpenClaw 图形化管理工具",
+  "name": "clawmaster",
+  "version": "0.3.0",
+  "description": "龙虾管理大师——OpenClaw 生态的六边形战士",
+  "bin": {
+    "clawmaster": "./bin/clawmaster.mjs"
+  },
   "workspaces": [
     "packages/*"
   ],
@@ -13,7 +15,8 @@
     "build": "npm run build --workspace=@openclaw-manager/web",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "test": "npm run test --workspace=@openclaw-manager/web"
   },
   "keywords": [
     "openclaw",

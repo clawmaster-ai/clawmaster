@@ -266,7 +266,7 @@ fi
 | 类别 | 数量 |
 |------|------|
 | **架构骨架（S-01 ~ S-07）** | **7 项**（AdapterResult 类型、useAdapterCall Hook、模块结构、平台检测统一、ErrorBoundary、ESLint/Prettier/Vitest、Hook 单元测试） |
-| 功能任务（T-001 ~ T-057） | **57 项**（含 4 项测试任务：adapter 单元测试 ×3 + dev-browser 冒烟测试 ×2） |
+| 功能任务（T-001 ~ T-060） | **60 项**（含 demo 模式 + 单元测试 ×4 + dev-browser 冒烟测试 ×3） |
 | 新建模块页面 | 3 个（`modules/setup/`、`modules/observe/`、`modules/memory/`） |
 | 新建 adapter 文件 | 4 个（`platform.ts`、`clawprobe.ts`、`powermem.ts`、`clawhub.ts`） |
 | 新建通用组件 | 4+ 个（ErrorBoundary、LoadingState、PasswordField、StatusCard 等） |
@@ -309,23 +309,26 @@ fi
 | T-003 | install.ps1 编写（含镜像切换） | 新建 `scripts/install.ps1` |
 | T-004 | 镜像检测模块（统一逻辑，脚本和 Tauri 共用） | 新建 `shared/adapters/mirror.ts` + Rust 端 |
 | T-005 | 改造 StartupDetector（五项能力检测 + 三态流程），使用 S-04 的统一检测 | `StartupDetector.tsx`, `lib.rs` |
-| T-006 | 安装向导页面（按 `modules/setup/` 结构），用 `useAdapterCall` Hook | 新建 `modules/setup/` |
-| T-007 | 安装执行器（按序执行 5 项安装，stdout 流式输出到 UI） | `modules/setup/`, `lib.rs` |
-| T-008 | 能力补全逻辑（接管模式检测缺失 → 自动补装） | `modules/setup/` |
-| T-009 | 安装结果页（5 项能力状态总览 → 进入 Dashboard） | `modules/setup/` |
+| T-006 | 安装向导 SetupAdapter 接口 + 真实实现 + demo 实现 | 新建 `modules/setup/adapters.ts` |
+| T-007 | 安装向导页面（按 `modules/setup/` 结构），用 `useAdapterCall` Hook，`?demo=install` 切换 demo 模式 | 新建 `modules/setup/` |
+| T-008 | 安装执行器（按序执行 5 项安装，stdout 流式输出到 UI） | `modules/setup/`, `lib.rs` |
+| T-009 | 能力补全逻辑（接管模式检测缺失 → 自动补装） | `modules/setup/` |
+| T-010 | 安装结果页（5 项能力状态总览 → 进入 Dashboard） | `modules/setup/` |
+| T-011 | `setup.test.ts` 单元测试（用 demo adapter 验证检测→安装→完成全状态序列） | `modules/setup/__tests__/` |
+| T-012 | **dev-browser 冒烟测试**：`?demo=install` 走完检测→安装→完成全流程，每步截图 | 手动执行 |
 
-**里程碑：** `npm install -g clawmaster` → `clawmaster` → 一键安装全部能力 → 进入 Dashboard
+**里程碑：** `npm install -g clawmaster` → `clawmaster` → 一键安装全部能力 → 进入 Dashboard；demo 模式可验证全部状态
 
 ### 阶段 2：让现有功能真正可用（Day 2 下午）
 
 | 编号 | 任务 | 涉及文件 |
 |------|------|---------|
-| T-010 | 修复 setConfig 深层合并 bug | `adapters/index.ts`（旧文件最小修复） |
-| T-011 | Config 页面可写（移除 readOnly + 保存按钮） | `pages/Config.tsx` |
-| T-012 | 网关启停轮询验证 + loading 状态 | `adapters/index.ts`, `pages/Gateway.tsx` |
-| T-013 | 后端日志真实化（读 ~/.openclaw/logs/） | `backend/src/index.ts` |
-| T-014 | Skills 页面替换 Mock，对接 clawhub list/search | `pages/Skills.tsx` |
-| T-015 | Settings 主题/语言绑定 localStorage + CSS | `pages/Settings.tsx` |
+| T-013 | 修复 setConfig 深层合并 bug | `adapters/index.ts`（旧文件最小修复） |
+| T-014 | Config 页面可写（移除 readOnly + 保存按钮） | `pages/Config.tsx` |
+| T-015 | 网关启停轮询验证 + loading 状态 | `adapters/index.ts`, `pages/Gateway.tsx` |
+| T-016 | 后端日志真实化（读 ~/.openclaw/logs/） | `backend/src/index.ts` |
+| T-017 | Skills 页面替换 Mock，对接 clawhub list/search | `pages/Skills.tsx` |
+| T-018 | Settings 主题/语言绑定 localStorage + CSS | `pages/Settings.tsx` |
 
 **里程碑：** 配置可编辑保存，网关可靠启停，技能真实展示
 
@@ -333,20 +336,19 @@ fi
 
 | 编号 | 任务 | 涉及文件 |
 |------|------|---------|
-| T-016 | 引入 Recharts 依赖 | `package.json` |
-| T-017 | 创建 `shared/adapters/clawprobe.ts`（cost/session/context/suggest 调用封装，返回 `AdapterResult<T>`） | 新建文件 |
-| T-018 | 新建 `modules/observe/` 页面骨架 + `index.ts` 模块注册 | 新建 `modules/observe/` |
-| T-019 | 费用汇总卡片（今日/周/月），用 `useAdapterCall` + `shared/components/StatusCard` | `modules/observe/components/` |
-| T-020 | 费用趋势折线图 | `modules/observe/components/CostTrend.tsx` |
-| T-021 | 模型费用分布饼图 | `modules/observe/components/ModelDistribution.tsx` |
-| T-022 | Token 用量柱状图 | `modules/observe/components/TokenChart.tsx` |
-| T-023 | 上下文健康度进度条 | `modules/observe/components/ContextHealth.tsx` |
-| T-024 | 智能优化建议卡片（5 类告警） | `modules/observe/components/Suggestions.tsx` |
-| T-025 | 会话列表 + 会话详情展开 | `modules/observe/components/SessionList.tsx` |
-| T-026 | ClawProbe 守护进程启停管理 | `modules/observe/` |
-
-| T-027 | `clawprobe.test.ts` 单元测试（mock CLI 输出，验证 cost/session/context 解析） | `shared/adapters/__tests__/` |
-| T-028 | **dev-browser 冒烟测试**：启动 dev server → 走 Dashboard/网关/配置/可观测 4 个页面 → 截图存证 | 手动执行 |
+| T-019 | 引入 Recharts 依赖 | `package.json` |
+| T-020 | 创建 `shared/adapters/clawprobe.ts`（cost/session/context/suggest 调用封装，返回 `AdapterResult<T>`） | 新建文件 |
+| T-021 | 新建 `modules/observe/` 页面骨架 + `index.ts` 模块注册 | 新建 `modules/observe/` |
+| T-022 | 费用汇总卡片（今日/周/月），用 `useAdapterCall` + `shared/components/StatusCard` | `modules/observe/components/` |
+| T-023 | 费用趋势折线图 | `modules/observe/components/CostTrend.tsx` |
+| T-024 | 模型费用分布饼图 | `modules/observe/components/ModelDistribution.tsx` |
+| T-025 | Token 用量柱状图 | `modules/observe/components/TokenChart.tsx` |
+| T-026 | 上下文健康度进度条 | `modules/observe/components/ContextHealth.tsx` |
+| T-027 | 智能优化建议卡片（5 类告警） | `modules/observe/components/Suggestions.tsx` |
+| T-028 | 会话列表 + 会话详情展开 | `modules/observe/components/SessionList.tsx` |
+| T-029 | ClawProbe 守护进程启停管理 | `modules/observe/` |
+| T-030 | `clawprobe.test.ts` 单元测试（mock CLI 输出，验证 cost/session/context 解析） | `shared/adapters/__tests__/` |
+| T-031 | **dev-browser 冒烟测试**：启动 dev server → 走 Dashboard/网关/配置/可观测 4 个页面 → 截图存证 | 手动执行 |
 
 **里程碑：** 可观测 Dashboard 可用，能看到费用/Token/健康度
 
@@ -354,15 +356,15 @@ fi
 
 | 编号 | 任务 | 涉及文件 |
 |------|------|---------|
-| T-029 | 创建 `shared/adapters/powermem.ts`（list/search/delete/stats 封装，返回 `AdapterResult<T>`） | 新建文件 |
-| T-030 | 新建 `modules/memory/` 页面骨架 + `index.ts` 模块注册 | 新建 `modules/memory/` |
-| T-031 | 记忆列表（分页展示），用 `useAdapterCall` + `shared/components/DataTable` | `modules/memory/components/` |
-| T-032 | 记忆搜索 | `modules/memory/components/` |
-| T-033 | 记忆详情 + 删除 | `modules/memory/components/` |
-| T-034 | 记忆健康状态卡片 | `modules/memory/components/` |
-| T-035 | 多 Agent 记忆切换 | `modules/memory/` |
-| T-036 | 记忆统计（总数/衰减率/新增/遗忘） | `modules/memory/components/` |
-| T-037 | `powermem.test.ts` 单元测试（mock CLI 输出，验证 list/search/stats 解析） | `shared/adapters/__tests__/` |
+| T-032 | 创建 `shared/adapters/powermem.ts`（list/search/delete/stats 封装，返回 `AdapterResult<T>`） | 新建文件 |
+| T-033 | 新建 `modules/memory/` 页面骨架 + `index.ts` 模块注册 | 新建 `modules/memory/` |
+| T-034 | 记忆列表（分页展示），用 `useAdapterCall` + `shared/components/DataTable` | `modules/memory/components/` |
+| T-035 | 记忆搜索 | `modules/memory/components/` |
+| T-036 | 记忆详情 + 删除 | `modules/memory/components/` |
+| T-037 | 记忆健康状态卡片 | `modules/memory/components/` |
+| T-038 | 多 Agent 记忆切换 | `modules/memory/` |
+| T-039 | 记忆统计（总数/衰减率/新增/遗忘） | `modules/memory/components/` |
+| T-040 | `powermem.test.ts` 单元测试（mock CLI 输出，验证 list/search/stats 解析） | `shared/adapters/__tests__/` |
 
 **里程碑：** 记忆管理页面可用，能浏览/搜索/删除 Agent 记忆
 
@@ -370,14 +372,14 @@ fi
 
 | 编号 | 任务 | 涉及文件 |
 |------|------|---------|
-| T-038 | 创建 `shared/adapters/clawhub.ts`（install/uninstall/list/search 封装） | 新建文件 |
-| T-039 | 技能安装/卸载对接 | `pages/Skills.tsx` |
-| T-040 | 场景推荐区块（拍照答题/发票整理/错题本） | `pages/Skills.tsx` |
-| T-041 | 编写错题本 SKILL.md | 新建 `skills/mistake-notebook/SKILL.md` |
-| T-042 | API Key 脱敏显示（用 `shared/components/PasswordField`） | `pages/Models.tsx` |
-| T-043 | 花费预算设置（Settings 表单 + localStorage） | `pages/Settings.tsx` |
-| T-044 | 预算进度条 + 超支告警横幅 | `modules/observe/` |
-| T-045 | `clawhub.test.ts` 单元测试 | `shared/adapters/__tests__/` |
+| T-041 | 创建 `shared/adapters/clawhub.ts`（install/uninstall/list/search 封装） | 新建文件 |
+| T-042 | 技能安装/卸载对接 | `pages/Skills.tsx` |
+| T-043 | 场景推荐区块（拍照答题/发票整理/错题本） | `pages/Skills.tsx` |
+| T-044 | 编写错题本 SKILL.md | 新建 `skills/mistake-notebook/SKILL.md` |
+| T-045 | API Key 脱敏显示（用 `shared/components/PasswordField`） | `pages/Models.tsx` |
+| T-046 | 花费预算设置（Settings 表单 + localStorage） | `pages/Settings.tsx` |
+| T-047 | 预算进度条 + 超支告警横幅 | `modules/observe/` |
+| T-048 | `clawhub.test.ts` 单元测试 | `shared/adapters/__tests__/` |
 
 **里程碑：** 技能可装卸、场景推荐可用、安全基础就位
 
@@ -385,18 +387,18 @@ fi
 
 | 编号 | 任务 | 涉及文件 |
 |------|------|---------|
-| T-046 | App.tsx 改造：从 `modules/*/index.ts` 自动收集路由（新页面自动注册） | `App.tsx` |
-| T-047 | Layout 改造：从模块注册生成侧边栏导航（新页面自动出现在菜单） | `Layout.tsx` |
-| T-048 | Dashboard 升级（费用速览/记忆状态/能力就绪卡片） | `pages/Dashboard.tsx` |
-| T-049 | 能构建就绪状态指示 | `pages/Dashboard.tsx` 或 `pages/Settings.tsx` |
-| T-050 | Tauri 环境引导 UI（缺 Node.js/Python 时弹出） | `StartupDetector.tsx`, `lib.rs` |
-| T-051 | GitHub Actions CI（三平台打包 + `vitest run` 卡质量） | 新建 `.github/workflows/` |
-| T-052 | **dev-browser 全流程冒烟测试**：走完安装→Dashboard→可观测→记忆→技能→设置全路径 → 截图 | 手动执行 |
-| T-053 | 全流程 Bug 修复 | — |
-| T-054 | 截取所有页面截图 | README 更新 |
-| T-055 | 录制 30s Demo GIF | README 更新 |
-| T-056 | README 更新（放入截图 + Demo） | `README.md`, `README_CN.md` |
-| T-057 | npm publish + GitHub Release | — |
+| T-049 | App.tsx 改造：从 `modules/*/index.ts` 自动收集路由（新页面自动注册） | `App.tsx` |
+| T-050 | Layout 改造：从模块注册生成侧边栏导航（新页面自动出现在菜单） | `Layout.tsx` |
+| T-051 | Dashboard 升级（费用速览/记忆状态/能力就绪卡片） | `pages/Dashboard.tsx` |
+| T-052 | 能构建就绪状态指示 | `pages/Dashboard.tsx` 或 `pages/Settings.tsx` |
+| T-053 | Tauri 环境引导 UI（缺 Node.js/Python 时弹出） | `StartupDetector.tsx`, `lib.rs` |
+| T-054 | GitHub Actions CI（三平台打包 + `vitest run` 卡质量） | 新建 `.github/workflows/` |
+| T-055 | **dev-browser 全流程冒烟测试**：`?demo=install` 走安装全流程 + 各页面全路径 → 截图 | 手动执行 |
+| T-056 | 全流程 Bug 修复 | — |
+| T-057 | 截取所有页面截图 | README 更新 |
+| T-058 | 录制 30s Demo GIF（用 `?demo=install` 展示完整安装体验） | README 更新 |
+| T-059 | README 更新（放入截图 + Demo） | `README.md`, `README_CN.md` |
+| T-060 | npm publish + GitHub Release | — |
 
 **里程碑：** 可发布版本，测试通过，README 有截图，三平台安装包可下载
 

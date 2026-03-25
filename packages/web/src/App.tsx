@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Layout from './components/layout/Layout'
-import StartupDetector from './components/StartupDetector'
+import { SetupWizard } from './modules/setup'
 import Dashboard from './pages/Dashboard'
 import Gateway from './pages/Gateway'
 import Channels from './pages/Channels'
@@ -12,34 +12,12 @@ import Config from './pages/Config'
 import Docs from './pages/Docs'
 import Logs from './pages/Logs'
 import Settings from './pages/Settings'
-import type { SystemInfo } from './lib/types'
 
 function App() {
-  const [startupState, setStartupState] = useState<'detecting' | 'ready'>('detecting')
-  const [, setSystemInfo] = useState<SystemInfo | null>(null)
+  const [appReady, setAppReady] = useState(false)
 
-  const handleDetected = (info: SystemInfo) => {
-    setSystemInfo(info)
-    setStartupState('ready')
-  }
-
-  const handleNewInstall = () => {
-    // TODO: 实现安装流程
-    setStartupState('ready')
-  }
-
-  const handleError = (error: string) => {
-    console.error('Startup detection error:', error)
-  }
-
-  if (startupState === 'detecting') {
-    return (
-      <StartupDetector
-        onDetected={handleDetected}
-        onNewInstall={handleNewInstall}
-        onError={handleError}
-      />
-    )
+  if (!appReady) {
+    return <SetupWizard onComplete={() => setAppReady(true)} />
   }
 
   return (
