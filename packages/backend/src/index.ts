@@ -161,16 +161,53 @@ app.get('/api/agents', (req, res) => {
   res.json(agents)
 })
 
-// 日志（模拟）
+// 日志（真实读取）
 app.get('/api/logs', (req, res) => {
   const lines = parseInt(req.query.lines as string) || 100
-  // 返回模拟日志
-  const logs = [
-    { timestamp: '2026-03-20 00:13:45', level: 'INFO', message: 'Gateway health check' },
-    { timestamp: '2026-03-20 00:13:46', level: 'DEBUG', message: 'WebSocket connected' },
-    { timestamp: '2026-03-20 00:13:50', level: 'INFO', message: 'Session: cipher started' },
+  const logPaths = [
+    path.join(homedir(), '.openclaw', 'logs', 'openclaw.log'),
+    path.join(homedir(), '.openclaw', 'logs', 'gateway.log'),
   ]
-  res.json(logs)
+
+  const logFile = logPaths.find((p) => existsSync(p))
+  if (!logFile) {
+    res.json([{ timestamp: new Date().toISOString(), level: 'INFO', message: '暂无日志文件' }])
+    return
+  }
+
+  try {
+    const content = readFileSync(logFile, 'utf-8')
+    const allLines = content.trim().split('\n').filter(Boolean)
+    const tail = allLines.slice(-lines)
+
+    const logs = tail.map((line) => {
+      const match = line.match(/^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\S*\s*\[(\w+)\]\s*(.*)$/)
+      if (match) {
+        return { timestamp: match[1], level: match[2], message: match[3] }
+      }
+      return { timestamp: new Date().toISOString(), level: 'INFO', message: line }
+    })
+
+    res.json(logs)
+  } catch (err: any) {
+    res.json([{ timestamp: new Date().toISOString(), level: 'ERROR', message: `读取日志失败: ${err.message}` }])
+  }
+})
+
+// 通用命令执行（供 shared/adapters/platform.ts 的 execViaWeb 调用）
+app.post('/api/exec', async (req, res) => {
+  const { cmd, args } = req.body
+  if (!cmd || typeof cmd !== 'string') {
+    res.status(400).json({ error: 'Missing cmd parameter' })
+    return
+  }
+  try {
+    const command = args?.length ? `${cmd} ${(args as string[]).join(' ')}` : cmd
+    const { stdout, stderr } = await execAsync(command)
+    res.json({ stdout: stdout.trim(), stderr: stderr.trim() })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, stdout: '', stderr: err.stderr || '' })
+  }
 })
 
 // 启动服务器

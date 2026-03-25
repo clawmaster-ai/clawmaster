@@ -2,12 +2,32 @@ import { useEffect, useState } from 'react'
 import { platform } from '@/adapters'
 import type { SystemInfo } from '@/lib/types'
 
+type ThemeMode = 'system' | 'light' | 'dark'
+
+function getStoredTheme(): ThemeMode {
+  return (localStorage.getItem('clawmaster-theme') as ThemeMode) || 'system'
+}
+
+function applyTheme(mode: ThemeMode) {
+  const root = document.documentElement
+  root.classList.remove('light', 'dark')
+  if (mode === 'system') {
+    const preferDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    root.classList.add(preferDark ? 'dark' : 'light')
+  } else {
+    root.classList.add(mode)
+  }
+  localStorage.setItem('clawmaster-theme', mode)
+}
+
 export default function Settings() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  const [theme, setTheme] = useState<ThemeMode>(getStoredTheme)
 
   useEffect(() => {
     loadSystemInfo()
+    applyTheme(theme)
   }, [])
 
   async function loadSystemInfo() {
@@ -37,18 +57,22 @@ export default function Settings() {
           <div className="flex items-center gap-4">
             <label className="w-20 text-sm text-muted-foreground">主题:</label>
             <div className="flex gap-4">
-              <label className="flex items-center gap-2">
-                <input type="radio" name="theme" defaultChecked />
-                <span className="text-sm">跟随系统</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="radio" name="theme" />
-                <span className="text-sm">浅色</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="radio" name="theme" />
-                <span className="text-sm">深色</span>
-              </label>
+              {(['system', 'light', 'dark'] as const).map((mode) => (
+                <label key={mode} className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="theme"
+                    checked={theme === mode}
+                    onChange={() => {
+                      setTheme(mode)
+                      applyTheme(mode)
+                    }}
+                  />
+                  <span className="text-sm">
+                    {mode === 'system' ? '跟随系统' : mode === 'light' ? '浅色' : '深色'}
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -158,9 +182,9 @@ export default function Settings() {
       {/* 关于 */}
       <section className="bg-card border border-border rounded-lg p-4">
         <h3 className="font-medium mb-2">关于</h3>
-        <p className="text-sm text-muted-foreground">龙虾管家 v0.1.0</p>
-        <p className="text-sm text-muted-foreground">基于 Tauri + React 构建</p>
-        <p className="text-sm text-muted-foreground">© 2026 OpenClaw Team</p>
+        <p className="text-sm text-muted-foreground">龙虾管理大师 v0.3.0</p>
+        <p className="text-sm text-muted-foreground">OpenClaw 生态的六边形战士</p>
+        <p className="text-sm text-muted-foreground">由开源社区共建</p>
         <div className="mt-3 flex gap-4">
           <a 
             href="https://docs.openclaw.ai" 

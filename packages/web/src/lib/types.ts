@@ -15,6 +15,7 @@ export interface PlatformAdapter {
   // 配置
   getConfig(): Promise<OpenClawConfig>
   setConfig(path: string, value: any): Promise<void>
+  saveFullConfig(config: OpenClawConfig): Promise<void>
   
   // 通道
   getChannels(): Promise<ChannelInfo[]>

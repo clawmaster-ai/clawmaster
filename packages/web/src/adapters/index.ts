@@ -44,16 +44,23 @@ const tauriAdapter: PlatformAdapter = {
   
   async setConfig(path: string, value: any): Promise<void> {
     const current = await invoke<{ data: any }>('get_config')
-    const updated = { ...current.data }
+    const updated = structuredClone(current.data)
     const keys = path.split('.')
     let obj: any = updated
     for (let i = 0; i < keys.length - 1; i++) {
-      obj = obj[keys[i]] = obj[keys[i]] || {}
+      if (!(keys[i] in obj) || typeof obj[keys[i]] !== 'object') {
+        obj[keys[i]] = {}
+      }
+      obj = obj[keys[i]]
     }
     obj[keys[keys.length - 1]] = value
     await invoke('save_config', { config: updated })
   },
-  
+
+  async saveFullConfig(config: OpenClawConfig): Promise<void> {
+    await invoke('save_config', { config })
+  },
+
   async getChannels(): Promise<ChannelInfo[]> {
     const config = await this.getConfig()
     const channels = config.channels || {}
@@ -254,7 +261,15 @@ const webAdapter: PlatformAdapter = {
       body: JSON.stringify({ value }),
     })
   },
-  
+
+  async saveFullConfig(config: OpenClawConfig): Promise<void> {
+    await fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    })
+  },
+
   async getChannels(): Promise<ChannelInfo[]> {
     const res = await fetch('/api/channels')
     if (!res.ok) return []

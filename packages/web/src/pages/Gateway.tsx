@@ -6,6 +6,7 @@ export default function Gateway() {
   const [status, setStatus] = useState<GatewayStatus | null>(null)
   const [config, setConfig] = useState<OpenClawConfig | null>(null)
   const [loading, setLoading] = useState(true)
+  const [operating, setOperating] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -27,30 +28,39 @@ export default function Gateway() {
     }
   }
 
-  async function handleStart() {
-    try {
-      await platform.startGateway()
-      setTimeout(loadData, 1000)
-    } catch (err: any) {
-      alert('启动失败: ' + err.message)
+  /** 轮询等待网关状态变化 */
+  async function pollStatus(expectRunning: boolean, maxRetries = 10): Promise<boolean> {
+    for (let i = 0; i < maxRetries; i++) {
+      await new Promise((r) => setTimeout(r, 1000))
+      try {
+        const gw = await platform.getGatewayStatus()
+        setStatus(gw)
+        if (gw.running === expectRunning) return true
+      } catch {
+        // 继续轮询
+      }
     }
+    return false
   }
 
-  async function handleStop() {
+  async function handleGatewayAction(action: 'start' | 'stop' | 'restart') {
+    const labels = { start: '启动中...', stop: '停止中...', restart: '重启中...' }
+    setOperating(labels[action])
     try {
-      await platform.stopGateway()
-      setTimeout(loadData, 1000)
-    } catch (err: any) {
-      alert('停止失败: ' + err.message)
-    }
-  }
+      if (action === 'start') await platform.startGateway()
+      else if (action === 'stop') await platform.stopGateway()
+      else await platform.restartGateway()
 
-  async function handleRestart() {
-    try {
-      await platform.restartGateway()
-      setTimeout(loadData, 1000)
+      const expectRunning = action !== 'stop'
+      const ok = await pollStatus(expectRunning)
+      if (!ok) {
+        alert(`操作超时，网关可能尚未${expectRunning ? '启动' : '停止'}完成`)
+      }
+      await loadData()
     } catch (err: any) {
-      alert('重启失败: ' + err.message)
+      alert(`操作失败: ${err.message}`)
+    } finally {
+      setOperating(null)
     }
   }
 
@@ -82,24 +92,26 @@ export default function Gateway() {
         </div>
         <p className="text-muted-foreground font-mono">{gatewayUrl}</p>
         <div className="mt-4 flex justify-center gap-3">
-          {status?.running ? (
+          {operating ? (
+            <span className="px-4 py-2 text-muted-foreground animate-pulse">{operating}</span>
+          ) : status?.running ? (
             <>
-              <button 
-                onClick={handleStop}
+              <button
+                onClick={() => handleGatewayAction('stop')}
                 className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
               >
                 停止
               </button>
-              <button 
-                onClick={handleRestart}
+              <button
+                onClick={() => handleGatewayAction('restart')}
                 className="px-4 py-2 border border-border rounded hover:bg-accent"
               >
                 重启
               </button>
             </>
           ) : (
-            <button 
-              onClick={handleStart}
+            <button
+              onClick={() => handleGatewayAction('start')}
               className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90"
             >
               启动
