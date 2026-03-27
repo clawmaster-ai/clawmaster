@@ -38,8 +38,12 @@ export function CapabilityGuard({
   const cap = CAPABILITIES.find((c) => c.id === capabilityId)
   const capName = cap?.name ?? capabilityId
 
+  // demo 模式下直接放行
+  const isDemo = typeof window !== 'undefined' && !!new URLSearchParams(window.location.search).get('demo')
+
   // 首次检测
   useState(() => {
+    if (isDemo) { setStatus('available'); return }
     checkAvailable().then((ok) => setStatus(ok ? 'available' : 'unavailable')).catch(() => setStatus('unavailable'))
   })
 

@@ -15,8 +15,16 @@ import Docs from './pages/Docs'
 import Logs from './pages/Logs'
 import Settings from './pages/Settings'
 
+function hasAnyDemoParam(): boolean {
+  if (typeof window === 'undefined') return false
+  const params = new URLSearchParams(window.location.search)
+  const demo = params.get('demo')
+  // demo=install 走安装向导 demo，其他 demo 值直接跳过向导进入主界面
+  return !!demo && demo !== 'install'
+}
+
 function App() {
-  const [appReady, setAppReady] = useState(false)
+  const [appReady, setAppReady] = useState(hasAnyDemoParam)
 
   if (!appReady) {
     return <SetupWizard onComplete={() => setAppReady(true)} />

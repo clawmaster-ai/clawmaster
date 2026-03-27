@@ -17,6 +17,14 @@ import {
   type SessionSummary,
   type ProbeStatus,
 } from '@/shared/adapters/clawprobe'
+import {
+  isObserveDemo,
+  demoGetProbeStatus,
+  demoGetCost,
+  demoGetSessions,
+  demoGetContextHealth,
+  demoGetSuggestions,
+} from '@/shared/adapters/clawprobe-demo'
 import CostCards from './components/CostCards'
 import CostTrend from './components/CostTrend'
 import ModelDistribution from './components/ModelDistribution'
@@ -25,9 +33,11 @@ import ContextHealthBar from './components/ContextHealthBar'
 import SuggestionCards from './components/SuggestionCards'
 import SessionList from './components/SessionList'
 
+const demo = isObserveDemo()
+
 async function checkObserveAvailable(): Promise<boolean> {
+  if (demo) return true
   const result = await getProbeStatus()
-  // ClawProbe 已安装即可（不要求正在运行，页面内有启动按钮）
   return result.success
 }
 
@@ -48,13 +58,14 @@ export default function ObservePage() {
 function ObserveContent() {
   const [probeOperating, setProbeOperating] = useState(false)
 
-  const status = useAdapterCall<ProbeStatus>(() => getProbeStatus(), { pollInterval: 10000 })
-  const dayCost = useAdapterCall<CostData>(() => getCost('day'))
-  const weekCost = useAdapterCall<CostData>(() => getCost('week'))
-  const monthCost = useAdapterCall<CostData>(() => getCost('month'))
-  const context = useAdapterCall<ContextHealth>(() => getContextHealth(), { pollInterval: 15000 })
-  const suggestions = useAdapterCall<Suggestion[]>(() => getSuggestions())
-  const sessions = useAdapterCall<SessionSummary[]>(() => getSessions())
+  // demo 模式使用 mock 数据，否则调用真实 ClawProbe API
+  const status = useAdapterCall<ProbeStatus>(() => demo ? demoGetProbeStatus() : getProbeStatus(), { pollInterval: demo ? 0 : 10000 })
+  const dayCost = useAdapterCall<CostData>(() => demo ? demoGetCost('day') : getCost('day'))
+  const weekCost = useAdapterCall<CostData>(() => demo ? demoGetCost('week') : getCost('week'))
+  const monthCost = useAdapterCall<CostData>(() => demo ? demoGetCost('month') : getCost('month'))
+  const context = useAdapterCall<ContextHealth>(() => demo ? demoGetContextHealth() : getContextHealth(), { pollInterval: demo ? 0 : 15000 })
+  const suggestions = useAdapterCall<Suggestion[]>(() => demo ? demoGetSuggestions() : getSuggestions())
+  const sessions = useAdapterCall<SessionSummary[]>(() => demo ? demoGetSessions() : getSessions())
 
   async function handleProbeToggle() {
     setProbeOperating(true)
@@ -82,7 +93,10 @@ function ObserveContent() {
     <div className="space-y-6">
       {/* 顶栏：标题 + ClawProbe 状态 */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">可观测</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">可观测</h1>
+          {demo && <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full">Demo</span>}
+        </div>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5 text-sm">
             <span
