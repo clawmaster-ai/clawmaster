@@ -378,11 +378,12 @@
   "channel.whatsapp.step3.highlight": "登录成功后自动接收和回复消息",
   "channel.qr.desc": "此通道使用手机扫码登录，无需手动输入 Token",
   "channel.qr.start": "开始扫码登录",
-  "channel.qr.installing": "正在安装 {{plugin}}...",
+  "channel.qr.installing": "正在安装 {{name}} 插件...",
   "channel.qr.waiting": "等待扫码...",
   "channel.qr.scanHint": "请用手机 App 扫描二维码完成登录",
   "channel.qr.connected": "连接成功！",
   "channel.qr.timeout": "登录超时，请重试",
   "channel.feishu.permissionsTitle": "权限模板（一键复制到飞书权限配置）",
-  "common.copyToClipboard": "复制"
+  "common.copyToClipboard": "复制",
+  "channel.wechat.step1.highlight": "点击开始后自动安装，无需手动操作"
 }

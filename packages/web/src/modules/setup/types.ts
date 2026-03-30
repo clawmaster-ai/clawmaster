@@ -449,7 +449,7 @@ export const CHANNEL_TYPES: ChannelTypeConfig[] = [
     qrLogin: true,
     installPlugin: '@nicepkg/openclaw-weixin',
     steps: [
-      { text: 'channel.wechat.step1', highlight: 'npm install -g @nicepkg/openclaw-weixin' },
+      { text: 'channel.wechat.step1', highlight: 'channel.wechat.step1.highlight' },
       { text: 'channel.wechat.step2', highlight: 'channel.wechat.step2.highlight' },
       { text: 'channel.wechat.step3', highlight: 'channel.wechat.step3.highlight' },
     ],

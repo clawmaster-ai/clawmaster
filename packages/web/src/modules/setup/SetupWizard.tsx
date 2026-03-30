@@ -716,7 +716,7 @@ function QrLoginPanel({
         </>
       )}
       {status === 'installing' && (
-        <p className="text-muted-foreground animate-pulse">{t('channel.qr.installing', { plugin: channel.installPlugin })}</p>
+        <p className="text-muted-foreground animate-pulse">{t('channel.qr.installing', { name: t(channel.name) })}</p>
       )}
       {status === 'scanning' && (
         <>

@@ -378,11 +378,12 @@
   "channel.whatsapp.step3.highlight": "Messages auto-received and replied after login",
   "channel.qr.desc": "This channel uses phone QR scan login — no manual token needed",
   "channel.qr.start": "Start QR Login",
-  "channel.qr.installing": "Installing {{plugin}}...",
+  "channel.qr.installing": "Installing {{name}} plugin...",
   "channel.qr.waiting": "Waiting for scan...",
   "channel.qr.scanHint": "Scan the QR code with your phone app to log in",
   "channel.qr.connected": "Connected!",
   "channel.qr.timeout": "Login timed out. Please retry.",
   "channel.feishu.permissionsTitle": "Permissions template (copy to Feishu permission config)",
-  "common.copyToClipboard": "Copy"
+  "common.copyToClipboard": "Copy",
+  "channel.wechat.step1.highlight": "Automatically installed when you click Start"
 }

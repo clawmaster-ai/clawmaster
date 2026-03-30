@@ -378,11 +378,12 @@
   "channel.whatsapp.step3.highlight": "ログイン後、メッセージの自動受信と返信が開始",
   "channel.qr.desc": "このチャネルはスマホのQRスキャンでログインします。手動トークン不要",
   "channel.qr.start": "QRログインを開始",
-  "channel.qr.installing": "{{plugin}}をインストール中...",
+  "channel.qr.installing": "{{name}}プラグインをインストール中...",
   "channel.qr.waiting": "スキャン待機中...",
   "channel.qr.scanHint": "スマホアプリでQRコードをスキャンしてログイン",
   "channel.qr.connected": "接続成功！",
   "channel.qr.timeout": "ログインがタイムアウトしました。再試行してください。",
   "channel.feishu.permissionsTitle": "権限テンプレート（飛書の権限設定にコピー）",
-  "common.copyToClipboard": "コピー"
+  "common.copyToClipboard": "コピー",
+  "channel.wechat.step1.highlight": "開始をクリックすると自動インストールされます"
 }
