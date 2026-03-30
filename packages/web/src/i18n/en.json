@@ -404,5 +404,17 @@
   "sessions.loadError": "Failed to load sessions",
   "channels.health": "Channel Health",
   "channels.probe": "Probe",
-  "channels.unknown": "Unknown"
+  "channels.unknown": "Unknown",
+  "agents.title": "Agent Management",
+  "agents.createAgent": "+ Create Agent",
+  "agents.defaults": "Defaults",
+  "agents.defaultModel": "Default Model",
+  "agents.workspace": "Workspace",
+  "agents.maxConcurrent": "Max Concurrent",
+  "agents.config": "Config",
+  "agents.noAgents": "No agents configured",
+  "agents.routeBinding": "Route Bindings",
+  "agents.routeBindingDesc": "Route messages from different channels to different agents",
+  "agents.noRouteBinding": "No route bindings",
+  "agents.editConfigHint": "Edit agent config in the Config page"
 }

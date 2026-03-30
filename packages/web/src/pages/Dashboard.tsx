@@ -136,7 +136,7 @@ export default function Dashboard() {
           <h3 className="font-medium mb-3">{t('dashboard.currentModel')}</h3>
           <p className="text-lg font-medium">{config?.agents?.defaults?.model?.primary || '-'}</p>
           <p className="text-sm text-muted-foreground">
-            工作区: {config?.agents?.defaults?.workspace || '-'}
+            {t('agents.workspace')}: {config?.agents?.defaults?.workspace || '-'}
           </p>
           <Link to="/models" className="mt-3 inline-block px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-accent">
             {t('dashboard.configModel')}

@@ -404,5 +404,17 @@
   "sessions.loadError": "セッションの読み込みに失敗",
   "channels.health": "チャネルヘルス",
   "channels.probe": "検査",
-  "channels.unknown": "不明"
+  "channels.unknown": "不明",
+  "agents.title": "エージェント管理",
+  "agents.createAgent": "+ エージェントを作成",
+  "agents.defaults": "デフォルト設定",
+  "agents.defaultModel": "デフォルトモデル",
+  "agents.workspace": "ワークスペース",
+  "agents.maxConcurrent": "最大同時実行数",
+  "agents.config": "設定",
+  "agents.noAgents": "エージェント未設定",
+  "agents.routeBinding": "ルートバインディング",
+  "agents.routeBindingDesc": "異なるチャネルからのメッセージを異なるエージェントにルーティング",
+  "agents.noRouteBinding": "ルートバインディングなし",
+  "agents.editConfigHint": "エージェント設定はConfigページで編集してください"
 }

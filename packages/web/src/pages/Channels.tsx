@@ -68,54 +68,50 @@ export default function Channels() {
         </button>
       </div>
 
-      <div className="flex gap-6">
-        {/* Channel Grid */}
-        <div className="flex-1 grid grid-cols-2 md:grid-cols-3 gap-3">
-          {CHANNEL_TYPES.map((ch) => {
-            const configured = isConfigured(ch.id)
-            const healthStatus = getHealthStatus(ch.id)
-            const isActive = selectedChannel === ch.id
-            return (
-              <button
-                key={ch.id}
-                onClick={() => setSelectedChannel(isActive ? null : ch.id)}
-                className={`bg-card border rounded-lg p-4 text-left transition hover:border-primary/50 ${
-                  isActive ? 'border-primary ring-1 ring-primary/30' : 'border-border'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-sm">{t(ch.name)}</span>
-                  {configured ? (
-                    <span className="flex items-center gap-1">
-                      {healthStatus === 'connected' || healthStatus === 'ready' ? (
-                        <Wifi className="w-3.5 h-3.5 text-green-500" />
-                      ) : (
-                        <Check className="w-3.5 h-3.5 text-green-500" />
-                      )}
-                    </span>
-                  ) : (
-                    <MessageSquare className="w-3.5 h-3.5 text-muted-foreground" />
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {configured ? t('channels.configured') : ch.qrLogin ? t('channel.qr.desc') : t('channels.addChannel')}
-                </p>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Detail Panel */}
-        {selected && (
-          <div className="w-96 shrink-0">
-            <SetupPanel
-              channelType={selected}
-              onClose={() => setSelectedChannel(null)}
-              onAdded={() => { setSelectedChannel(null); loadData() }}
-            />
-          </div>
-        )}
+      {/* Channel Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {CHANNEL_TYPES.map((ch) => {
+          const configured = isConfigured(ch.id)
+          const healthStatus = getHealthStatus(ch.id)
+          const isActive = selectedChannel === ch.id
+          return (
+            <button
+              key={ch.id}
+              onClick={() => setSelectedChannel(isActive ? null : ch.id)}
+              className={`bg-card border rounded-lg p-4 text-left transition hover:border-primary/50 ${
+                isActive ? 'border-primary ring-1 ring-primary/30' : 'border-border'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-medium text-sm">{t(ch.name)}</span>
+                {configured ? (
+                  <span className="flex items-center gap-1">
+                    {healthStatus === 'connected' || healthStatus === 'ready' ? (
+                      <Wifi className="w-3.5 h-3.5 text-green-500" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5 text-green-500" />
+                    )}
+                  </span>
+                ) : (
+                  <MessageSquare className="w-3.5 h-3.5 text-muted-foreground" />
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {configured ? t('channels.configured') : ch.qrLogin ? t('channel.qr.desc') : t('channels.addChannel')}
+              </p>
+            </button>
+          )
+        })}
       </div>
+
+      {/* Setup Panel (below grid) */}
+      {selected && (
+        <SetupPanel
+          channelType={selected}
+          onClose={() => setSelectedChannel(null)}
+          onAdded={() => { setSelectedChannel(null); loadData() }}
+        />
+      )}
     </div>
   )
 }

@@ -25,78 +25,71 @@ export default function Agents() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64">{t('common.loading')}</div>
+    return <div className="flex items-center justify-center h-64 text-muted-foreground">{t('common.loading')}</div>
   }
 
   const agents = config?.agents?.list || []
   const defaults = config?.agents?.defaults || {}
 
-  // 图标映射（使用首字母代替 emoji）
-  const agentInitials: Record<string, string> = {
-    cipher: 'C',
-    vector: 'V',
-    anya: 'A',
-    hugo: 'H',
-    main: 'M',
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('agents.title')}</h1>
-        <button className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90">
+        <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
           {t('agents.createAgent')}
         </button>
       </div>
 
-      {/* 默认设置 */}
+      {/* Defaults */}
       <div className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">默认设置</h3>
+        <h3 className="font-medium mb-3">{t('agents.defaults')}</h3>
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
-            <span className="text-muted-foreground">默认模型: </span>
-            <span className="font-medium">{defaults.model?.primary || '-'}</span>
+            <p className="text-muted-foreground">{t('agents.defaultModel')}</p>
+            <p className="font-medium">{defaults.model?.primary || '-'}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">工作区: </span>
-            <span className="font-mono">{defaults.workspace || '-'}</span>
+            <p className="text-muted-foreground">{t('agents.workspace')}</p>
+            <p className="font-mono text-xs">{defaults.workspace || '-'}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">最大并发: </span>
-            <span className="font-medium">{defaults.maxConcurrent || '-'}</span>
+            <p className="text-muted-foreground">{t('agents.maxConcurrent')}</p>
+            <p className="font-medium">{defaults.maxConcurrent || '-'}</p>
           </div>
         </div>
       </div>
 
-      {/* 代理列表 */}
+      {/* Agent List */}
       <div className="space-y-3">
         {agents.map((agent: any) => (
           <div key={agent.id} className="bg-card border border-border rounded-lg p-4 flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-lg">
-                  {agentInitials[agent.id] || agentInitials[agent.id.toLowerCase()] || agent.id[0]?.toUpperCase() || 'A'}
+                <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">
+                  {(agent.name || agent.id)[0]?.toUpperCase() || 'A'}
                 </span>
                 <span className="font-medium">{agent.name || agent.id}</span>
-                <span className="text-sm text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
                   {agent.model || defaults.model?.primary}
                 </span>
               </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                工作区: <span className="font-mono">{agent.workspace || defaults.workspace}</span>
-              </p>
+              {agent.workspace && (
+                <p className="text-xs text-muted-foreground mt-1 pl-10">
+                  {t('agents.workspace')}: <span className="font-mono">{agent.workspace}</span>
+                </p>
+              )}
               {agent.agentDir && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  配置: <span className="font-mono">{agent.agentDir}</span>
+                <p className="text-xs text-muted-foreground mt-0.5 pl-10">
+                  {t('agents.config')}: <span className="font-mono">{agent.agentDir}</span>
                 </p>
               )}
             </div>
             <div className="flex gap-2">
-              <button className="px-3 py-1.5 text-sm border border-border rounded hover:bg-accent">
+              <button className="px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-accent">
                 {t('common.edit')}
               </button>
               {agent.id !== 'main' && (
-                <button className="px-3 py-1.5 text-sm border border-border rounded hover:bg-accent text-red-500">
+                <button className="px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-accent text-red-500">
                   {t('common.delete')}
                 </button>
               )}
@@ -107,31 +100,27 @@ export default function Agents() {
 
       {agents.length === 0 && (
         <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground">
-          暂无代理配置
+          {t('agents.noAgents')}
         </div>
       )}
 
-      {/* 路由绑定 */}
+      {/* Route Bindings */}
       <div className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">路由绑定</h3>
-        <p className="text-sm text-muted-foreground mb-3">
-          不同通道的消息可以路由到不同的代理
-        </p>
+        <h3 className="font-medium mb-3">{t('agents.routeBinding')}</h3>
+        <p className="text-sm text-muted-foreground mb-3">{t('agents.routeBindingDesc')}</p>
         {config?.bindings?.map((binding: any, idx: number) => (
           <div key={idx} className="flex items-center gap-2 text-sm py-1">
             <span className="capitalize bg-muted px-2 py-0.5 rounded">{binding.match?.channel}</span>
-            <span className="text-muted-foreground">→</span>
+            <span className="text-muted-foreground">&rarr;</span>
             <span className="font-medium">{binding.agentId}</span>
           </div>
         ))}
         {!config?.bindings?.length && (
-          <p className="text-sm text-muted-foreground">无路由绑定</p>
+          <p className="text-sm text-muted-foreground">{t('agents.noRouteBinding')}</p>
         )}
       </div>
 
-      <div className="text-xs text-muted-foreground">
-        代理配置需要编辑配置文件，请前往「配置」页面
-      </div>
+      <p className="text-xs text-muted-foreground">{t('agents.editConfigHint')}</p>
     </div>
   )
 }
