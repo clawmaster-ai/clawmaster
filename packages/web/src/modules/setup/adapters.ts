@@ -32,7 +32,7 @@ export interface OnboardingAdapter {
   /** 检测网关是否可达 */
   checkGateway(port: number): Promise<boolean>
   /** 添加消息通道 */
-  addChannel(channelType: string, token: string): Promise<void>
+  addChannel(channelType: string, tokens: Record<string, string>): Promise<void>
 }
 
 export interface SetupAdapter {
@@ -108,8 +108,12 @@ const realOnboardingAdapter: OnboardingAdapter = {
     }
   },
 
-  async addChannel(channelType, token) {
-    await execCommand('openclaw', ['channels', 'add', '--channel', channelType, '--token', token])
+  async addChannel(channelType, tokens) {
+    const args = ['channels', 'add', '--channel', channelType]
+    for (const [key, value] of Object.entries(tokens)) {
+      if (value.trim()) args.push(`--${key}`, value.trim())
+    }
+    await execCommand('openclaw', args)
   },
 }
 
@@ -228,7 +232,7 @@ const demoOnboardingAdapter: OnboardingAdapter = {
     await delay(500)
     return true
   },
-  async addChannel() {
+  async addChannel(_type, _tokens) {
     await delay(700)
   },
 }

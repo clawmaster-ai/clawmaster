@@ -113,7 +113,13 @@ describe('demoSetupAdapter', () => {
     })
 
     it('addChannel resolves without error', async () => {
-      await expect(demoSetupAdapter.onboarding.addChannel('telegram', 'test-token')).resolves.toBeUndefined()
+      await expect(demoSetupAdapter.onboarding.addChannel('discord', { token: 'test-token' })).resolves.toBeUndefined()
+    })
+
+    it('addChannel with multiple tokens resolves without error', async () => {
+      await expect(
+        demoSetupAdapter.onboarding.addChannel('slack', { 'bot-token': 'xoxb-test', 'app-token': 'xapp-test' }),
+      ).resolves.toBeUndefined()
     })
   })
 })

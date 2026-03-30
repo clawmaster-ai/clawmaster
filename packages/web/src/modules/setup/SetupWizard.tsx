@@ -197,16 +197,16 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   }, [adapter, onboard.gatewayPort, updateOnboard])
 
   const runAddChannel = useCallback(async () => {
-    if (!onboard.channelType || !onboard.channelToken.trim()) return
+    if (!onboard.channelType) return
     updateOnboard({ busy: true, error: null })
     try {
-      await adapter.onboarding.addChannel(onboard.channelType, onboard.channelToken)
+      await adapter.onboarding.addChannel(onboard.channelType, onboard.channelTokens)
       updateOnboard({ busy: false })
       setPhase('onboard_done')
     } catch (err) {
       updateOnboard({ busy: false, error: err instanceof Error ? err.message : String(err) })
     }
-  }, [adapter, onboard.channelType, onboard.channelToken, updateOnboard])
+  }, [adapter, onboard.channelType, onboard.channelTokens, updateOnboard])
 
   // 自动触发：初始化配置 & 启动网关
   useEffect(() => {
@@ -444,56 +444,89 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       )}
 
       {/* 步骤 5: 添加通道（可选） */}
-      {phase === 'onboard_channel' && (
-        <div className="w-full max-w-md">
-          <OnboardingProgress current={4} />
-          <p className="text-center font-medium mb-1">添加消息通道</p>
-          <p className="text-center text-xs text-muted-foreground mb-4">可选，稍后可在通道页面添加</p>
-          <div className="flex gap-2 mb-4 justify-center flex-wrap">
-            {CHANNEL_TYPES.map((ch) => (
-              <button
-                key={ch.id}
-                onClick={() => updateOnboard({ channelType: ch.id, channelToken: '' })}
-                className={`px-4 py-2 rounded-lg text-sm border transition ${
-                  onboard.channelType === ch.id
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border hover:bg-accent'
-                }`}
-              >
-                {ch.name}
-              </button>
+      {phase === 'onboard_channel' && (() => {
+        const selectedChannel = CHANNEL_TYPES.find((c) => c.id === onboard.channelType)
+        const allTokensFilled = selectedChannel
+          ? selectedChannel.tokenFields.every((f) => onboard.channelTokens[f.key]?.trim())
+          : false
+        return (
+          <div className="w-full max-w-md">
+            <OnboardingProgress current={4} />
+            <p className="text-center font-medium mb-1">添加消息通道</p>
+            <p className="text-center text-xs text-muted-foreground mb-4">可选，稍后可在通道页面添加</p>
+            <div className="flex gap-2 mb-4 justify-center flex-wrap">
+              {CHANNEL_TYPES.map((ch) => (
+                <button
+                  key={ch.id}
+                  onClick={() => updateOnboard({ channelType: ch.id, channelTokens: {} })}
+                  className={`px-4 py-2 rounded-lg text-sm border transition ${
+                    onboard.channelType === ch.id
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border hover:bg-accent'
+                  }`}
+                >
+                  {ch.name}
+                </button>
+              ))}
+            </div>
+            {selectedChannel && (
+              <div className="bg-card border border-border rounded-lg p-4 mb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium">设置步骤</p>
+                  {selectedChannel.guideUrl && (
+                    <a
+                      href={selectedChannel.guideUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline"
+                    >
+                      打开 {selectedChannel.name} 开发者平台 &rarr;
+                    </a>
+                  )}
+                </div>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                  {selectedChannel.steps.map((step, i) => (
+                    <li key={i}>{step}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            {selectedChannel?.tokenFields.map((field) => (
+              <input
+                key={field.key}
+                type="password"
+                placeholder={field.placeholder}
+                value={onboard.channelTokens[field.key] ?? ''}
+                onChange={(e) =>
+                  updateOnboard({
+                    channelTokens: { ...onboard.channelTokens, [field.key]: e.target.value },
+                  })
+                }
+                className="w-full px-4 py-3 mb-2 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+              />
             ))}
-          </div>
-          {onboard.channelType && (
-            <input
-              type="password"
-              placeholder={`输入 ${CHANNEL_TYPES.find((c) => c.id === onboard.channelType)?.tokenLabel ?? 'Token'}`}
-              value={onboard.channelToken}
-              onChange={(e) => updateOnboard({ channelToken: e.target.value })}
-              className="w-full px-4 py-3 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          )}
-          {onboard.error && <p className="text-red-500 text-xs mt-2">{onboard.error}</p>}
-          {onboard.channelType && (
+            {onboard.error && <p className="text-red-500 text-xs mt-2">{onboard.error}</p>}
+            {selectedChannel && (
+              <button
+                onClick={runAddChannel}
+                disabled={!allTokensFilled || onboard.busy}
+                className="mt-2 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50"
+              >
+                {onboard.busy ? '添加中...' : '添加并完成'}
+              </button>
+            )}
             <button
-              onClick={runAddChannel}
-              disabled={!onboard.channelToken.trim() || onboard.busy}
-              className="mt-4 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50"
+              onClick={() => {
+                updateOnboard({ channelType: '', channelTokens: {} })
+                setPhase('onboard_done')
+              }}
+              className="mt-2 w-full py-2 text-sm text-muted-foreground hover:text-foreground transition"
             >
-              {onboard.busy ? '添加中...' : '添加并完成'}
+              {selectedChannel ? '跳过通道配置' : '跳过，稍后添加'}
             </button>
-          )}
-          <button
-            onClick={() => {
-              updateOnboard({ channelType: '', channelToken: '' })
-              setPhase('onboard_done')
-            }}
-            className="mt-2 w-full py-2 text-sm text-muted-foreground hover:text-foreground transition"
-          >
-            {onboard.channelType ? '跳过通道配置' : '跳过，稍后添加'}
-          </button>
-        </div>
-      )}
+          </div>
+        )
+      })()}
 
       {/* 配置完成 */}
       {phase === 'onboard_done' && (

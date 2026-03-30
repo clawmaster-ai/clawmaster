@@ -112,7 +112,7 @@ export interface OnboardingState {
   gatewayPort: number
   gatewayRunning: boolean
   channelType: string
-  channelToken: string
+  channelTokens: Record<string, string> // key → value for each tokenField
   error: string | null
   busy: boolean
 }
@@ -126,7 +126,7 @@ export const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   gatewayPort: 18789,
   gatewayRunning: false,
   channelType: '',
-  channelToken: '',
+  channelTokens: {},
   error: null,
   busy: false,
 }
@@ -323,15 +323,80 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
 /** 首屏展示的提供商（按钮行），其余折叠在"更多"中 */
 export const PRIMARY_PROVIDERS = ['openai', 'anthropic', 'google', 'deepseek', 'siliconflow', 'openrouter'] as const
 
+export interface ChannelTokenField {
+  key: string        // CLI flag name (e.g. 'token', 'bot-token')
+  label: string      // display label
+  placeholder: string
+}
+
 export interface ChannelTypeConfig {
   id: string
   name: string
-  tokenLabel: string
+  tokenFields: ChannelTokenField[]
+  /** 创建 Bot 的指引链接 */
+  guideUrl?: string
+  /** 简短设置步骤提示 */
+  steps: string[]
 }
 
 export const CHANNEL_TYPES: ChannelTypeConfig[] = [
-  { id: 'telegram', name: 'Telegram', tokenLabel: 'Bot Token' },
-  { id: 'discord', name: 'Discord', tokenLabel: 'Bot Token' },
-  { id: 'feishu', name: '飞书 (Feishu)', tokenLabel: 'App Token' },
-  { id: 'slack', name: 'Slack', tokenLabel: 'Bot Token' },
+  {
+    id: 'discord',
+    name: 'Discord',
+    guideUrl: 'https://discord.com/developers/applications',
+    tokenFields: [
+      { key: 'token', label: 'Bot Token', placeholder: '粘贴 Discord Bot Token' },
+    ],
+    steps: [
+      '打开 Discord Developer Portal → New Application',
+      '进入 Bot 页面 → Reset Token → 复制 Token',
+      '开启 Privileged Gateway Intents（Message Content）',
+      '进入 OAuth2 → URL Generator → 勾选 bot → 生成邀请链接',
+      '用邀请链接把 Bot 添加到你的 Discord 服务器',
+    ],
+  },
+  {
+    id: 'slack',
+    name: 'Slack',
+    guideUrl: 'https://api.slack.com/apps',
+    tokenFields: [
+      { key: 'bot-token', label: 'Bot Token', placeholder: 'xoxb-...' },
+      { key: 'app-token', label: 'App Token', placeholder: 'xapp-...' },
+    ],
+    steps: [
+      '打开 Slack API → Create New App → From Scratch',
+      '进入 OAuth & Permissions → 添加 Bot Token Scopes（chat:write, app_mentions:read 等）',
+      '点击 Install to Workspace → 复制 Bot User OAuth Token (xoxb-...)',
+      '进入 Basic Information → App-Level Tokens → 生成 Token（connections:write scope）',
+      '复制 App-Level Token (xapp-...)',
+      '进入 Socket Mode → 开启 Enable Socket Mode',
+      '进入 Event Subscriptions → 开启并添加 message.im 等事件',
+    ],
+  },
+  {
+    id: 'telegram',
+    name: 'Telegram',
+    guideUrl: 'https://t.me/BotFather',
+    tokenFields: [
+      { key: 'token', label: 'Bot Token', placeholder: '123456:ABC-DEF...' },
+    ],
+    steps: [
+      '在 Telegram 中搜索 @BotFather 并发送 /newbot',
+      '按提示设置 Bot 名称和用户名',
+      '复制 BotFather 返回的 Token',
+    ],
+  },
+  {
+    id: 'feishu',
+    name: '飞书 (Feishu)',
+    guideUrl: 'https://open.feishu.cn/app',
+    tokenFields: [
+      { key: 'token', label: 'App Token', placeholder: '粘贴飞书应用 Token' },
+    ],
+    steps: [
+      '打开飞书开放平台 → 创建企业自建应用',
+      '进入凭证与基础信息 → 复制 App ID 和 App Secret',
+      '添加机器人能力 → 配置事件订阅',
+    ],
+  },
 ]
