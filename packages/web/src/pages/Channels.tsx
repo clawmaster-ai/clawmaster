@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Wifi, WifiOff, RefreshCw } from 'lucide-react'
+import { Wifi, WifiOff, RefreshCw, Check } from 'lucide-react'
 import { platform } from '@/adapters'
 import { getSetupAdapter } from '@/modules/setup/adapters'
+import type { SetupAdapter } from '@/modules/setup/adapters'
 import { getChannelStatus, probeChannels, type ChannelHealth } from '@/shared/adapters/channel-status'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 import { CHANNEL_TYPES } from '@/modules/setup/types'
@@ -171,37 +172,145 @@ function AddChannelPanel({
             <span className="text-muted-foreground">
               {t(step.text)}
               {step.highlight && <>{'：'}<span className="text-foreground font-medium">{t(step.highlight)}</span></>}
-              {step.yieldsToken && ' \u{1F511}'}
+              {step.yieldsToken && <span className="text-primary ml-1">*</span>}
             </span>
           </li>
         ))}
       </ol>
 
-      {/* Token 输入 */}
-      {channelType.tokenFields.map((field) => (
-        <div key={field.key}>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-medium">{field.label}</label>
-            <span className="text-[10px] text-muted-foreground">{t(field.hint)}</span>
+      {/* Permissions template (Feishu) */}
+      {channelType.permissionsTemplate && (
+        <div className="bg-muted/50 border border-border rounded-lg p-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium">{t('channel.feishu.permissionsTitle')}</p>
+            <button
+              onClick={() => navigator.clipboard.writeText(channelType.permissionsTemplate!)}
+              className="text-xs text-primary hover:underline"
+            >
+              {t('common.copyToClipboard')}
+            </button>
           </div>
-          <input
-            type="password"
-            placeholder={field.placeholder}
-            value={tokens[field.key] ?? ''}
-            onChange={(e) => setTokens(prev => ({ ...prev, [field.key]: e.target.value }))}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
-          />
+          <pre className="text-[10px] text-muted-foreground max-h-24 overflow-auto font-mono">{channelType.permissionsTemplate}</pre>
         </div>
-      ))}
+      )}
 
-      {error && <p className="text-red-500 text-xs">{error}</p>}
-      <button
-        onClick={handleAdd}
-        disabled={!allFilled || busy}
-        className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
-      >
-        {busy ? t('channels.adding') : t('channels.addBtn')}
-      </button>
+      {/* QR Login (WeChat/WhatsApp) */}
+      {channelType.qrLogin ? (
+        <QrLoginPanel channel={channelType} onConnected={onAdded} adapter={adapter} />
+      ) : (
+        <>
+          {/* Token 输入 */}
+          {channelType.tokenFields.map((field) => (
+            <div key={field.key}>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium">{field.label}</label>
+                <span className="text-[10px] text-muted-foreground">{t(field.hint)}</span>
+              </div>
+              <input
+                type="password"
+                placeholder={field.placeholder}
+                value={tokens[field.key] ?? ''}
+                onChange={(e) => setTokens(prev => ({ ...prev, [field.key]: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          ))}
+
+          {error && <p className="text-red-500 text-xs">{error}</p>}
+          <button
+            onClick={handleAdd}
+            disabled={!allFilled || busy}
+            className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? t('channels.adding') : t('channels.addBtn')}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── QR Login Panel ───
+
+function QrLoginPanel({
+  channel,
+  onConnected,
+  adapter,
+}: {
+  channel: typeof CHANNEL_TYPES[number]
+  onConnected: () => void
+  adapter: SetupAdapter
+}) {
+  const { t } = useTranslation()
+  const [status, setStatus] = useState<'idle' | 'installing' | 'scanning' | 'connected' | 'error'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  async function startLogin() {
+    setError(null)
+    if (channel.installPlugin) {
+      setStatus('installing')
+      try {
+        await adapter.onboarding.installPlugin(channel.installPlugin)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+        setStatus('error')
+        return
+      }
+    }
+    setStatus('scanning')
+    try {
+      const result = await adapter.onboarding.loginChannel(channel.id)
+      if (result === 'connected') {
+        setStatus('connected')
+        setTimeout(onConnected, 1000)
+      } else {
+        setError(t('channel.qr.timeout'))
+        setStatus('error')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setStatus('error')
+    }
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-6 text-center">
+      {status === 'idle' && (
+        <>
+          <p className="text-sm text-muted-foreground mb-3">{t('channel.qr.desc')}</p>
+          <button onClick={startLogin} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
+            {t('channel.qr.start')}
+          </button>
+        </>
+      )}
+      {status === 'installing' && (
+        <p className="text-muted-foreground animate-pulse">{t('channel.qr.installing', { name: t(channel.name) })}</p>
+      )}
+      {status === 'scanning' && (
+        <>
+          <div className="w-48 h-48 mx-auto mb-3 border-2 border-dashed border-border rounded-lg flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-xs text-muted-foreground">{t('channel.qr.waiting')}</p>
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground">{t('channel.qr.scanHint')}</p>
+        </>
+      )}
+      {status === 'connected' && (
+        <div>
+          <Check className="w-8 h-8 text-green-600 mx-auto mb-2" />
+          <p className="text-green-600 font-medium">{t('channel.qr.connected')}</p>
+        </div>
+      )}
+      {status === 'error' && (
+        <>
+          <p className="text-red-500 text-sm mb-3">{error}</p>
+          <button onClick={startLogin} className="px-4 py-2 border border-border rounded-lg hover:bg-accent">
+            {t('common.retry')}
+          </button>
+        </>
+      )}
     </div>
   )
 }
