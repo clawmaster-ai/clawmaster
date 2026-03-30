@@ -1,32 +1,57 @@
 import { useLocation, Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { registeredModules } from '@/modules/registry'
+import {
+  LayoutDashboard,
+  BarChart3,
+  Brain,
+  Radio,
+  MessageSquare,
+  Box,
+  Zap,
+  Users,
+  Settings2,
+  FileText,
+  ScrollText,
+  Wrench,
+  Shell,
+  type LucideIcon,
+} from 'lucide-react'
+
+interface NavItem {
+  path: string
+  label: string
+  icon: LucideIcon
+}
 
 interface LayoutProps {
   children: React.ReactNode
 }
 
-// 固定导航项（概览 + 旧页面，第二周迁移到模块后移除 legacyNavItems）
-const homeNav = { path: '/', label: '概览', icon: '📊' }
+// 模块 icon 映射（模块仍用 string icon ID，这里转为 Lucide 组件）
+const moduleIconMap: Record<string, LucideIcon> = {
+  observe: BarChart3,
+  memory: Brain,
+}
 
-// 自动注册的模块导航（从 modules/registry 动态获取）
-const moduleNavItems = registeredModules.map((m) => ({
+const homeNav: NavItem = { path: '/', label: '概览', icon: LayoutDashboard }
+
+const moduleNavItems: NavItem[] = registeredModules.map((m) => ({
   path: m.route.path,
   label: m.name,
-  icon: m.icon,
+  icon: moduleIconMap[m.id] ?? Box,
 }))
 
-// 旧页面导航（第二周迁移后删除）
-const legacyNavItems = [
-  { path: '/gateway', label: '网关', icon: '🔌' },
-  { path: '/channels', label: '通道', icon: '📡' },
-  { path: '/models', label: '模型', icon: '🤖' },
-  { path: '/skills', label: '技能', icon: '⚡' },
-  { path: '/agents', label: '代理', icon: '🎭' },
-  { path: '/config', label: '配置', icon: '⚙️' },
-  { path: '/docs', label: '文档', icon: '📚' },
-  { path: '/logs', label: '日志', icon: '📝' },
-  { path: '/settings', label: '设置', icon: '🔧' },
+const legacyNavItems: NavItem[] = [
+  { path: '/gateway', label: '网关', icon: Radio },
+  { path: '/channels', label: '通道', icon: MessageSquare },
+  { path: '/models', label: '模型', icon: Box },
+  { path: '/skills', label: '技能', icon: Zap },
+  { path: '/agents', label: '代理', icon: Users },
+  { path: '/config', label: '配置', icon: Settings2 },
+  { path: '/docs', label: '文档', icon: FileText },
+  { path: '/logs', label: '日志', icon: ScrollText },
+  { path: '/settings', label: '设置', icon: Wrench },
 ]
 
 const navItems = [homeNav, ...moduleNavItems, ...legacyNavItems]
@@ -42,8 +67,8 @@ export default function Layout({ children }: LayoutProps) {
         {/* Logo */}
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white text-lg">
-              🦞
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground">
+              <Shell className="w-5 h-5" />
             </div>
             <div>
               <h1 className="font-semibold text-sm">龙虾管理大师</h1>
@@ -56,6 +81,7 @@ export default function Layout({ children }: LayoutProps) {
         <nav className="flex-1 p-2">
           {navItems.map((item) => {
             const isActive = currentPath === item.path
+            const Icon = item.icon
             return (
               <Link
                 key={item.path}
@@ -67,7 +93,7 @@ export default function Layout({ children }: LayoutProps) {
                     : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                 )}
               >
-                <span>{item.icon}</span>
+                <Icon className="w-4 h-4 shrink-0" />
                 <span>{item.label}</span>
               </Link>
             )
@@ -81,11 +107,11 @@ export default function Layout({ children }: LayoutProps) {
             <option>默认实例</option>
           </select>
         </div>
-        
+
         {/* 主题切换 */}
         <div className="p-3 border-t border-border">
           <label className="text-xs text-muted-foreground mb-1 block">主题</label>
-          <select 
+          <select
             className="w-full px-2 py-1.5 text-sm bg-muted rounded border border-border"
             onChange={(e) => {
               const html = document.documentElement
@@ -121,7 +147,7 @@ export default function Layout({ children }: LayoutProps) {
         {/* Status Bar */}
         <footer className="h-8 border-t border-border flex items-center px-4 text-xs text-muted-foreground gap-4">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+            <span className="w-2 h-2 rounded-full bg-green-500" />
             Gateway 运行中
           </span>
           <span>|</span>

@@ -29,13 +29,13 @@ export default function Agents() {
   const agents = config?.agents?.list || []
   const defaults = config?.agents?.defaults || {}
 
-  // 图标映射
-  const agentIcons: Record<string, string> = {
-    cipher: '🔐',
-    vector: '🎯',
-    anya: '🌸',
-    hugo: '🎭',
-    main: '🏠',
+  // 图标映射（使用首字母代替 emoji）
+  const agentInitials: Record<string, string> = {
+    cipher: 'C',
+    vector: 'V',
+    anya: 'A',
+    hugo: 'H',
+    main: 'M',
   }
 
   return (
@@ -73,7 +73,7 @@ export default function Agents() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-lg">
-                  {agentIcons[agent.id] || agentIcons[agent.id.toLowerCase()] || '🤖'}
+                  {agentInitials[agent.id] || agentInitials[agent.id.toLowerCase()] || agent.id[0]?.toUpperCase() || 'A'}
                 </span>
                 <span className="font-medium">{agent.name || agent.id}</span>
                 <span className="text-sm text-muted-foreground bg-muted px-2 py-0.5 rounded">
@@ -128,7 +128,7 @@ export default function Agents() {
       </div>
 
       <div className="text-xs text-muted-foreground">
-        💡 代理配置需要编辑配置文件，请前往「配置」页面
+        代理配置需要编辑配置文件，请前往「配置」页面
       </div>
     </div>
   )

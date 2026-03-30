@@ -81,7 +81,9 @@ export function CapabilityGuard({
 
   return (
     <div className="flex flex-col items-center justify-center h-64 p-8">
-      <div className="text-4xl mb-4">🔧</div>
+      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+        <span className="text-muted-foreground text-xl font-bold">+</span>
+      </div>
       <h3 className="text-lg font-medium mb-2">{capName}尚未启用</h3>
       <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
         {unavailableMessage ?? `此功能需要「${capName}」支持。点击下方按钮一键安装。`}

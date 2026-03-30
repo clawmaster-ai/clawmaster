@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Eye, EyeOff, Copy } from 'lucide-react'
 
 interface PasswordFieldProps {
   value: string
@@ -26,19 +27,17 @@ export function PasswordField({ value, className = '' }: PasswordFieldProps) {
       </span>
       <button
         onClick={() => setVisible(!visible)}
-        className="text-muted-foreground hover:text-foreground text-sm flex-shrink-0"
+        className="text-muted-foreground hover:text-foreground flex-shrink-0"
         title={visible ? '隐藏' : '显示'}
       >
-        {visible ? '🙈' : '👁️'}
+        {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
       </button>
       <button
-        onClick={() => {
-          navigator.clipboard.writeText(value)
-        }}
-        className="text-muted-foreground hover:text-foreground text-sm flex-shrink-0"
+        onClick={() => navigator.clipboard.writeText(value)}
+        className="text-muted-foreground hover:text-foreground flex-shrink-0"
         title="复制"
       >
-        📋
+        <Copy className="w-4 h-4" />
       </button>
     </div>
   )

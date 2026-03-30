@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { Shell, Check, ExternalLink } from 'lucide-react'
 import { getSetupAdapter } from './adapters'
 import {
   CAPABILITIES,
@@ -227,8 +228,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6">
       {/* Logo */}
-      <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center text-3xl mb-4 shadow-lg">
-        🦞
+      <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center mb-4 shadow-lg">
+        <Shell className="w-9 h-9 text-primary-foreground" />
       </div>
       <h1 className="text-2xl font-bold mb-1">龙虾管理大师</h1>
       <p className="text-sm text-muted-foreground mb-6">OpenClaw 生态的六边形战士</p>
@@ -412,7 +413,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             {onboard.gatewayRunning && (
               <>
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <span className="text-green-600 text-xl">✓</span>
+                  <Check className="w-6 h-6 text-green-600" />
                 </div>
                 <p className="text-green-600 font-medium">网关已启动</p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -494,7 +495,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                             <span className="text-foreground font-medium">{step.highlight}</span>
                           </>
                         )}
-                        {step.yieldsToken && ' \u{1F511}'}
+                        {step.yieldsToken && <span className="text-primary ml-1" title="此步骤产出 Token">*</span>}
                       </span>
                     </li>
                   ))}
@@ -548,7 +549,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         <div className="w-full max-w-md">
           <OnboardingProgress current={5} />
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-green-600 text-3xl">✓</span>
+            <Check className="w-8 h-8 text-green-600" />
           </div>
           <p className="text-center text-green-600 font-medium text-lg mb-4">配置完成！</p>
           <div className="bg-card border border-border rounded-lg divide-y divide-border text-sm">
@@ -582,7 +583,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               rel="noopener noreferrer"
               className="mt-4 w-full py-3 border border-primary text-primary rounded-lg font-medium hover:bg-primary/5 transition block text-center"
             >
-              打开 OpenClaw 控制台验证配置
+              <ExternalLink className="w-4 h-4 inline mr-1" />打开 OpenClaw 控制台验证配置
             </a>
           )}
           <button
@@ -753,7 +754,7 @@ function OnboardingProgress({ current }: { current: number }) {
                     : 'bg-muted text-muted-foreground'
               }`}
             >
-              {i < current ? '✓' : i + 1}
+              {i < current ? <Check className="w-3.5 h-3.5" /> : i + 1}
             </div>
             <span className="text-[10px] text-muted-foreground mt-1">{label}</span>
           </div>

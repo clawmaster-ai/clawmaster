@@ -209,7 +209,7 @@ export default function Settings() {
           </button>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          ⚠️ 这些操作不可逆，请谨慎操作
+          这些操作不可逆，请谨慎操作
         </p>
       </section>
 

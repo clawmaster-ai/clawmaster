@@ -335,7 +335,7 @@ export interface ChannelStep {
   text: string
   /** 关键路径高亮（如 "Bot → Reset Token"），渲染为加粗 */
   highlight?: string
-  /** 此步骤产出的 token field key（渲染为 🔑 标记） */
+  /** 此步骤产出的 token field key（渲染为 * 标记） */
   yieldsToken?: string
 }
 

@@ -4,7 +4,7 @@ import type { ClawModule } from '@/types/module'
 export default {
   id: 'memory',
   name: '记忆',
-  icon: '🧠',
+  icon: 'brain',
   route: {
     path: '/memory',
     component: lazy(() => import('./MemoryPage')),

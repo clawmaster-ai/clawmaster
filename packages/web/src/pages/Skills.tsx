@@ -1,30 +1,31 @@
 import { useEffect, useState } from 'react'
 import { platform } from '@/adapters'
+import { Camera, Receipt, BookOpen, type LucideIcon } from 'lucide-react'
 import type { SkillInfo } from '@/lib/types'
 
 // ─── 场景推荐数据 ───
 
-const RECOMMENDED_SCENES = [
+const RECOMMENDED_SCENES: Array<{ id: string; title: string; desc: string; skills: string[]; icon: LucideIcon }> = [
   {
     id: 'photo-qa',
     title: '拍照答题',
     desc: '拍照 → OCR 识别 → AI 解题 → 返回答案，通过飞书/微信/钉钉直接使用',
     skills: ['paddleocr-doc-parsing', 'paddleocr-text-recognition'],
-    icon: '📸',
+    icon: Camera,
   },
   {
     id: 'invoice',
     title: '发票整理',
     desc: '拍照/转发发票 → 自动识别抬头金额类型 → 归档整理 → 导出报表',
     skills: ['paddleocr-doc-parsing'],
-    icon: '🧾',
+    icon: Receipt,
   },
   {
     id: 'mistakes',
     title: '错题本',
     desc: '自动收集错题、分类归档、定期推送复习，结合记忆管理长期记忆',
     skills: ['paddleocr-text-recognition'],
-    icon: '📝',
+    icon: BookOpen,
   },
 ]
 
@@ -126,7 +127,7 @@ export default function Skills() {
           {RECOMMENDED_SCENES.map((scene) => (
             <div key={scene.id} className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-2xl">{scene.icon}</span>
+                <scene.icon className="w-6 h-6 text-primary" />
                 <span className="font-medium">{scene.title}</span>
               </div>
               <p className="text-sm text-muted-foreground mb-3">{scene.desc}</p>

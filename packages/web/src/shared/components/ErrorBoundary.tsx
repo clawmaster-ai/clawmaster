@@ -40,7 +40,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-          <div className="text-4xl mb-4">😵</div>
+          <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+            <span className="text-red-500 text-xl font-bold">!</span>
+          </div>
           <h2 className="text-xl font-semibold mb-2">页面出错了</h2>
           <p className="text-muted-foreground mb-4 max-w-md">
             {this.state.error?.message ?? '发生了未知错误'}

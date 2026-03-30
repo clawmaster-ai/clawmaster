@@ -14,7 +14,7 @@ import type { ComponentType, LazyExoticComponent } from 'react'
  * export default {
  *   id: 'observe',
  *   name: '可观测',
- *   icon: '📊',
+ *   icon: 'bar-chart',
  *   route: { path: '/observe', component: lazy(() => import('./ObservePage')) },
  *   navOrder: 20,
  * } satisfies ClawModule

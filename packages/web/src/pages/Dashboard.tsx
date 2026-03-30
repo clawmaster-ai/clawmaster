@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { platform } from '@/adapters'
+import { BarChart3, Brain, Zap, ExternalLink, ScrollText, Settings2 } from 'lucide-react'
 import type { SystemInfo, GatewayStatus, OpenClawConfig } from '@/lib/types'
 
 export default function Dashboard() {
@@ -159,21 +160,21 @@ export default function Dashboard() {
       <div className="grid grid-cols-3 gap-4">
         <Link to="/observe" className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-lg">💰</span>
+            <BarChart3 className="w-5 h-5 text-primary" />
             <h3 className="font-medium">费用追踪</h3>
           </div>
           <p className="text-sm text-muted-foreground">查看 Token 消耗、API 费用、上下文健康度</p>
         </Link>
         <Link to="/memory" className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-lg">🧠</span>
+            <Brain className="w-5 h-5 text-primary" />
             <h3 className="font-medium">记忆管理</h3>
           </div>
           <p className="text-sm text-muted-foreground">PowerMem 智能记忆，Token 降 96%</p>
         </Link>
         <Link to="/skills" className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-lg">⚡</span>
+            <Zap className="w-5 h-5 text-primary" />
             <h3 className="font-medium">技能市场</h3>
           </div>
           <p className="text-sm text-muted-foreground">拍照答题、错题本、发票整理，开箱即用</p>
@@ -190,13 +191,13 @@ export default function Dashboard() {
             rel="noopener noreferrer"
             className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90"
           >
-            📊 打开控制台
+            <ExternalLink className="w-4 h-4 inline mr-1" />打开控制台
           </a>
-          <Link to="/logs" className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent">
-            📝 查看日志
+          <Link to="/logs" className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent flex items-center gap-1">
+            <ScrollText className="w-4 h-4" />查看日志
           </Link>
-          <Link to="/config" className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent">
-            ⚙️ 编辑配置
+          <Link to="/config" className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent flex items-center gap-1">
+            <Settings2 className="w-4 h-4" />编辑配置
           </Link>
         </div>
       </div>
