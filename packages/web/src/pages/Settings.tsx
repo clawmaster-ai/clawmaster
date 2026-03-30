@@ -53,31 +53,51 @@ export default function Settings() {
       {/* 外观 */}
       <section className="bg-card border border-border rounded-lg p-4">
         <h3 className="font-medium mb-3">外观</h3>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex items-center gap-4">
-            <label className="w-20 text-sm text-muted-foreground">主题:</label>
-            <div className="flex gap-4">
+            <label className="w-20 text-sm text-muted-foreground">模式:</label>
+            <div className="flex gap-3">
               {(['system', 'light', 'dark'] as const).map((mode) => (
-                <label key={mode} className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="theme"
-                    checked={theme === mode}
-                    onChange={() => {
-                      setTheme(mode)
-                      applyTheme(mode)
-                    }}
-                  />
-                  <span className="text-sm">
-                    {mode === 'system' ? '跟随系统' : mode === 'light' ? '浅色' : '深色'}
-                  </span>
-                </label>
+                <button
+                  key={mode}
+                  onClick={() => { setTheme(mode); applyTheme(mode) }}
+                  className={`px-3 py-1.5 rounded-lg text-sm border transition ${
+                    theme === mode
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border hover:bg-accent'
+                  }`}
+                >
+                  {mode === 'system' ? '跟随系统' : mode === 'light' ? '浅色' : '深色'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <label className="w-20 text-sm text-muted-foreground">配色:</label>
+            <div className="flex gap-3">
+              {([
+                { id: '', label: '龙虾橙', color: 'bg-orange-500' },
+                { id: 'theme-ocean', label: '海洋蓝', color: 'bg-blue-500' },
+              ] as const).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    const root = document.documentElement
+                    root.classList.remove('theme-ocean')
+                    if (t.id) root.classList.add(t.id)
+                    localStorage.setItem('clawmaster-color-theme', t.id)
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-border hover:bg-accent transition"
+                >
+                  <span className={`w-3 h-3 rounded-full ${t.color}`} />
+                  {t.label}
+                </button>
               ))}
             </div>
           </div>
           <div className="flex items-center gap-4">
             <label className="w-20 text-sm text-muted-foreground">语言:</label>
-            <select className="px-3 py-1.5 bg-muted rounded border border-border">
+            <select className="px-3 py-1.5 bg-card rounded-lg border border-border text-sm">
               <option>简体中文</option>
               <option>English</option>
             </select>

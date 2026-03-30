@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { registeredModules } from '@/modules/registry'
@@ -15,6 +16,8 @@ import {
   ScrollText,
   Wrench,
   Shell,
+  Sun,
+  Moon,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -28,115 +31,121 @@ interface LayoutProps {
   children: React.ReactNode
 }
 
-// 模块 icon 映射（模块仍用 string icon ID，这里转为 Lucide 组件）
+// 模块 icon 映射
 const moduleIconMap: Record<string, LucideIcon> = {
   observe: BarChart3,
   memory: Brain,
 }
 
-const homeNav: NavItem = { path: '/', label: '概览', icon: LayoutDashboard }
+// ─── 导航分组 ───
 
-const moduleNavItems: NavItem[] = registeredModules.map((m) => ({
-  path: m.route.path,
-  label: m.name,
-  icon: moduleIconMap[m.id] ?? Box,
-}))
+const mainNav: NavItem[] = [
+  { path: '/', label: '概览', icon: LayoutDashboard },
+  ...registeredModules.map((m) => ({
+    path: m.route.path,
+    label: m.name,
+    icon: moduleIconMap[m.id] ?? Box,
+  })),
+]
 
-const legacyNavItems: NavItem[] = [
+const manageNav: NavItem[] = [
   { path: '/gateway', label: '网关', icon: Radio },
   { path: '/channels', label: '通道', icon: MessageSquare },
   { path: '/models', label: '模型', icon: Box },
   { path: '/skills', label: '技能', icon: Zap },
   { path: '/agents', label: '代理', icon: Users },
+]
+
+const systemNav: NavItem[] = [
   { path: '/config', label: '配置', icon: Settings2 },
   { path: '/docs', label: '文档', icon: FileText },
   { path: '/logs', label: '日志', icon: ScrollText },
   { path: '/settings', label: '设置', icon: Wrench },
 ]
 
-const navItems = [homeNav, ...moduleNavItems, ...legacyNavItems]
+const allNavItems = [...mainNav, ...manageNav, ...systemNav]
+
+// ─── 深色模式 ───
+
+type DarkMode = 'system' | 'light' | 'dark'
+
+function getStoredDarkMode(): DarkMode {
+  return (localStorage.getItem('clawmaster-theme') as DarkMode) || 'system'
+}
+
+function applyDarkMode(mode: DarkMode) {
+  const root = document.documentElement
+  root.classList.remove('light', 'dark')
+  if (mode === 'system') {
+    const preferDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    root.classList.add(preferDark ? 'dark' : 'light')
+  } else {
+    root.classList.add(mode)
+  }
+  localStorage.setItem('clawmaster-theme', mode)
+}
+
+function isDark(): boolean {
+  return document.documentElement.classList.contains('dark')
+}
+
+// ─── 组件 ───
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const currentPath = location.pathname
+  const [dark, setDark] = useState(isDark)
+
+  useEffect(() => {
+    applyDarkMode(getStoredDarkMode())
+    setDark(isDark())
+  }, [])
+
+  function toggleDarkMode() {
+    const next = isDark() ? 'light' : 'dark'
+    applyDarkMode(next)
+    setDark(next === 'dark')
+  }
 
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
-      <aside className="w-56 border-r border-border flex flex-col">
+      <aside className="w-52 border-r border-border flex flex-col bg-card/50">
         {/* Logo */}
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-2">
+        <div className="px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground">
               <Shell className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="font-semibold text-sm">龙虾管理大师</h1>
-              <p className="text-xs text-muted-foreground">ClawMaster</p>
+              <h1 className="font-semibold text-sm leading-tight">龙虾管理大师</h1>
+              <p className="text-[11px] text-muted-foreground leading-tight">ClawMaster</p>
             </div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-2">
-          {navItems.map((item) => {
-            const isActive = currentPath === item.path
-            const Icon = item.icon
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-                  isActive
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                )}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span>{item.label}</span>
-              </Link>
-            )
-          })}
+        <nav className="flex-1 overflow-auto py-2 px-2 space-y-4">
+          <NavGroup items={mainNav} currentPath={currentPath} />
+          <NavGroup label="管理" items={manageNav} currentPath={currentPath} />
+          <NavGroup label="系统" items={systemNav} currentPath={currentPath} />
         </nav>
-
-        {/* Instance Selector */}
-        <div className="p-3 border-t border-border">
-          <label className="text-xs text-muted-foreground mb-1 block">实例</label>
-          <select className="w-full px-2 py-1.5 text-sm bg-muted rounded border border-border">
-            <option>默认实例</option>
-          </select>
-        </div>
-
-        {/* 主题切换 */}
-        <div className="p-3 border-t border-border">
-          <label className="text-xs text-muted-foreground mb-1 block">主题</label>
-          <select
-            className="w-full px-2 py-1.5 text-sm bg-muted rounded border border-border"
-            onChange={(e) => {
-              const html = document.documentElement
-              html.classList.remove('dark', 'theme-ocean')
-              if (e.target.value === 'ocean') {
-                html.classList.add('theme-ocean')
-              } else if (e.target.value === 'dark') {
-                html.classList.add('dark')
-              }
-            }}
-          >
-            <option value="default">龙虾橙</option>
-            <option value="ocean">海洋蓝</option>
-            <option value="dark">深色</option>
-          </select>
-        </div>
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-12 border-b border-border flex items-center px-4">
-          <h2 className="font-medium">
-            {navItems.find(item => item.path === currentPath)?.label || '龙虾管家'}
+        <header className="h-11 border-b border-border flex items-center justify-between px-4 shrink-0">
+          <h2 className="font-medium text-sm">
+            {allNavItems.find(item => item.path === currentPath)?.label || '龙虾管家'}
           </h2>
+          <button
+            onClick={toggleDarkMode}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            title={dark ? '切换到浅色模式' : '切换到深色模式'}
+          >
+            {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
         </header>
 
         {/* Content */}
@@ -145,17 +154,46 @@ export default function Layout({ children }: LayoutProps) {
         </main>
 
         {/* Status Bar */}
-        <footer className="h-8 border-t border-border flex items-center px-4 text-xs text-muted-foreground gap-4">
+        <footer className="h-7 border-t border-border flex items-center px-4 text-[11px] text-muted-foreground gap-3 shrink-0">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
             Gateway 运行中
           </span>
-          <span>|</span>
+          <span className="text-border">|</span>
           <span>模型: GLM-5</span>
-          <span>|</span>
+          <span className="text-border">|</span>
           <span>v2026.3.8</span>
         </footer>
       </div>
+    </div>
+  )
+}
+
+function NavGroup({ label, items, currentPath }: { label?: string; items: NavItem[]; currentPath: string }) {
+  return (
+    <div>
+      {label && (
+        <p className="px-3 mb-1 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">{label}</p>
+      )}
+      {items.map((item) => {
+        const isActive = currentPath === item.path
+        const Icon = item.icon
+        return (
+          <Link
+            key={item.path}
+            to={item.path}
+            className={cn(
+              'flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] transition-colors',
+              isActive
+                ? 'bg-primary/10 text-primary font-medium'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            )}
+          >
+            <Icon className="w-4 h-4 shrink-0" />
+            <span>{item.label}</span>
+          </Link>
+        )
+      })}
     </div>
   )
 }
