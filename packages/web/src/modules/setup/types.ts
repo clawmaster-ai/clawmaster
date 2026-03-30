@@ -349,7 +349,29 @@ export interface ChannelTypeConfig {
   guideLabel: string
   /** 分步设置指引 */
   steps: ChannelStep[]
+  /** QR 码扫描登录（无需手动输入 Token） */
+  qrLogin?: boolean
+  /** 需要先安装的插件包名 */
+  installPlugin?: string
+  /** 可复制的权限模板 JSON（如飞书） */
+  permissionsTemplate?: string
 }
+
+// ─── 飞书权限模板 ───
+
+export const FEISHU_PERMISSIONS_TEMPLATE = JSON.stringify([
+  "im:message", "im:message:send", "im:message.group_msg", "im:message.p2p_msg",
+  "im:chat", "im:chat:create", "im:chat:update", "im:chat:readonly",
+  "contact:user.base:readonly", "contact:user.employee_id:readonly",
+  "bitable:app", "bitable:app:readonly",
+  "docs:doc", "docs:doc:readonly",
+  "drive:drive", "drive:drive:readonly",
+  "sheets:spreadsheet", "sheets:spreadsheet:readonly",
+  "wiki:wiki", "wiki:wiki:readonly",
+  "calendar:calendar", "calendar:calendar:readonly",
+  "task:task", "task:task:readonly",
+  "approval:approval", "approval:approval:readonly",
+], null, 2)
 
 export const CHANNEL_TYPES: ChannelTypeConfig[] = [
   {
@@ -415,6 +437,34 @@ export const CHANNEL_TYPES: ChannelTypeConfig[] = [
       { text: 'channel.feishu.step4', highlight: 'channel.feishu.step4.highlight' },
       { text: 'channel.feishu.step5', highlight: 'channel.feishu.step5.highlight' },
       { text: 'channel.feishu.step6', highlight: 'channel.feishu.step6.highlight' },
+    ],
+    permissionsTemplate: FEISHU_PERMISSIONS_TEMPLATE,
+  },
+  {
+    id: 'wechat',
+    name: 'channel.wechat.name',
+    guideUrl: 'https://github.com/nicepkg/openclaw-weixin',
+    guideLabel: 'openclaw-weixin',
+    tokenFields: [],
+    qrLogin: true,
+    installPlugin: '@nicepkg/openclaw-weixin',
+    steps: [
+      { text: 'channel.wechat.step1', highlight: 'npm install -g @nicepkg/openclaw-weixin' },
+      { text: 'channel.wechat.step2', highlight: 'channel.wechat.step2.highlight' },
+      { text: 'channel.wechat.step3', highlight: 'channel.wechat.step3.highlight' },
+    ],
+  },
+  {
+    id: 'whatsapp',
+    name: 'WhatsApp',
+    guideUrl: 'https://web.whatsapp.com',
+    guideLabel: 'WhatsApp Web',
+    tokenFields: [],
+    qrLogin: true,
+    steps: [
+      { text: 'channel.whatsapp.step1', highlight: 'channel.whatsapp.step1.highlight' },
+      { text: 'channel.whatsapp.step2', highlight: 'channel.whatsapp.step2.highlight' },
+      { text: 'channel.whatsapp.step3', highlight: 'channel.whatsapp.step3.highlight' },
     ],
   },
 ]

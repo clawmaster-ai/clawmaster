@@ -10,12 +10,14 @@ import {
   CHANNEL_TYPES,
   DEFAULT_ONBOARDING_STATE,
 } from './types'
+import type { SetupAdapter } from './adapters'
 import type {
   CapabilityStatus,
   InstallProgress,
   SetupPhase,
   CapabilityId,
   OnboardingState,
+  ChannelTypeConfig,
 } from './types'
 
 interface SetupWizardProps {
@@ -483,7 +485,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                       : 'border-border hover:bg-accent'
                   }`}
                 >
-                  {ch.name}
+                  {t(ch.name)}
                 </button>
               ))}
             </div>
@@ -519,7 +521,34 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                 </ol>
               </div>
             )}
-            {selectedChannel?.tokenFields.map((field) => (
+            {/* Feishu permissions template */}
+            {selectedChannel?.permissionsTemplate && (
+              <div className="bg-muted/50 border border-border rounded-lg p-3 mb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium">{t('channel.feishu.permissionsTitle')}</p>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedChannel.permissionsTemplate!)
+                      updateOnboard({ error: null })
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {t('common.copyToClipboard')}
+                  </button>
+                </div>
+                <pre className="text-[10px] text-muted-foreground max-h-24 overflow-auto font-mono">{selectedChannel.permissionsTemplate}</pre>
+              </div>
+            )}
+            {/* QR login channels */}
+            {selectedChannel?.qrLogin && (
+              <QrLoginPanel
+                channel={selectedChannel}
+                onConnected={() => setPhase('onboard_done')}
+                adapter={adapter}
+              />
+            )}
+            {/* Token-based channels */}
+            {selectedChannel && !selectedChannel.qrLogin && selectedChannel.tokenFields.map((field) => (
               <div key={field.key} className="mb-2">
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-medium">{field.label}</label>
@@ -623,6 +652,96 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             {t('common.retry')}
           </button>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ─── QR 登录面板 ───
+
+function QrLoginPanel({
+  channel,
+  onConnected,
+  adapter,
+}: {
+  channel: ChannelTypeConfig
+  onConnected: () => void
+  adapter: SetupAdapter
+}) {
+  const { t } = useTranslation()
+  const [status, setStatus] = useState<'idle' | 'installing' | 'scanning' | 'connected' | 'error'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  async function startLogin() {
+    setError(null)
+    // Install plugin if needed
+    if (channel.installPlugin) {
+      setStatus('installing')
+      try {
+        await adapter.onboarding.installPlugin(channel.installPlugin)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+        setStatus('error')
+        return
+      }
+    }
+    // Start QR login
+    setStatus('scanning')
+    try {
+      const result = await adapter.onboarding.loginChannel(channel.id)
+      if (result === 'connected') {
+        setStatus('connected')
+        setTimeout(onConnected, 1000)
+      } else {
+        setError(t('channel.qr.timeout'))
+        setStatus('error')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setStatus('error')
+    }
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-6 text-center">
+      {status === 'idle' && (
+        <>
+          <p className="text-sm text-muted-foreground mb-3">{t('channel.qr.desc')}</p>
+          <button
+            onClick={startLogin}
+            className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90"
+          >
+            {t('channel.qr.start')}
+          </button>
+        </>
+      )}
+      {status === 'installing' && (
+        <p className="text-muted-foreground animate-pulse">{t('channel.qr.installing', { plugin: channel.installPlugin })}</p>
+      )}
+      {status === 'scanning' && (
+        <>
+          <div className="w-48 h-48 mx-auto mb-3 border-2 border-dashed border-border rounded-lg flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-xs text-muted-foreground">{t('channel.qr.waiting')}</p>
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground">{t('channel.qr.scanHint')}</p>
+        </>
+      )}
+      {status === 'connected' && (
+        <div>
+          <Check className="w-8 h-8 text-green-600 mx-auto mb-2" />
+          <p className="text-green-600 font-medium">{t('channel.qr.connected')}</p>
+        </div>
+      )}
+      {status === 'error' && (
+        <>
+          <p className="text-red-500 text-sm mb-3">{error}</p>
+          <button onClick={startLogin} className="px-4 py-2 border border-border rounded-lg hover:bg-accent">
+            {t('common.retry')}
+          </button>
+        </>
       )}
     </div>
   )

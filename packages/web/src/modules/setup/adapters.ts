@@ -33,6 +33,10 @@ export interface OnboardingAdapter {
   checkGateway(port: number): Promise<boolean>
   /** 添加消息通道 */
   addChannel(channelType: string, tokens: Record<string, string>): Promise<void>
+  /** QR 码登录通道（WeChat/WhatsApp） */
+  loginChannel(channelType: string): Promise<string>
+  /** 安装插件包 */
+  installPlugin(packageName: string): Promise<void>
 }
 
 export interface SetupAdapter {
@@ -114,6 +118,27 @@ const realOnboardingAdapter: OnboardingAdapter = {
       if (value.trim()) args.push(`--${key}`, value.trim())
     }
     await execCommand('openclaw', args)
+  },
+
+  async loginChannel(channelType) {
+    // Fire-and-forget: interactive login runs in background
+    // The user scans QR in phone app; CLI handles the rest
+    execCommand('openclaw', ['channels', 'login', '--channel', channelType]).catch(() => {})
+    // Poll channel status until connected
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 3000))
+      try {
+        const out = await execCommand('openclaw', ['channels', 'status', '--channel', channelType])
+        if (out.includes('connected') || out.includes('ready') || out.includes('online')) {
+          return 'connected'
+        }
+      } catch { /* keep polling */ }
+    }
+    return 'timeout'
+  },
+
+  async installPlugin(packageName) {
+    await execCommand('npm', ['install', '-g', packageName])
   },
 }
 
@@ -234,6 +259,13 @@ const demoOnboardingAdapter: OnboardingAdapter = {
   },
   async addChannel(_type, _tokens) {
     await delay(700)
+  },
+  async loginChannel() {
+    await delay(3000)
+    return 'connected'
+  },
+  async installPlugin() {
+    await delay(2000)
   },
 }
 
