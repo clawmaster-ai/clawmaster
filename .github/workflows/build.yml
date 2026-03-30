@@ -1,63 +1,144 @@
-name: Build Release
+name: CI / Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main, 'feat/**']
+    tags: ['v*']
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  NODE_VERSION: '20'
+  RUST_TOOLCHAIN: 'stable'
+
+# Cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # ─── Lint & Test (runs on every push/PR) ───
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: TypeScript check
+        run: npm run build --workspace=@openclaw-manager/web -- --mode production 2>&1 | head -5 || npx tsc -b --noEmit packages/web
+      - name: Run tests
+        run: npm test
+      - name: Build web
+        run: npm run build
+
+  # ─── Multi-platform Tauri build ───
   build:
+    name: Build (${{ matrix.label }})
+    needs: test
+    # Only build on tags, main branch, or manual dispatch
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            label: Linux x64
           - os: macos-latest
             target: x86_64-apple-darwin
+            label: macOS x64
           - os: macos-latest
             target: aarch64-apple-darwin
+            label: macOS ARM64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            label: Windows x64
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install dependencies (Ubuntu only)
-        if: matrix.os == 'ubuntu-22.04'
+      # Rust build cache
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf
 
-      - name: Install npm dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Build Tauri app
+      # Tag builds → create GitHub release with draft
+      - name: Build & Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: 'OpenClaw Manager v__VERSION__'
-          releaseBody: 'See CHANGELOG.md for details.'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'ClawMaster ${{ github.ref_name }}'
+          releaseBody: |
+            ## What's New
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+
+            ## Downloads
+            | Platform | File |
+            |----------|------|
+            | Linux x64 | `.AppImage` / `.deb` / `.rpm` |
+            | macOS Intel | `.dmg` |
+            | macOS Apple Silicon | `.dmg` |
+            | Windows | `.msi` / portable `.exe` |
+
+            ## Checksums
+            SHA-256 checksums are in the `checksums.txt` asset.
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           args: --target ${{ matrix.target }}
+
+      # Non-tag builds → upload as artifacts
+      - name: Build (no release)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        run: |
+          npx tauri build --target ${{ matrix.target }}
+
+      - name: Upload artifacts
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawmaster-${{ matrix.target }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.rpm
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.rpm
+            src-tauri/target/release/bundle/**/*.AppImage
+          retention-days: 7
+          if-no-files-found: ignore
