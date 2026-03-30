@@ -18,6 +18,8 @@ import {
   Shell,
   Sun,
   Moon,
+  Menu,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -95,11 +97,17 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const currentPath = location.pathname
   const [dark, setDark] = useState(isDark)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     applyDarkMode(getStoredDarkMode())
     setDark(isDark())
   }, [])
+
+  // 路由变化时关闭移动端侧边栏
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [currentPath])
 
   function toggleDarkMode() {
     const next = isDark() ? 'light' : 'dark'
@@ -107,38 +115,72 @@ export default function Layout({ children }: LayoutProps) {
     setDark(next === 'dark')
   }
 
-  return (
-    <div className="flex h-screen bg-background">
-      {/* Sidebar */}
-      <aside className="w-52 border-r border-border flex flex-col bg-card/50">
-        {/* Logo */}
-        <div className="px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground">
-              <Shell className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="font-semibold text-sm leading-tight">龙虾管理大师</h1>
-              <p className="text-[11px] text-muted-foreground leading-tight">ClawMaster</p>
-            </div>
+  const sidebarContent = (
+    <>
+      {/* Logo */}
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground">
+            <Shell className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="font-semibold text-sm leading-tight">龙虾管理大师</h1>
+            <p className="text-[11px] text-muted-foreground leading-tight">ClawMaster</p>
           </div>
         </div>
+        {/* 移动端关闭按钮 */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden p-1 rounded-md text-muted-foreground hover:text-foreground"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-auto py-2 px-2 space-y-4">
-          <NavGroup items={mainNav} currentPath={currentPath} />
-          <NavGroup label="管理" items={manageNav} currentPath={currentPath} />
-          <NavGroup label="系统" items={systemNav} currentPath={currentPath} />
-        </nav>
+      {/* Navigation */}
+      <nav className="flex-1 overflow-auto py-2 px-2 space-y-4">
+        <NavGroup items={mainNav} currentPath={currentPath} />
+        <NavGroup label="管理" items={manageNav} currentPath={currentPath} />
+        <NavGroup label="系统" items={systemNav} currentPath={currentPath} />
+      </nav>
+    </>
+  )
+
+  return (
+    <div className="flex h-screen bg-background">
+      {/* Desktop sidebar */}
+      <aside className="hidden lg:flex w-52 border-r border-border flex-col bg-card/50 shrink-0">
+        {sidebarContent}
       </aside>
+
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 flex">
+          <div
+            className="fixed inset-0 bg-black/40"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <aside className="relative z-50 w-64 bg-background border-r border-border flex flex-col">
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <header className="h-11 border-b border-border flex items-center justify-between px-4 shrink-0">
-          <h2 className="font-medium text-sm">
-            {allNavItems.find(item => item.path === currentPath)?.label || '龙虾管家'}
-          </h2>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h2 className="font-medium text-sm">
+              {allNavItems.find(item => item.path === currentPath)?.label || '龙虾管家'}
+            </h2>
+          </div>
           <button
             onClick={toggleDarkMode}
             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -160,8 +202,8 @@ export default function Layout({ children }: LayoutProps) {
             Gateway 运行中
           </span>
           <span className="text-border">|</span>
-          <span>模型: GLM-5</span>
-          <span className="text-border">|</span>
+          <span className="hidden sm:inline">模型: GLM-5</span>
+          <span className="hidden sm:inline text-border">|</span>
           <span>v2026.3.8</span>
         </footer>
       </div>
