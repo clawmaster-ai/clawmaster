@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { CAPABILITIES, type CapabilityId } from '@/modules/setup/types'
 import { getSetupAdapter } from '@/modules/setup/adapters'
 
@@ -31,6 +32,7 @@ export function CapabilityGuard({
   children,
   unavailableMessage,
 }: CapabilityGuardProps) {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<'checking' | 'available' | 'unavailable'>('checking')
   const [installing, setInstalling] = useState(false)
   const [installError, setInstallError] = useState<string | null>(null)
@@ -51,7 +53,7 @@ export function CapabilityGuard({
     return (
       <div className="flex flex-col items-center justify-center h-64">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-sm text-muted-foreground">正在检测{capName}...</p>
+        <p className="text-sm text-muted-foreground">{t('capability.checking', { name: capName })}</p>
       </div>
     )
   }
@@ -84,7 +86,7 @@ export function CapabilityGuard({
       <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
         <span className="text-muted-foreground text-xl font-bold">+</span>
       </div>
-      <h3 className="text-lg font-medium mb-2">{capName}尚未启用</h3>
+      <h3 className="text-lg font-medium mb-2">{t('capability.notEnabled', { name: capName })}</h3>
       <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
         {unavailableMessage ?? `此功能需要「${capName}」支持。点击下方按钮一键安装。`}
       </p>
@@ -97,13 +99,13 @@ export function CapabilityGuard({
           disabled={installing}
           className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50"
         >
-          {installing ? '安装中...' : `安装${capName}`}
+          {installing ? t('capability.installing') : t('capability.install', { name: capName })}
         </button>
         <button
           onClick={() => checkAvailable().then((ok) => setStatus(ok ? 'available' : 'unavailable'))}
           className="px-4 py-2 border border-border rounded-lg hover:bg-accent"
         >
-          重新检测
+          {t('capability.recheck')}
         </button>
       </div>
     </div>

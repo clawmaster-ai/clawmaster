@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { ContextHealth } from '@/shared/adapters/clawprobe'
 
 interface Props {
@@ -5,6 +6,7 @@ interface Props {
 }
 
 export default function ContextHealthBar({ data }: Props) {
+  const { t } = useTranslation()
   const utilization = data?.utilization ?? 0
   const color =
     utilization > 90 ? 'bg-red-500' : utilization > 70 ? 'bg-yellow-500' : 'bg-green-500'
@@ -13,14 +15,14 @@ export default function ContextHealthBar({ data }: Props) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
-      <h3 className="font-medium mb-3">上下文健康度</h3>
+      <h3 className="font-medium mb-3">{t('observe.contextHealth')}</h3>
 
       {data ? (
         <div className="space-y-4">
           {/* 进度条 */}
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-muted-foreground">窗口占用</span>
+              <span className="text-muted-foreground">{t('observe.windowUsage')}</span>
               <span className={`font-medium ${textColor}`}>{utilization.toFixed(1)}%</span>
             </div>
             <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
@@ -34,15 +36,15 @@ export default function ContextHealthBar({ data }: Props) {
           {/* 详细信息 */}
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <p className="text-muted-foreground">已用 Token</p>
+              <p className="text-muted-foreground">{t('observe.usedTokens')}</p>
               <p className="font-medium">{data.usedTokens?.toLocaleString() ?? '—'}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">最大 Token</p>
+              <p className="text-muted-foreground">{t('observe.maxTokens')}</p>
               <p className="font-medium">{data.maxTokens?.toLocaleString() ?? '—'}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">压缩次数</p>
+              <p className="text-muted-foreground">{t('observe.compactionCount')}</p>
               <p className="font-medium">{data.compactionCount ?? 0}</p>
             </div>
             <div>
@@ -67,7 +69,7 @@ export default function ContextHealthBar({ data }: Props) {
         </div>
       ) : (
         <div className="h-[150px] flex items-center justify-center text-muted-foreground text-sm">
-          暂无上下文数据
+          {t('observe.noContextData')}
         </div>
       )}
     </div>

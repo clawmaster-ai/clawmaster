@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { SessionSummary } from '@/shared/adapters/clawprobe'
 
 interface Props {
@@ -8,23 +9,24 @@ interface Props {
 }
 
 export default function SessionList({ sessions, loading, onRefresh }: Props) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState<string | null>(null)
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-medium">会话列表</h3>
+        <h3 className="font-medium">{t('observe.sessions')}</h3>
         <button
           onClick={onRefresh}
           disabled={loading}
           className="px-3 py-1 text-sm border border-border rounded hover:bg-accent disabled:opacity-50"
         >
-          {loading ? '刷新中...' : '刷新'}
+          {loading ? t('observe.refreshing') : t('common.refresh')}
         </button>
       </div>
 
       {!sessions || sessions.length === 0 ? (
-        <p className="text-muted-foreground text-sm py-4 text-center">暂无会话记录</p>
+        <p className="text-muted-foreground text-sm py-4 text-center">{t('observe.noSessions')}</p>
       ) : (
         <div className="divide-y divide-border">
           {sessions.map((session) => (
@@ -45,7 +47,7 @@ export default function SessionList({ sessions, loading, onRefresh }: Props) {
                   </span>
                   <span className="font-medium">${session.cost.toFixed(4)}</span>
                   <span className="text-muted-foreground text-xs">
-                    {session.turns} 轮
+                    {t('observe.turns', { count: session.turns })}
                   </span>
                   <span className="text-xs">{expanded === session.key ? '▼' : '▶'}</span>
                 </div>

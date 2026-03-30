@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { CostData } from '@/shared/adapters/clawprobe'
 
 interface Props {
@@ -12,11 +13,12 @@ function getBudget(period: 'day' | 'week' | 'month'): number | null {
 }
 
 export default function CostCards({ day, week, month }: Props) {
+  const { t } = useTranslation()
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <CostCard label="今日花费" data={day} color="text-blue-600" budgetPeriod="day" />
-      <CostCard label="本周花费" data={week} color="text-purple-600" budgetPeriod="week" />
-      <CostCard label="本月花费" data={month} color="text-orange-600" budgetPeriod="month" />
+      <CostCard label={t('observe.costToday')} data={day} color="text-blue-600" budgetPeriod="day" />
+      <CostCard label={t('observe.costWeek')} data={week} color="text-purple-600" budgetPeriod="week" />
+      <CostCard label={t('observe.costMonth')} data={month} color="text-orange-600" budgetPeriod="month" />
     </div>
   )
 }
@@ -32,6 +34,7 @@ function CostCard({
   color: string
   budgetPeriod: 'day' | 'week' | 'month'
 }) {
+  const { t } = useTranslation()
   const budget = getBudget(budgetPeriod)
   const spent = data?.total ?? 0
   const overBudget = budget !== null && spent > budget
@@ -42,7 +45,7 @@ function CostCard({
     <div className={`bg-card border rounded-lg p-4 ${overBudget ? 'border-red-500' : 'border-border'}`}>
       {overBudget && (
         <div className="text-xs text-red-500 font-medium mb-1">
-          超出预算!
+          {t('observe.overBudget')}
         </div>
       )}
       <p className="text-sm text-muted-foreground">{label}</p>
@@ -67,7 +70,7 @@ function CostCard({
       )}
       {!budget && data?.by_model && (
         <p className="text-xs text-muted-foreground mt-2">
-          {Object.keys(data.by_model).length} 个模型
+          {t('observe.modelCount', { count: Object.keys(data.by_model).length })}
         </p>
       )}
     </div>

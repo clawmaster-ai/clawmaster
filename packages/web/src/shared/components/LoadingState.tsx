@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 interface LoadingStateProps {
   /** 提示文案，默认"加载中..." */
   message?: string
@@ -12,7 +14,9 @@ interface LoadingStateProps {
  * if (loading) return <LoadingState />
  * if (loading) return <LoadingState message="正在获取费用数据..." />
  */
-export function LoadingState({ message = '加载中...', fullPage = true }: LoadingStateProps) {
+export function LoadingState({ message, fullPage = true }: LoadingStateProps) {
+  const { t } = useTranslation()
+  const displayMessage = message ?? t('common.loading')
   const wrapperClass = fullPage
     ? 'flex flex-col items-center justify-center h-full p-8'
     : 'flex flex-col items-center p-4'
@@ -20,7 +24,7 @@ export function LoadingState({ message = '加载中...', fullPage = true }: Load
   return (
     <div className={wrapperClass}>
       <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
-      <p className="text-sm text-muted-foreground">{message}</p>
+      <p className="text-sm text-muted-foreground">{displayMessage}</p>
     </div>
   )
 }

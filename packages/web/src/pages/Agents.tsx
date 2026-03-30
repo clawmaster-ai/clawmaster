@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
 import type { OpenClawConfig } from '@/lib/types'
 
 export default function Agents() {
+  const { t } = useTranslation()
   const [config, setConfig] = useState<OpenClawConfig | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -23,7 +25,7 @@ export default function Agents() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64">加载中...</div>
+    return <div className="flex items-center justify-center h-64">{t('common.loading')}</div>
   }
 
   const agents = config?.agents?.list || []
@@ -41,9 +43,9 @@ export default function Agents() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">代理管理</h1>
+        <h1 className="text-2xl font-bold">{t('agents.title')}</h1>
         <button className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90">
-          + 创建代理
+          {t('agents.createAgent')}
         </button>
       </div>
 
@@ -91,11 +93,11 @@ export default function Agents() {
             </div>
             <div className="flex gap-2">
               <button className="px-3 py-1.5 text-sm border border-border rounded hover:bg-accent">
-                编辑
+                {t('common.edit')}
               </button>
               {agent.id !== 'main' && (
                 <button className="px-3 py-1.5 text-sm border border-border rounded hover:bg-accent text-red-500">
-                  删除
+                  {t('common.delete')}
                 </button>
               )}
             </div>

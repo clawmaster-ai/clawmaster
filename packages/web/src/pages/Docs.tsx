@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { execCommand } from '@/shared/adapters/platform'
 
 interface DocResult {
@@ -7,16 +8,17 @@ interface DocResult {
   snippet: string
 }
 
-const QUICK_LINKS = [
-  { label: '快速开始', url: 'https://docs.openclaw.ai/quickstart', desc: '安装、配置、发送第一条消息' },
-  { label: 'CLI 参考', url: 'https://docs.openclaw.ai/cli', desc: 'openclaw 命令行完整文档' },
-  { label: '通道配置', url: 'https://docs.openclaw.ai/channels', desc: 'Telegram、Discord、Slack、飞书' },
-  { label: '模型配置', url: 'https://docs.openclaw.ai/models', desc: '提供商 API Key、模型选择、备选链' },
-  { label: '技能开发', url: 'https://docs.openclaw.ai/skills', desc: '创建和发布自定义技能' },
-  { label: '安全指南', url: 'https://docs.openclaw.ai/security', desc: 'Token 管理、沙箱、权限' },
-]
-
 export default function Docs() {
+  const { t } = useTranslation()
+
+  const QUICK_LINKS = [
+    { label: t('docs.quickStart'), url: 'https://docs.openclaw.ai/quickstart', desc: t('docs.quickStartDesc') },
+    { label: t('docs.cliRef'), url: 'https://docs.openclaw.ai/cli', desc: t('docs.cliRefDesc') },
+    { label: t('docs.channelConfig'), url: 'https://docs.openclaw.ai/channels', desc: t('docs.channelConfigDesc') },
+    { label: t('docs.modelConfig'), url: 'https://docs.openclaw.ai/models', desc: t('docs.modelConfigDesc') },
+    { label: t('docs.skillDev'), url: 'https://docs.openclaw.ai/skills', desc: t('docs.skillDevDesc') },
+    { label: t('docs.securityGuide'), url: 'https://docs.openclaw.ai/security', desc: t('docs.securityGuideDesc') },
+  ]
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<DocResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -34,7 +36,7 @@ export default function Docs() {
       const parsed = parseDocsOutput(raw)
       setResults(parsed)
     } catch (err) {
-      setError('搜索失败，请检查网络连接')
+      setError(t('docs.searchFailed'))
       setResults([])
     } finally {
       setSearching(false)
@@ -43,13 +45,13 @@ export default function Docs() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">文档</h1>
+      <h1 className="text-2xl font-bold">{t('docs.title')}</h1>
 
       {/* 搜索 */}
       <div className="flex gap-3">
         <input
           type="text"
-          placeholder="搜索 OpenClaw 文档..."
+          placeholder={t('docs.searchPlaceholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -60,7 +62,7 @@ export default function Docs() {
           disabled={searching || !query.trim()}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50 text-sm"
         >
-          {searching ? '搜索中...' : '搜索'}
+          {searching ? t('common.searching') : t('common.search')}
         </button>
       </div>
 
@@ -68,7 +70,7 @@ export default function Docs() {
       {error && <p className="text-red-500 text-sm">{error}</p>}
       {results.length > 0 && (
         <div className="space-y-3">
-          <h3 className="font-medium text-sm text-muted-foreground">{results.length} 条结果</h3>
+          <h3 className="font-medium text-sm text-muted-foreground">{t('docs.resultCount', { count: results.length })}</h3>
           {results.map((r, i) => (
             <a
               key={i}
@@ -85,13 +87,13 @@ export default function Docs() {
         </div>
       )}
       {searched && !searching && results.length === 0 && !error && (
-        <p className="text-muted-foreground text-center py-4">未找到相关文档</p>
+        <p className="text-muted-foreground text-center py-4">{t('docs.noResults')}</p>
       )}
 
       {/* 快速链接 */}
       {!searched && (
         <div>
-          <h3 className="font-medium mb-3">常用文档</h3>
+          <h3 className="font-medium mb-3">{t('docs.commonDocs')}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {QUICK_LINKS.map((link) => (
               <a
@@ -112,7 +114,7 @@ export default function Docs() {
             rel="noopener noreferrer"
             className="mt-4 block text-sm text-primary hover:underline"
           >
-            打开完整文档站 &rarr;
+            {t('docs.openFullDocs')} &rarr;
           </a>
         </div>
       )}

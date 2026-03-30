@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
 import { getSetupAdapter } from '@/modules/setup/adapters'
 import { CHANNEL_TYPES } from '@/modules/setup/types'
 import type { OpenClawConfig } from '@/lib/types'
 
 export default function Channels() {
+  const { t } = useTranslation()
   const [config, setConfig] = useState<OpenClawConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [addingChannel, setAddingChannel] = useState<string | null>(null)
@@ -24,7 +26,7 @@ export default function Channels() {
   useEffect(() => { loadData() }, [loadData])
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64">加载中...</div>
+    return <div className="flex items-center justify-center h-64">{t('common.loading')}</div>
   }
 
   const channels = config?.channels || {}
@@ -43,18 +45,18 @@ export default function Channels() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">通道管理</h1>
+      <h1 className="text-2xl font-bold">{t('channels.title')}</h1>
 
       {/* 已配置 */}
       {configuredChannels.length > 0 && (
         <div className="space-y-3">
-          <h3 className="font-medium">已配置</h3>
+          <h3 className="font-medium">{t('channels.configured')}</h3>
           {configuredChannels.map((ch) => (
             <div key={ch.type} className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
                 <span className={`w-2.5 h-2.5 rounded-full ${ch.enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
                 <span className="font-medium">{ch.label}</span>
-                <span className="text-xs text-muted-foreground">({ch.accounts.length} 个账号)</span>
+                <span className="text-xs text-muted-foreground">({t('channels.accountCount', { count: ch.accounts.length })})</span>
               </div>
               <div className="space-y-1.5">
                 {ch.accounts.map((acc: any) => (
@@ -63,7 +65,7 @@ export default function Channels() {
                       <span className={`w-2 h-2 rounded-full ${acc.enabled !== false ? 'bg-green-500' : 'bg-gray-400'}`} />
                       <span className="text-sm">{acc.name || acc.id}</span>
                       {acc.groupPolicy === 'disabled' && (
-                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded">群聊已禁用</span>
+                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded">{t('channels.groupDisabled')}</span>
                       )}
                     </div>
                   </div>
@@ -76,7 +78,7 @@ export default function Channels() {
 
       {/* 添加通道 */}
       <div className="space-y-3">
-        <h3 className="font-medium">添加通道</h3>
+        <h3 className="font-medium">{t('channels.addChannel')}</h3>
         {unconfiguredTypes.map((type) => (
           <div key={type.id}>
             {addingChannel === type.id ? (
@@ -92,14 +94,14 @@ export default function Channels() {
                   onClick={() => setAddingChannel(type.id)}
                   className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:opacity-90"
                 >
-                  配置连接
+                  {t('channels.configureConnection')}
                 </button>
               </div>
             )}
           </div>
         ))}
         {unconfiguredTypes.length === 0 && configuredChannels.length > 0 && (
-          <p className="text-sm text-muted-foreground">所有通道类型已配置</p>
+          <p className="text-sm text-muted-foreground">{t('channels.allConfigured')}</p>
         )}
       </div>
     </div>
@@ -117,6 +119,7 @@ function AddChannelPanel({
   onClose: () => void
   onAdded: () => void
 }) {
+  const { t } = useTranslation()
   const [tokens, setTokens] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -148,9 +151,9 @@ function AddChannelPanel({
             rel="noopener noreferrer"
             className="text-xs text-primary hover:underline"
           >
-            打开 {channelType.guideLabel} &rarr;
+            {t('channels.openGuide', { label: channelType.guideLabel })} &rarr;
           </a>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">取消</button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">{t('common.cancel')}</button>
         </div>
       </div>
 
@@ -191,7 +194,7 @@ function AddChannelPanel({
         disabled={!allFilled || busy}
         className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
       >
-        {busy ? '添加中...' : '添加通道'}
+        {busy ? t('channels.adding') : t('channels.addBtn')}
       </button>
     </div>
   )

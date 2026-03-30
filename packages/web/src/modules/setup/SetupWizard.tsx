@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Shell, Check, ExternalLink } from 'lucide-react'
 import { getSetupAdapter } from './adapters'
 import {
@@ -27,6 +28,7 @@ interface SetupWizardProps {
  * 支持 ?demo=install 模拟全流程
  */
 export default function SetupWizard({ onComplete }: SetupWizardProps) {
+  const { t } = useTranslation()
   const [phase, setPhase] = useState<SetupPhase>('detecting')
   const [capabilities, setCapabilities] = useState<CapabilityStatus[]>([])
   const [installProgress, setInstallProgress] = useState<Record<CapabilityId, InstallProgress>>({} as any)
@@ -132,7 +134,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     const providerCfg = PROVIDERS[onboard.provider]
     // 需要 baseUrl 但未填
     if (providerCfg?.needsBaseUrl && !onboard.customBaseUrl.trim()) {
-      updateOnboard({ error: '请输入 API Base URL' })
+      updateOnboard({ error: t('setup.enterBaseUrl') })
       return
     }
     updateOnboard({ busy: true, error: null })
@@ -144,7 +146,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         onboard.customBaseUrl.trim() || undefined,
       )
       if (!valid) {
-        updateOnboard({ busy: false, error: 'API Key 无效或网络不可达，请检查后重试' })
+        updateOnboard({ busy: false, error: t('setup.apiKeyInvalid') })
         return
       }
       // 验证通过，保存配置
@@ -191,7 +193,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           return
         }
       }
-      updateOnboard({ busy: false, error: '网关启动超时，请检查端口是否被占用' })
+      updateOnboard({ busy: false, error: t('setup.gatewayTimeout') })
     } catch (err) {
       updateOnboard({ busy: false, error: err instanceof Error ? err.message : String(err) })
     }
@@ -231,19 +233,19 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center mb-4 shadow-lg">
         <Shell className="w-9 h-9 text-primary-foreground" />
       </div>
-      <h1 className="text-2xl font-bold mb-1">龙虾管理大师</h1>
-      <p className="text-sm text-muted-foreground mb-6">OpenClaw 生态的六边形战士</p>
+      <h1 className="text-2xl font-bold mb-1">{t('setup.appName')}</h1>
+      <p className="text-sm text-muted-foreground mb-6">{t('setup.appSlogan')}</p>
 
       {isDemo && (
         <div className="mb-4 px-3 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
-          Demo 模式
+          {t('setup.demoMode')}
         </div>
       )}
 
       {/* 检测中 */}
       {phase === 'detecting' && (
         <div className="w-full max-w-md">
-          <p className="text-center text-muted-foreground mb-4">正在检测系统能力...</p>
+          <p className="text-center text-muted-foreground mb-4">{t('setup.detecting')}</p>
           <CapabilityList capabilities={capabilities} />
         </div>
       )}
@@ -252,14 +254,14 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       {phase === 'ready' && requiredMissing.length > 0 && (
         <div className="w-full max-w-md">
           <p className="text-center text-muted-foreground mb-4">
-            核心引擎未安装
+            {t('setup.coreNotInstalled')}
           </p>
           <CapabilityList capabilities={capabilities} />
           <button
             onClick={startInstall}
             className="mt-6 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition"
           >
-            安装核心引擎
+            {t('setup.installCore')}
           </button>
         </div>
       )}
@@ -268,18 +270,18 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       {phase === 'ready' && requiredMissing.length === 0 && (
         <div className="w-full max-w-md">
           <p className="text-center text-muted-foreground mb-4">
-            核心引擎已就绪{optionalMissing.length > 0 ? `，${optionalMissing.length} 项扩展能力可稍后安装` : ''}
+            {optionalMissing.length > 0 ? t('setup.coreReadyOptional', { count: optionalMissing.length }) : t('setup.coreReady')}
           </p>
           <CapabilityList capabilities={capabilities} />
           <button
             onClick={onComplete}
             className="mt-6 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition"
           >
-            进入管理大师
+            {t('setup.enterMaster')}
           </button>
           {optionalMissing.length > 0 && (
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              未安装的能力可在对应功能页面按需安装
+              {t('setup.optionalLater')}
             </p>
           )}
         </div>
@@ -288,7 +290,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       {/* 安装中 */}
       {phase === 'installing' && (
         <div className="w-full max-w-md">
-          <p className="text-center text-muted-foreground mb-4">正在安装...</p>
+          <p className="text-center text-muted-foreground mb-4">{t('setup.installing')}</p>
           <InstallList
             capabilities={capabilities}
             progress={installProgress}
@@ -301,21 +303,21 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         <div className="w-full max-w-md">
           <p className="text-center text-green-600 font-medium mb-4">
             {optionalMissing.length > 0
-              ? `核心引擎已就绪！${optionalMissing.length} 项扩展能力可稍后安装`
-              : '全部就绪!'}
+              ? t('setup.coreReadyOptional', { count: optionalMissing.length })
+              : t('setup.allReady')}
           </p>
           <CapabilityList capabilities={capabilities} />
           <button
             onClick={() => setPhase('onboard_init')}
             className="mt-6 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition"
           >
-            开始配置
+            {t('setup.startConfig')}
           </button>
           <button
             onClick={onComplete}
             className="mt-2 w-full py-2 text-sm text-muted-foreground hover:text-foreground transition"
           >
-            跳过，稍后配置
+            {t('setup.skipConfig')}
           </button>
         </div>
       )}
@@ -327,13 +329,13 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         <div className="w-full max-w-md">
           <OnboardingProgress current={0} />
           {onboard.busy && (
-            <p className="text-center text-muted-foreground animate-pulse">正在初始化配置文件...</p>
+            <p className="text-center text-muted-foreground animate-pulse">{t('setup.initConfig')}</p>
           )}
           {onboard.error && (
             <div className="text-center">
               <p className="text-red-500 mb-4">{onboard.error}</p>
               <button onClick={runInitConfig} className="px-6 py-2 border border-border rounded-lg hover:bg-accent">
-                重试
+                {t('common.retry')}
               </button>
             </div>
           )}
@@ -357,7 +359,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         return (
           <div className="w-full max-w-md">
             <OnboardingProgress current={2} />
-            <p className="text-center font-medium mb-4">选择默认模型</p>
+            <p className="text-center font-medium mb-4">{t('setup.selectModel')}</p>
             {hasModels && (
               <div className="bg-card border border-border rounded-lg divide-y divide-border">
                 {models.map((m) => (
@@ -380,11 +382,11 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               </div>
             )}
             {!hasModels && (
-              <p className="text-center text-sm text-muted-foreground mb-2">请输入模型 ID</p>
+              <p className="text-center text-sm text-muted-foreground mb-2">{t('setup.enterModelId')}</p>
             )}
             <input
               type="text"
-              placeholder="手动输入模型 ID（如 deepseek-ai/DeepSeek-V3）"
+              placeholder={t('setup.modelIdPlaceholder')}
               value={onboard.customModelId}
               onChange={(e) => updateOnboard({ customModelId: e.target.value, model: '' })}
               className="mt-3 w-full px-4 py-3 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
@@ -395,7 +397,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               disabled={(!onboard.model && !onboard.customModelId.trim()) || onboard.busy}
               className="mt-4 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50"
             >
-              {onboard.busy ? '设置中...' : '下一步'}
+              {onboard.busy ? t('setup.settingModel') : t('common.nextStep')}
             </button>
           </div>
         )
@@ -405,19 +407,19 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       {phase === 'onboard_gateway' && (
         <div className="w-full max-w-md">
           <OnboardingProgress current={3} />
-          <p className="text-center font-medium mb-4">启动网关</p>
+          <p className="text-center font-medium mb-4">{t('setup.startGateway')}</p>
           <div className="bg-card border border-border rounded-lg p-6 text-center">
             {onboard.busy && !onboard.gatewayRunning && (
-              <p className="text-muted-foreground animate-pulse">正在启动网关...</p>
+              <p className="text-muted-foreground animate-pulse">{t('setup.startingGateway')}</p>
             )}
             {onboard.gatewayRunning && (
               <>
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <Check className="w-6 h-6 text-green-600" />
                 </div>
-                <p className="text-green-600 font-medium">网关已启动</p>
+                <p className="text-green-600 font-medium">{t('setup.gatewayStarted')}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  端口 {onboard.gatewayPort}
+                  {t('setup.gatewayPort', { port: onboard.gatewayPort })}
                 </p>
               </>
             )}
@@ -428,7 +430,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                   onClick={runStartGateway}
                   className="px-6 py-2 border border-border rounded-lg hover:bg-accent"
                 >
-                  重试
+                  {t('common.retry')}
                 </button>
               </>
             )}
@@ -438,7 +440,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               onClick={() => setPhase('onboard_channel')}
               className="mt-4 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition"
             >
-              下一步
+              {t('common.nextStep')}
             </button>
           )}
         </div>
@@ -453,8 +455,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         return (
           <div className="w-full max-w-md">
             <OnboardingProgress current={4} />
-            <p className="text-center font-medium mb-1">添加消息通道</p>
-            <p className="text-center text-xs text-muted-foreground mb-4">可选，稍后可在通道页面添加</p>
+            <p className="text-center font-medium mb-1">{t('setup.addChannel')}</p>
+            <p className="text-center text-xs text-muted-foreground mb-4">{t('setup.channelOptional')}</p>
             <div className="flex gap-2 mb-4 justify-center flex-wrap">
               {CHANNEL_TYPES.map((ch) => (
                 <button
@@ -473,14 +475,14 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             {selectedChannel && (
               <div className="bg-card border border-border rounded-lg p-4 mb-3">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-medium">设置步骤</p>
+                  <p className="text-sm font-medium">{t('setup.setupSteps')}</p>
                   <a
                     href={selectedChannel.guideUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-primary hover:underline"
                   >
-                    打开 {selectedChannel.guideLabel} &rarr;
+                    {t('setup.openGuide', { label: selectedChannel.guideLabel })}
                   </a>
                 </div>
                 <ol className="text-xs space-y-2">
@@ -528,7 +530,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                 disabled={!allTokensFilled || onboard.busy}
                 className="mt-2 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50"
               >
-                {onboard.busy ? '添加中...' : '添加并完成'}
+                {onboard.busy ? t('setup.addingChannel') : t('setup.addAndFinish')}
               </button>
             )}
             <button
@@ -538,7 +540,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               }}
               className="mt-2 w-full py-2 text-sm text-muted-foreground hover:text-foreground transition"
             >
-              {selectedChannel ? '跳过通道配置' : '跳过，稍后添加'}
+              {selectedChannel ? t('setup.skipChannel') : t('setup.skipAddLater')}
             </button>
           </div>
         )
@@ -551,28 +553,28 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Check className="w-8 h-8 text-green-600" />
           </div>
-          <p className="text-center text-green-600 font-medium text-lg mb-4">配置完成！</p>
+          <p className="text-center text-green-600 font-medium text-lg mb-4">{t('setup.configDone')}</p>
           <div className="bg-card border border-border rounded-lg divide-y divide-border text-sm">
             <div className="flex justify-between px-4 py-3">
-              <span className="text-muted-foreground">提供商</span>
+              <span className="text-muted-foreground">{t('setup.provider')}</span>
               <span>{PROVIDERS[onboard.provider]?.label ?? onboard.provider}</span>
             </div>
             <div className="flex justify-between px-4 py-3">
-              <span className="text-muted-foreground">默认模型</span>
-              <span className="font-mono">{onboard.model || '未设置'}</span>
+              <span className="text-muted-foreground">{t('setup.defaultModel')}</span>
+              <span className="font-mono">{onboard.model || t('common.notSet')}</span>
             </div>
             <div className="flex justify-between px-4 py-3">
-              <span className="text-muted-foreground">网关</span>
+              <span className="text-muted-foreground">{t('setup.gateway')}</span>
               <span className={onboard.gatewayRunning ? 'text-green-600' : 'text-orange-500'}>
-                {onboard.gatewayRunning ? `运行中 (端口 ${onboard.gatewayPort})` : '未启动'}
+                {onboard.gatewayRunning ? t('setup.gatewayRunning', { port: onboard.gatewayPort }) : t('setup.gatewayNotStarted')}
               </span>
             </div>
             <div className="flex justify-between px-4 py-3">
-              <span className="text-muted-foreground">通道</span>
+              <span className="text-muted-foreground">{t('setup.channel')}</span>
               <span>
                 {onboard.channelType
                   ? CHANNEL_TYPES.find((c) => c.id === onboard.channelType)?.name
-                  : '未配置'}
+                  : t('common.notConfigured')}
               </span>
             </div>
           </div>
@@ -583,14 +585,14 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               rel="noopener noreferrer"
               className="mt-4 w-full py-3 border border-primary text-primary rounded-lg font-medium hover:bg-primary/5 transition block text-center"
             >
-              <ExternalLink className="w-4 h-4 inline mr-1" />打开 OpenClaw 控制台验证配置
+              <ExternalLink className="w-4 h-4 inline mr-1" />{t('setup.openConsoleVerify')}
             </a>
           )}
           <button
             onClick={onComplete}
             className="mt-2 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition"
           >
-            进入管理大师
+            {t('setup.enterMaster')}
           </button>
         </div>
       )}
@@ -598,12 +600,12 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       {/* 错误 */}
       {phase === 'error' && (
         <div className="w-full max-w-md text-center">
-          <p className="text-red-500 mb-4">{error ?? '发生未知错误'}</p>
+          <p className="text-red-500 mb-4">{error ?? t('setup.unknownError')}</p>
           <button
             onClick={startDetection}
             className="px-6 py-2 border border-border rounded-lg hover:bg-accent"
           >
-            重试
+            {t('common.retry')}
           </button>
         </div>
       )}
@@ -627,19 +629,20 @@ function CapabilityList({ capabilities }: { capabilities: CapabilityStatus[] }) 
 }
 
 function CapabilityBadge({ status, version }: { status: CapabilityStatus['status']; version?: string }) {
+  const { t } = useTranslation()
   switch (status) {
     case 'checking':
-      return <span className="text-xs text-muted-foreground animate-pulse">检测中...</span>
+      return <span className="text-xs text-muted-foreground animate-pulse">{t('setup.checking')}</span>
     case 'installed':
       return (
         <span className="text-xs text-green-600">
-          {version ? `v${version}` : '已安装'}
+          {version ? `v${version}` : t('common.installed')}
         </span>
       )
     case 'not_installed':
-      return <span className="text-xs text-orange-500">未安装</span>
+      return <span className="text-xs text-orange-500">{t('common.notInstalled')}</span>
     case 'error':
-      return <span className="text-xs text-red-500">检测失败</span>
+      return <span className="text-xs text-red-500">{t('setup.checkFailed')}</span>
   }
 }
 
@@ -660,6 +663,7 @@ function ProviderStep({
   onSubmit: () => void
   onSkip: () => void
 }) {
+  const { t } = useTranslation()
   const [showMore, setShowMore] = useState(false)
   const visibleIds = showMore ? allProviderIds : [...primaryIds]
   const providerCfg = PROVIDERS[onboard.provider]
@@ -667,7 +671,7 @@ function ProviderStep({
   return (
     <div className="w-full max-w-md">
       <OnboardingProgress current={1} />
-      <p className="text-center font-medium mb-4">配置 LLM 提供商</p>
+      <p className="text-center font-medium mb-4">{t('setup.configureLLM')}</p>
       <div className="flex gap-2 mb-2 justify-center flex-wrap">
         {visibleIds.map((p) => (
           <button
@@ -688,7 +692,7 @@ function ProviderStep({
           onClick={() => setShowMore(!showMore)}
           className="mb-4 w-full text-xs text-muted-foreground hover:text-foreground transition"
         >
-          {showMore ? '收起' : `更多提供商 (${secondaryIds.length})...`}
+          {showMore ? t('setup.collapse') : t('setup.moreProviders', { count: secondaryIds.length })}
         </button>
       )}
       {providerCfg?.keyUrl && (
@@ -698,13 +702,13 @@ function ProviderStep({
           rel="noopener noreferrer"
           className="block mb-3 text-center text-xs text-primary hover:underline"
         >
-          获取 {providerCfg.label} API Key &rarr;
+          {t('setup.getApiKey', { provider: providerCfg.label })}
         </a>
       )}
       {providerCfg?.needsBaseUrl && (
         <input
           type="url"
-          placeholder="API Base URL（如 https://api.example.com/v1）"
+          placeholder={t('setup.baseUrlPlaceholder')}
           value={onboard.customBaseUrl}
           onChange={(e) => updateOnboard({ customBaseUrl: e.target.value })}
           className="w-full px-4 py-3 mb-2 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
@@ -712,7 +716,7 @@ function ProviderStep({
       )}
       <input
         type="password"
-        placeholder={`输入 ${providerCfg?.label ?? onboard.provider} API Key`}
+        placeholder={t('setup.apiKeyPlaceholder', { provider: providerCfg?.label ?? onboard.provider })}
         value={onboard.apiKey}
         onChange={(e) => updateOnboard({ apiKey: e.target.value })}
         className="w-full px-4 py-3 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
@@ -723,13 +727,13 @@ function ProviderStep({
         disabled={!onboard.apiKey.trim() || onboard.busy}
         className="mt-4 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50"
       >
-        {onboard.busy ? '验证中...' : '下一步'}
+        {onboard.busy ? t('setup.verifying') : t('common.nextStep')}
       </button>
       <button
         onClick={onSkip}
         className="mt-2 w-full py-2 text-sm text-muted-foreground hover:text-foreground transition"
       >
-        跳过剩余步骤
+        {t('setup.skipRemaining')}
       </button>
     </div>
   )
@@ -737,9 +741,9 @@ function ProviderStep({
 
 // ─── 步骤指示器 ───
 
-const ONBOARDING_STEPS = ['初始化', 'API Key', '模型', '网关', '通道']
-
 function OnboardingProgress({ current }: { current: number }) {
+  const { t } = useTranslation()
+  const ONBOARDING_STEPS = [t('setup.step.init'), t('setup.step.apiKey'), t('setup.step.model'), t('setup.step.gateway'), t('setup.step.channel')]
   return (
     <div className="flex items-center justify-center gap-2 mb-6">
       {ONBOARDING_STEPS.map((label, i) => (
@@ -774,6 +778,7 @@ function InstallList({
   capabilities: CapabilityStatus[]
   progress: Record<CapabilityId, InstallProgress>
 }) {
+  const { t } = useTranslation()
   return (
     <div className="bg-card border border-border rounded-lg divide-y divide-border">
       {capabilities.map((cap) => {
@@ -786,13 +791,13 @@ function InstallList({
           <div key={cap.id} className="px-4 py-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm">{cap.name}</span>
-              {isDone && <span className="text-xs text-green-600">已就绪</span>}
-              {isError && <span className="text-xs text-red-500">失败</span>}
+              {isDone && <span className="text-xs text-green-600">{t('setup.ready')}</span>}
+              {isError && <span className="text-xs text-red-500">{t('setup.failed')}</span>}
               {isInstalling && p?.status === 'installing' && (
                 <span className="text-xs text-blue-500">{p.progress ?? 0}%</span>
               )}
               {isInstalling && p?.status === 'waiting' && (
-                <span className="text-xs text-muted-foreground">等待中</span>
+                <span className="text-xs text-muted-foreground">{t('setup.waiting')}</span>
               )}
             </div>
             {p?.status === 'installing' && p.progress !== undefined && (

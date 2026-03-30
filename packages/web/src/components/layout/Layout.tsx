@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useLocation, Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { registeredModules } from '@/modules/registry'
 import {
@@ -25,7 +26,7 @@ import {
 
 interface NavItem {
   path: string
-  label: string
+  labelKey: string
   icon: LucideIcon
 }
 
@@ -33,41 +34,44 @@ interface LayoutProps {
   children: React.ReactNode
 }
 
-// 模块 icon 映射
 const moduleIconMap: Record<string, LucideIcon> = {
   observe: BarChart3,
   memory: Brain,
 }
 
-// ─── 导航分组 ───
+// Nav label keys map to layout.nav.* in translations
+const moduleNavLabelKeys: Record<string, string> = {
+  observe: 'layout.nav.observe',
+  memory: 'layout.nav.memory',
+}
 
 const mainNav: NavItem[] = [
-  { path: '/', label: '概览', icon: LayoutDashboard },
+  { path: '/', labelKey: 'layout.nav.overview', icon: LayoutDashboard },
   ...registeredModules.map((m) => ({
     path: m.route.path,
-    label: m.name,
+    labelKey: moduleNavLabelKeys[m.id] ?? `layout.nav.${m.id}`,
     icon: moduleIconMap[m.id] ?? Box,
   })),
 ]
 
 const manageNav: NavItem[] = [
-  { path: '/gateway', label: '网关', icon: Radio },
-  { path: '/channels', label: '通道', icon: MessageSquare },
-  { path: '/models', label: '模型', icon: Box },
-  { path: '/skills', label: '技能', icon: Zap },
-  { path: '/agents', label: '代理', icon: Users },
+  { path: '/gateway', labelKey: 'layout.nav.gateway', icon: Radio },
+  { path: '/channels', labelKey: 'layout.nav.channels', icon: MessageSquare },
+  { path: '/models', labelKey: 'layout.nav.models', icon: Box },
+  { path: '/skills', labelKey: 'layout.nav.skills', icon: Zap },
+  { path: '/agents', labelKey: 'layout.nav.agents', icon: Users },
 ]
 
 const systemNav: NavItem[] = [
-  { path: '/config', label: '配置', icon: Settings2 },
-  { path: '/docs', label: '文档', icon: FileText },
-  { path: '/logs', label: '日志', icon: ScrollText },
-  { path: '/settings', label: '设置', icon: Wrench },
+  { path: '/config', labelKey: 'layout.nav.config', icon: Settings2 },
+  { path: '/docs', labelKey: 'layout.nav.docs', icon: FileText },
+  { path: '/logs', labelKey: 'layout.nav.logs', icon: ScrollText },
+  { path: '/settings', labelKey: 'layout.nav.settings', icon: Wrench },
 ]
 
 const allNavItems = [...mainNav, ...manageNav, ...systemNav]
 
-// ─── 深色模式 ───
+// ─── Dark mode ───
 
 type DarkMode = 'system' | 'light' | 'dark'
 
@@ -91,9 +95,10 @@ function isDark(): boolean {
   return document.documentElement.classList.contains('dark')
 }
 
-// ─── 组件 ───
+// ─── Component ───
 
 export default function Layout({ children }: LayoutProps) {
+  const { t } = useTranslation()
   const location = useLocation()
   const currentPath = location.pathname
   const [dark, setDark] = useState(isDark)
@@ -104,7 +109,6 @@ export default function Layout({ children }: LayoutProps) {
     setDark(isDark())
   }, [])
 
-  // 路由变化时关闭移动端侧边栏
   useEffect(() => {
     setSidebarOpen(false)
   }, [currentPath])
@@ -117,93 +121,72 @@ export default function Layout({ children }: LayoutProps) {
 
   const sidebarContent = (
     <>
-      {/* Logo */}
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground">
             <Shell className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="font-semibold text-sm leading-tight">龙虾管理大师</h1>
-            <p className="text-[11px] text-muted-foreground leading-tight">ClawMaster</p>
+            <h1 className="font-semibold text-sm leading-tight">{t('layout.appName')}</h1>
+            <p className="text-[11px] text-muted-foreground leading-tight">{t('layout.appSub')}</p>
           </div>
         </div>
-        {/* 移动端关闭按钮 */}
-        <button
-          onClick={() => setSidebarOpen(false)}
-          className="lg:hidden p-1 rounded-md text-muted-foreground hover:text-foreground"
-        >
+        <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-1 rounded-md text-muted-foreground hover:text-foreground">
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 overflow-auto py-2 px-2 space-y-4">
         <NavGroup items={mainNav} currentPath={currentPath} />
-        <NavGroup label="管理" items={manageNav} currentPath={currentPath} />
-        <NavGroup label="系统" items={systemNav} currentPath={currentPath} />
+        <NavGroup label={t('layout.group.manage')} items={manageNav} currentPath={currentPath} />
+        <NavGroup label={t('layout.group.system')} items={systemNav} currentPath={currentPath} />
       </nav>
     </>
   )
 
+  const currentLabel = allNavItems.find(item => item.path === currentPath)
+  const pageTitle = currentLabel ? t(currentLabel.labelKey) : t('layout.appName')
+
   return (
     <div className="flex h-screen bg-background">
-      {/* Desktop sidebar */}
       <aside className="hidden lg:flex w-52 border-r border-border flex-col bg-card/50 shrink-0">
         {sidebarContent}
       </aside>
 
-      {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-40 flex">
-          <div
-            className="fixed inset-0 bg-black/40"
-            onClick={() => setSidebarOpen(false)}
-          />
+          <div className="fixed inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
           <aside className="relative z-50 w-64 bg-background border-r border-border flex flex-col">
             {sidebarContent}
           </aside>
         </div>
       )}
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
         <header className="h-11 border-b border-border flex items-center justify-between px-4 shrink-0">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
-            >
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent">
               <Menu className="w-5 h-5" />
             </button>
-            <h2 className="font-medium text-sm">
-              {allNavItems.find(item => item.path === currentPath)?.label || '龙虾管家'}
-            </h2>
+            <h2 className="font-medium text-sm">{pageTitle}</h2>
           </div>
           <button
             onClick={toggleDarkMode}
             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            title={dark ? '切换到浅色模式' : '切换到深色模式'}
+            title={dark ? t('layout.darkMode.toLight') : t('layout.darkMode.toDark')}
           >
             {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
         </header>
 
-        {/* Content */}
-        <main className="flex-1 overflow-auto p-4">
-          {children}
-        </main>
+        <main className="flex-1 overflow-auto p-4">{children}</main>
 
-        {/* Status Bar */}
         <footer className="h-7 border-t border-border flex items-center px-4 text-[11px] text-muted-foreground gap-3 shrink-0">
           <span className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            Gateway 运行中
+            {t('layout.status.gatewayRunning')}
           </span>
           <span className="text-border">|</span>
-          <span className="hidden sm:inline">模型: GLM-5</span>
-          <span className="hidden sm:inline text-border">|</span>
           <span>v2026.3.8</span>
         </footer>
       </div>
@@ -212,6 +195,7 @@ export default function Layout({ children }: LayoutProps) {
 }
 
 function NavGroup({ label, items, currentPath }: { label?: string; items: NavItem[]; currentPath: string }) {
+  const { t } = useTranslation()
   return (
     <div>
       {label && (
@@ -232,7 +216,7 @@ function NavGroup({ label, items, currentPath }: { label?: string; items: NavIte
             )}
           >
             <Icon className="w-4 h-4 shrink-0" />
-            <span>{item.label}</span>
+            <span>{t(item.labelKey)}</span>
           </Link>
         )
       })}

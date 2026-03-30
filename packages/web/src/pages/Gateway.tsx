@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
 import type { GatewayStatus, OpenClawConfig } from '@/lib/types'
 
 export default function Gateway() {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<GatewayStatus | null>(null)
   const [config, setConfig] = useState<OpenClawConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -44,7 +46,7 @@ export default function Gateway() {
   }
 
   async function handleGatewayAction(action: 'start' | 'stop' | 'restart') {
-    const labels = { start: '启动中...', stop: '停止中...', restart: '重启中...' }
+    const labels = { start: t('gateway.starting'), stop: t('gateway.stopping'), restart: t('gateway.restarting') }
     setOperating(labels[action])
     try {
       if (action === 'start') await platform.startGateway()
@@ -54,11 +56,11 @@ export default function Gateway() {
       const expectRunning = action !== 'stop'
       const ok = await pollStatus(expectRunning)
       if (!ok) {
-        alert(`操作超时，网关可能尚未${expectRunning ? '启动' : '停止'}完成`)
+        alert(t('gateway.operationTimeout'))
       }
       await loadData()
     } catch (err: any) {
-      alert(`操作失败: ${err.message}`)
+      alert(t('gateway.operationFailed', { message: err.message }))
     } finally {
       setOperating(null)
     }
@@ -68,26 +70,26 @@ export default function Gateway() {
     const token = config?.gateway?.auth?.token
     if (token) {
       navigator.clipboard.writeText(token)
-      alert('Token 已复制')
+      alert(t('gateway.tokenCopied'))
     }
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64">加载中...</div>
+    return <div className="flex items-center justify-center h-64">{t('common.loading')}</div>
   }
 
   const gatewayUrl = `ws://127.0.0.1:${config?.gateway?.port || 18789}`
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">网关管理</h1>
+      <h1 className="text-2xl font-bold">{t('gateway.title')}</h1>
       
       {/* 状态指示 */}
       <div className="bg-card border border-border rounded-lg p-8 text-center">
         <div className="flex items-center justify-center gap-3 mb-2">
           <span className={`w-4 h-4 rounded-full ${status?.running ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
           <span className={`text-2xl font-bold ${status?.running ? 'text-green-600' : 'text-red-600'}`}>
-            {status?.running ? '运行中' : '已停止'}
+            {status?.running ? t('dashboard.running') : t('dashboard.stopped')}
           </span>
         </div>
         <p className="text-muted-foreground font-mono">{gatewayUrl}</p>
@@ -100,13 +102,13 @@ export default function Gateway() {
                 onClick={() => handleGatewayAction('stop')}
                 className="px-4 py-2 bg-red-500 text-primary-foreground rounded-lg hover:bg-red-600"
               >
-                停止
+                {t('gateway.stop')}
               </button>
               <button
                 onClick={() => handleGatewayAction('restart')}
                 className="px-4 py-2 border border-border rounded-lg hover:bg-accent"
               >
-                重启
+                {t('gateway.restart')}
               </button>
             </>
           ) : (
@@ -114,7 +116,7 @@ export default function Gateway() {
               onClick={() => handleGatewayAction('start')}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90"
             >
-              启动
+              {t('gateway.start')}
             </button>
           )}
           <a 
@@ -123,36 +125,36 @@ export default function Gateway() {
             rel="noopener noreferrer"
             className="px-4 py-2 border border-border rounded-lg hover:bg-accent"
           >
-            在浏览器打开
+            {t('gateway.openInBrowser')}
           </a>
         </div>
       </div>
 
       {/* 配置概览 */}
       <div className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">配置</h3>
+        <h3 className="font-medium mb-3">{t('gateway.config')}</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
-            <p className="text-muted-foreground">端口</p>
+            <p className="text-muted-foreground">{t('gateway.port')}</p>
             <p className="font-mono font-medium">{config?.gateway?.port || 18789}</p>
           </div>
           <div>
-            <p className="text-muted-foreground">绑定</p>
+            <p className="text-muted-foreground">{t('gateway.bind')}</p>
             <p className="font-medium">{config?.gateway?.bind || 'loopback'}</p>
           </div>
           <div>
-            <p className="text-muted-foreground">认证</p>
+            <p className="text-muted-foreground">{t('gateway.auth')}</p>
             <p className="font-medium">{config?.gateway?.auth?.mode || 'token'}</p>
           </div>
           {config?.gateway?.auth?.token && (
             <div>
               <p className="text-muted-foreground">Token</p>
-              <button onClick={copyToken} className="text-xs text-primary hover:underline">点击复制</button>
+              <button onClick={copyToken} className="text-xs text-primary hover:underline">{t('gateway.copyToken')}</button>
             </div>
           )}
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          修改配置请前往「配置」页面编辑 JSON
+          {t('gateway.editConfigHint')}
         </p>
       </div>
     </div>

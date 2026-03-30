@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { Suggestion } from '@/shared/adapters/clawprobe'
 
 interface Props {
@@ -11,9 +12,10 @@ const SEVERITY_STYLES = {
 }
 
 export default function SuggestionCards({ suggestions }: Props) {
+  const { t } = useTranslation()
   return (
     <div className="space-y-3">
-      <h3 className="font-medium">优化建议</h3>
+      <h3 className="font-medium">{t('observe.suggestions')}</h3>
       {suggestions.map((s, i) => {
         const style = SEVERITY_STYLES[s.severity] || SEVERITY_STYLES.info
         return (

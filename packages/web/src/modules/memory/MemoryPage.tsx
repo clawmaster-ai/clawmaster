@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary'
 import { LoadingState } from '@/shared/components/LoadingState'
@@ -29,12 +30,13 @@ async function checkMemoryAvailable(): Promise<boolean> {
 }
 
 export default function MemoryPage() {
+  const { t } = useTranslation()
   return (
     <ErrorBoundary>
       <CapabilityGuard
         capabilityId="memory"
         checkAvailable={checkMemoryAvailable}
-        unavailableMessage="记忆管理需要安装 PowerMem。安装后可管理 Agent 长期记忆，Token 消耗降低 96%。"
+        unavailableMessage={t('memory.unavailable')}
       >
         <MemoryContent />
       </CapabilityGuard>
@@ -43,6 +45,7 @@ export default function MemoryPage() {
 }
 
 function MemoryContent() {
+  const { t } = useTranslation()
   const [selectedAgent, setSelectedAgent] = useState<string | undefined>(undefined)
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
@@ -78,7 +81,7 @@ function MemoryContent() {
   }, [searchQuery, selectedAgent])
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('确定删除这条记忆？')) return
+    if (!confirm(t('memory.confirmDelete'))) return
     const result = await deleteMemory(id)
     if (result.success) {
       memories.refetch()
@@ -131,19 +134,19 @@ function MemoryContent() {
   }, [])
 
   const isLoading = health.loading && memories.loading && !health.data && !memories.data
-  if (isLoading) return <LoadingState message="正在获取记忆数据..." />
+  if (isLoading) return <LoadingState message={t('memory.loadingData')} />
 
   const hasError = health.data?.status === 'disconnected'
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">记忆管理</h1>
+      <h1 className="text-2xl font-bold">{t('memory.title')}</h1>
 
       {hasError ? (
         <div className="bg-card border border-border rounded-lg p-8 text-center">
-          <p className="text-muted-foreground mb-2">无法连接到 PowerMem 记忆服务</p>
+          <p className="text-muted-foreground mb-2">{t('memory.cannotConnect')}</p>
           <p className="text-sm text-muted-foreground mb-4">
-            请确保 PowerMem 已安装并启动（powermem-server --port 8000）
+            {t('memory.ensureInstalled')}
           </p>
           <div className="flex justify-center gap-3">
             <button
@@ -151,13 +154,13 @@ function MemoryContent() {
               disabled={serverStarting}
               className="px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50"
             >
-              {serverStarting ? '启动中...' : '一键启动服务'}
+              {serverStarting ? t('memory.starting') : t('memory.oneClickStart')}
             </button>
             <button
               onClick={() => { health.refetch(); memories.refetch(); stats.refetch() }}
               className="px-4 py-2 border border-border rounded hover:bg-accent"
             >
-              重试
+              {t('common.retry')}
             </button>
           </div>
         </div>
@@ -181,7 +184,7 @@ function MemoryContent() {
               onChange={(e) => handleAgentChange(e.target.value)}
               className="px-3 py-2 bg-background border border-border rounded"
             >
-              <option value="">全部 Agent</option>
+              <option value="">{t('memory.allAgent')}</option>
               {agents.data?.map((id) => (
                 <option key={id} value={id}>{id}</option>
               ))}
@@ -189,7 +192,7 @@ function MemoryContent() {
             <div className="flex-1 flex gap-2 min-w-[200px]">
               <input
                 type="text"
-                placeholder="语义搜索记忆..."
+                placeholder={t('memory.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -200,14 +203,14 @@ function MemoryContent() {
                 disabled={isSearching}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50"
               >
-                {isSearching ? '搜索中...' : '搜索'}
+                {isSearching ? t('common.searching') : t('common.search')}
               </button>
               {searchResult && (
                 <button
                   onClick={() => { setSearchResult(null); setSearchQuery('') }}
                   className="px-3 py-2 border border-border rounded hover:bg-accent"
                 >
-                  清除
+                  {t('memory.clear')}
                 </button>
               )}
             </div>
@@ -215,21 +218,21 @@ function MemoryContent() {
               onClick={() => setShowAddForm(!showAddForm)}
               className="px-4 py-2 border border-border rounded hover:bg-accent"
             >
-              {showAddForm ? '取消' : '+ 添加记忆'}
+              {showAddForm ? t('common.cancel') : t('memory.addMemory')}
             </button>
           </div>
 
           {/* 添加记忆表单 */}
           {showAddForm && (
             <div className="bg-card border border-border rounded-lg p-4">
-              <h4 className="font-medium mb-2">添加新记忆</h4>
+              <h4 className="font-medium mb-2">{t('memory.addNewMemory')}</h4>
               <p className="text-xs text-muted-foreground mb-2">
-                输入的内容将通过 AI 智能提取关键事实后存储（infer 模式）
+                {t('memory.inferHint')}
               </p>
               <textarea
                 value={addText}
                 onChange={(e) => setAddText(e.target.value)}
-                placeholder="输入要记忆的内容..."
+                placeholder={t('memory.contentPlaceholder')}
                 className="w-full h-24 text-sm bg-background p-3 rounded border border-border resize-none mb-2"
               />
               <button
@@ -237,7 +240,7 @@ function MemoryContent() {
                 disabled={adding || !addText.trim()}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50"
               >
-                {adding ? '保存中...' : '智能提取并保存'}
+                {adding ? t('common.saving') : t('memory.smartExtractSave')}
               </button>
             </div>
           )}

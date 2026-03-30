@@ -1,35 +1,36 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
 import { Camera, Receipt, BookOpen, type LucideIcon } from 'lucide-react'
 import type { SkillInfo } from '@/lib/types'
 
-// ─── 场景推荐数据 ───
-
-const RECOMMENDED_SCENES: Array<{ id: string; title: string; desc: string; skills: string[]; icon: LucideIcon }> = [
-  {
-    id: 'photo-qa',
-    title: '拍照答题',
-    desc: '拍照 → OCR 识别 → AI 解题 → 返回答案，通过飞书/微信/钉钉直接使用',
-    skills: ['paddleocr-doc-parsing', 'paddleocr-text-recognition'],
-    icon: Camera,
-  },
-  {
-    id: 'invoice',
-    title: '发票整理',
-    desc: '拍照/转发发票 → 自动识别抬头金额类型 → 归档整理 → 导出报表',
-    skills: ['paddleocr-doc-parsing'],
-    icon: Receipt,
-  },
-  {
-    id: 'mistakes',
-    title: '错题本',
-    desc: '自动收集错题、分类归档、定期推送复习，结合记忆管理长期记忆',
-    skills: ['paddleocr-text-recognition'],
-    icon: BookOpen,
-  },
-]
-
 export default function Skills() {
+  const { t } = useTranslation()
+
+  // ─── 场景推荐数据 ───
+  const RECOMMENDED_SCENES: Array<{ id: string; title: string; desc: string; skills: string[]; icon: LucideIcon }> = [
+    {
+      id: 'photo-qa',
+      title: t('skills.photoQa'),
+      desc: t('skills.photoQaDesc'),
+      skills: ['paddleocr-doc-parsing', 'paddleocr-text-recognition'],
+      icon: Camera,
+    },
+    {
+      id: 'invoice',
+      title: t('skills.invoice'),
+      desc: t('skills.invoiceDesc'),
+      skills: ['paddleocr-doc-parsing'],
+      icon: Receipt,
+    },
+    {
+      id: 'mistakes',
+      title: t('skills.mistakes'),
+      desc: t('skills.mistakesDesc'),
+      skills: ['paddleocr-text-recognition'],
+      icon: BookOpen,
+    },
+  ]
   const [installedSkills, setInstalledSkills] = useState<SkillInfo[]>([])
   const [searchResults, setSearchResults] = useState<SkillInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,20 +74,20 @@ export default function Skills() {
       await platform.installSkill(slug)
       await loadSkills()
     } catch (err: any) {
-      alert(`安装失败: ${err.message}`)
+      alert(t('skills.installFailed', { message: err.message }))
     } finally {
       setOperating(null)
     }
   }
 
   async function handleUninstall(slug: string) {
-    if (!confirm(`确定要卸载 ${slug} 吗？`)) return
+    if (!confirm(t('skills.confirmUninstall', { slug }))) return
     try {
       setOperating(slug)
       await platform.uninstallSkill(slug)
       await loadSkills()
     } catch (err: any) {
-      alert(`卸载失败: ${err.message}`)
+      alert(t('skills.uninstallFailed', { message: err.message }))
     } finally {
       setOperating(null)
     }
@@ -99,7 +100,7 @@ export default function Skills() {
   )
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64">加载中...</div>
+    return <div className="flex items-center justify-center h-64">{t('common.loading')}</div>
   }
 
   async function handleSceneInstall(skills: string[]) {
@@ -110,7 +111,7 @@ export default function Skills() {
       }
       await loadSkills()
     } catch (err: any) {
-      alert(`安装失败: ${err.message}`)
+      alert(t('skills.installFailed', { message: err.message }))
     } finally {
       setOperating(null)
     }
@@ -118,11 +119,11 @@ export default function Skills() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">技能市场</h1>
+      <h1 className="text-2xl font-bold">{t('skills.title')}</h1>
 
       {/* 场景推荐 */}
       <div>
-        <h3 className="font-medium mb-3">推荐场景</h3>
+        <h3 className="font-medium mb-3">{t('skills.recommendedScenes')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {RECOMMENDED_SCENES.map((scene) => (
             <div key={scene.id} className="bg-card border border-border rounded-lg p-4">
@@ -136,7 +137,7 @@ export default function Skills() {
                 disabled={operating === 'scene'}
                 className="w-full py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50"
               >
-                {operating === 'scene' ? '安装中...' : '一键安装'}
+                {operating === 'scene' ? t('skills.installing') : t('skills.oneClickInstall')}
               </button>
             </div>
           ))}
@@ -148,13 +149,13 @@ export default function Skills() {
           onClick={() => setView('installed')}
           className={`px-4 py-2 rounded-lg text-sm ${view === 'installed' ? 'bg-primary text-primary-foreground' : 'border border-border hover:bg-accent'}`}
         >
-          已安装 ({installedSkills.length})
+          {t('skills.installed', { count: installedSkills.length })}
         </button>
         <button
           onClick={() => setView('market')}
           className={`px-4 py-2 rounded-lg text-sm ${view === 'market' ? 'bg-primary text-primary-foreground' : 'border border-border hover:bg-accent'}`}
         >
-          搜索市场
+          {t('skills.searchMarket')}
         </button>
       </div>
 
@@ -162,7 +163,7 @@ export default function Skills() {
         <>
           <input
             type="text"
-            placeholder="过滤已安装技能..."
+            placeholder={t('skills.filterPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full px-4 py-2 bg-card rounded-lg border border-border text-sm"
@@ -170,7 +171,7 @@ export default function Skills() {
 
           {filteredSkills.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
-              {installedSkills.length === 0 ? '暂无已安装技能' : '无匹配结果'}
+              {installedSkills.length === 0 ? t('skills.noInstalled') : t('skills.noMatch')}
             </p>
           ) : (
             <div className="space-y-3">
@@ -191,7 +192,7 @@ export default function Skills() {
                     disabled={operating === skill.slug}
                     className="px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-accent text-red-500 disabled:opacity-50"
                   >
-                    {operating === skill.slug ? '处理中...' : '卸载'}
+                    {operating === skill.slug ? t('skills.processing') : t('skills.uninstall')}
                   </button>
                 </div>
               ))}
@@ -203,7 +204,7 @@ export default function Skills() {
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="搜索 ClawHub 5400+ 技能..."
+              placeholder={t('skills.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -214,7 +215,7 @@ export default function Skills() {
               disabled={searching}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50"
             >
-              {searching ? '搜索中...' : '搜索'}
+              {searching ? t('common.searching') : t('common.search')}
             </button>
           </div>
 
@@ -237,14 +238,14 @@ export default function Skills() {
                     disabled={operating === skill.slug}
                     className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50"
                   >
-                    {operating === skill.slug ? '安装中...' : '安装'}
+                    {operating === skill.slug ? t('skills.installing') : t('skills.install')}
                   </button>
                 </div>
               ))}
             </div>
           ) : (
             <p className="text-muted-foreground text-center py-8">
-              输入关键词搜索 ClawHub 技能市场
+              {t('skills.searchHint')}
             </p>
           )}
 
@@ -254,7 +255,7 @@ export default function Skills() {
             rel="noopener noreferrer"
             className="text-primary hover:underline text-sm"
           >
-            访问 ClawHub 在线市场 →
+            {t('skills.visitClawHub')}
           </a>
         </>
       )}

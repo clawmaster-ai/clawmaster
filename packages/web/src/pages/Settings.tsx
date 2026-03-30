@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
+import { changeLanguage } from '@/i18n'
 import type { SystemInfo } from '@/lib/types'
 
 type ThemeMode = 'system' | 'light' | 'dark'
@@ -21,6 +23,7 @@ function applyTheme(mode: ThemeMode) {
 }
 
 export default function Settings() {
+  const { t, i18n } = useTranslation()
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme)
@@ -48,58 +51,67 @@ export default function Settings() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <h1 className="text-2xl font-bold">设置</h1>
+      <h1 className="text-2xl font-bold">{t('settings.title')}</h1>
 
       {/* 外观 */}
       <section className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">外观</h3>
+        <h3 className="font-medium mb-3">{t('settings.appearance')}</h3>
         <div className="space-y-4">
           <div className="flex items-center gap-4">
-            <label className="w-20 text-sm text-muted-foreground">模式:</label>
+            <label className="w-20 text-sm text-muted-foreground">{t('settings.mode')}</label>
             <div className="flex gap-3">
-              {(['system', 'light', 'dark'] as const).map((mode) => (
+              {([
+                { mode: 'system' as const, label: t('settings.modeSystem') },
+                { mode: 'light' as const, label: t('settings.modeLight') },
+                { mode: 'dark' as const, label: t('settings.modeDark') },
+              ]).map(({ mode: m, label }) => (
                 <button
-                  key={mode}
-                  onClick={() => { setTheme(mode); applyTheme(mode) }}
+                  key={m}
+                  onClick={() => { setTheme(m); applyTheme(m) }}
                   className={`px-3 py-1.5 rounded-lg text-sm border transition ${
-                    theme === mode
+                    theme === m
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'border-border hover:bg-accent'
                   }`}
                 >
-                  {mode === 'system' ? '跟随系统' : mode === 'light' ? '浅色' : '深色'}
+                  {label}
                 </button>
               ))}
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <label className="w-20 text-sm text-muted-foreground">配色:</label>
+            <label className="w-20 text-sm text-muted-foreground">{t('settings.color')}</label>
             <div className="flex gap-3">
               {([
-                { id: '', label: '龙虾橙', color: 'bg-orange-500' },
-                { id: 'theme-ocean', label: '海洋蓝', color: 'bg-blue-500' },
-              ] as const).map((t) => (
+                { id: '', label: t('settings.colorOrange'), color: 'bg-orange-500' },
+                { id: 'theme-ocean', label: t('settings.colorOcean'), color: 'bg-blue-500' },
+              ]).map((ct) => (
                 <button
-                  key={t.id}
+                  key={ct.id}
                   onClick={() => {
                     const root = document.documentElement
                     root.classList.remove('theme-ocean')
-                    if (t.id) root.classList.add(t.id)
-                    localStorage.setItem('clawmaster-color-theme', t.id)
+                    if (ct.id) root.classList.add(ct.id)
+                    localStorage.setItem('clawmaster-color-theme', ct.id)
                   }}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-border hover:bg-accent transition"
                 >
-                  <span className={`w-3 h-3 rounded-full ${t.color}`} />
-                  {t.label}
+                  <span className={`w-3 h-3 rounded-full ${ct.color}`} />
+                  {ct.label}
                 </button>
               ))}
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <label className="w-20 text-sm text-muted-foreground">语言:</label>
-            <select className="px-3 py-1.5 bg-card rounded-lg border border-border text-sm">
-              <option>简体中文</option>
-              <option>English</option>
+            <label className="w-20 text-sm text-muted-foreground">{t('settings.language')}</label>
+            <select
+              value={i18n.language}
+              onChange={(e) => changeLanguage(e.target.value)}
+              className="px-3 py-1.5 bg-card rounded-lg border border-border text-sm"
+            >
+              <option value="zh">简体中文</option>
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
             </select>
           </div>
         </div>

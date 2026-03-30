@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
 import type { OpenClawConfig } from '@/lib/types'
 
 export default function Config() {
+  const { t } = useTranslation()
   const [config, setConfig] = useState<OpenClawConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState(false)
   const [jsonText, setJsonText] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
 
@@ -41,14 +44,16 @@ export default function Config() {
   async function handleSave() {
     setSaving(true)
     setSaveMsg(null)
+    setSaveError(false)
     try {
       const parsed = JSON.parse(jsonText)
       await platform.saveFullConfig(parsed)
       setConfig(parsed)
-      setSaveMsg('保存成功')
+      setSaveMsg(t('config.saveSuccess'))
       setTimeout(() => setSaveMsg(null), 2000)
     } catch (err: any) {
-      setSaveMsg(`保存失败: ${err.message}`)
+      setSaveError(true)
+      setSaveMsg(t('config.saveFailed', { message: err.message }))
     } finally {
       setSaving(false)
     }
@@ -66,7 +71,7 @@ export default function Config() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64">加载中...</div>
+    return <div className="flex items-center justify-center h-64">{t('common.loading')}</div>
   }
 
   if (!config) {
@@ -77,22 +82,22 @@ export default function Config() {
   const gateway = config.gateway || {}
   const providerCount = Object.keys(config.models?.providers || {}).length
   const channelCount = Object.keys(config.channels || {}).length
-  const defaultModel = config.agents?.defaults?.model?.primary || '未设置'
+  const defaultModel = config.agents?.defaults?.model?.primary || t('common.notSet')
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">配置管理</h1>
+      <h1 className="text-2xl font-bold">{t('config.title')}</h1>
 
       {/* 配置概览 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <SummaryCard label="网关端口" value={String(gateway.port || 18789)} page="网关" />
-        <SummaryCard label="默认模型" value={defaultModel} page="模型" />
-        <SummaryCard label="提供商" value={`${providerCount} 个`} page="模型" />
-        <SummaryCard label="通道" value={`${channelCount} 个`} page="通道" />
+        <SummaryCard label={t('config.gatewayPort')} value={String(gateway.port || 18789)} page={t('layout.nav.gateway')} />
+        <SummaryCard label={t('config.defaultModel')} value={defaultModel} page={t('layout.nav.models')} />
+        <SummaryCard label={t('config.providers')} value={t('config.countUnit', { count: providerCount })} page={t('layout.nav.models')} />
+        <SummaryCard label={t('config.channels')} value={t('config.countUnit', { count: channelCount })} page={t('layout.nav.channels')} />
       </div>
 
       <p className="text-xs text-muted-foreground">
-        提供商和通道请在对应页面管理。此页面用于高级 JSON 编辑和导出。
+        {t('config.advancedHint')}
       </p>
 
       {/* JSON 编辑器 */}
@@ -100,7 +105,7 @@ export default function Config() {
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-medium">openclaw.json</span>
           <span className="text-xs text-muted-foreground font-mono">
-            {config ? `${jsonText.length.toLocaleString()} 字符` : ''}
+            {config ? t('config.charCount', { count: jsonText.length.toLocaleString() }) : ''}
           </span>
         </div>
         <textarea
@@ -110,7 +115,7 @@ export default function Config() {
           className="w-full h-[55vh] text-sm font-mono bg-background p-4 rounded border border-border resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
         />
         {jsonError && (
-          <p className="mt-2 text-xs text-red-500">JSON 语法错误: {jsonError}</p>
+          <p className="mt-2 text-xs text-red-500">{t('config.jsonError', { error: jsonError })}</p>
         )}
       </div>
 
@@ -120,22 +125,22 @@ export default function Config() {
           disabled={saving || !!jsonError}
           className="px-4 py-2 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50"
         >
-          {saving ? '保存中...' : '保存'}
+          {saving ? t('common.saving') : t('common.save')}
         </button>
         <button
           onClick={loadConfig}
           className="px-4 py-2 border border-border rounded hover:bg-accent"
         >
-          刷新
+          {t('common.refresh')}
         </button>
         <button
           onClick={handleExport}
           className="px-4 py-2 border border-border rounded hover:bg-accent"
         >
-          导出
+          {t('common.export')}
         </button>
         {saveMsg && (
-          <span className={`text-sm ${saveMsg.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>
+          <span className={`text-sm ${saveError ? 'text-red-500' : 'text-green-600'}`}>
             {saveMsg}
           </span>
         )}
@@ -145,12 +150,13 @@ export default function Config() {
 }
 
 function SummaryCard({ label, value, page }: { label: string; value: string; page?: string }) {
+  const { t } = useTranslation()
   return (
     <div className="bg-card border border-border rounded-lg p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-sm font-medium mt-0.5 font-mono truncate">{value}</p>
       {page && (
-        <p className="text-[10px] text-muted-foreground mt-1">在「{page}」页面管理</p>
+        <p className="text-[10px] text-muted-foreground mt-1">{t('config.managedIn', { page })}</p>
       )}
     </div>
   )

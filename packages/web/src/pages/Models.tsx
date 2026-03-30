@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
 import { PasswordField } from '@/shared/components/PasswordField'
 import { getSetupAdapter } from '@/modules/setup/adapters'
@@ -6,6 +7,7 @@ import { PROVIDERS, PRIMARY_PROVIDERS } from '@/modules/setup/types'
 import type { OpenClawConfig, ModelInfo } from '@/lib/types'
 
 export default function Models() {
+  const { t } = useTranslation()
   const [config, setConfig] = useState<OpenClawConfig | null>(null)
   const [, setModels] = useState<ModelInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -30,7 +32,7 @@ export default function Models() {
   useEffect(() => { loadData() }, [loadData])
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64">加载中...</div>
+    return <div className="flex items-center justify-center h-64">{t('common.loading')}</div>
   }
 
   const defaultModel = config?.agents?.defaults?.model?.primary || '-'
@@ -40,16 +42,16 @@ export default function Models() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">模型配置</h1>
+          <h1 className="text-2xl font-bold">{t('models.title')}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            默认模型: <span className="font-medium text-foreground font-mono">{defaultModel}</span>
+            {t('models.defaultModel', { model: defaultModel })}
           </p>
         </div>
         <button
           onClick={() => setShowAdd(true)}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90"
         >
-          + 添加提供商
+          {t('models.addProvider')}
         </button>
       </div>
 
@@ -67,7 +69,7 @@ export default function Models() {
 
         {Object.keys(providers).length === 0 && (
           <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground">
-            暂无配置的提供商，点击上方"+ 添加提供商"开始
+            {t('models.noProviders')}
           </div>
         )}
       </div>
@@ -92,6 +94,7 @@ function ProviderCard({
   isDefault: boolean
   onRefresh: () => void
 }) {
+  const { t } = useTranslation()
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<boolean | null>(null)
   const adapter = getSetupAdapter()
@@ -115,7 +118,7 @@ function ProviderCard({
         <div className="flex items-center gap-2">
           <span className={`w-3 h-3 rounded-full ${isDefault ? 'bg-primary' : 'bg-green-500'}`} />
           <span className="font-medium">{knownProvider?.label ?? providerId}</span>
-          {isDefault && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">默认</span>}
+          {isDefault && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">{t('models.default')}</span>}
           {provider.baseUrl && (
             <span className="text-xs text-muted-foreground font-mono">({provider.baseUrl})</span>
           )}
@@ -126,10 +129,10 @@ function ProviderCard({
             disabled={testing}
             className="px-3 py-1 text-sm border border-border rounded hover:bg-accent disabled:opacity-50"
           >
-            {testing ? '测试中...' : '测试连接'}
+            {testing ? t('models.testing') : t('models.testConnection')}
           </button>
-          {testResult === true && <span className="text-green-600 text-sm self-center">连接正常</span>}
-          {testResult === false && <span className="text-red-500 text-sm self-center">连接失败</span>}
+          {testResult === true && <span className="text-green-600 text-sm self-center">{t('models.connectionOk')}</span>}
+          {testResult === false && <span className="text-red-500 text-sm self-center">{t('models.connectionFailed')}</span>}
         </div>
       </div>
 
@@ -142,7 +145,7 @@ function ProviderCard({
 
       {provider.models?.length > 0 && (
         <div className="text-sm text-muted-foreground">
-          可用模型: {provider.models.map((m: any) => m.name || m.id).join(', ')}
+          {t('models.availableModels', { models: provider.models.map((m: any) => m.name || m.id).join(', ') })}
         </div>
       )}
     </div>
@@ -152,6 +155,7 @@ function ProviderCard({
 // ─── 添加提供商面板 ───
 
 function AddProviderPanel({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const { t } = useTranslation()
   const [provider, setProvider] = useState('openai')
   const [apiKey, setApiKey] = useState('')
   const [customBaseUrl, setCustomBaseUrl] = useState('')
@@ -168,7 +172,7 @@ function AddProviderPanel({ onClose, onAdded }: { onClose: () => void; onAdded: 
   const handleAdd = async () => {
     if (!apiKey.trim()) return
     if (cfg?.needsBaseUrl && !customBaseUrl.trim()) {
-      setError('请输入 API Base URL')
+      setError(t('models.enterBaseUrl'))
       return
     }
     setBusy(true)
@@ -176,7 +180,7 @@ function AddProviderPanel({ onClose, onAdded }: { onClose: () => void; onAdded: 
     try {
       const ok = await adapter.onboarding.testApiKey(provider, apiKey, customBaseUrl || undefined)
       if (!ok) {
-        setError('API Key 验证失败，请检查')
+        setError(t('models.verifyFailed'))
         setBusy(false)
         return
       }
@@ -192,8 +196,8 @@ function AddProviderPanel({ onClose, onAdded }: { onClose: () => void; onAdded: 
   return (
     <div className="bg-card border border-border rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-medium">添加提供商</h3>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">取消</button>
+        <h3 className="font-medium">{t('models.addProviderTitle')}</h3>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">{t('common.cancel')}</button>
       </div>
       <div className="flex gap-2 flex-wrap">
         {visibleIds.map((p) => (
@@ -210,18 +214,18 @@ function AddProviderPanel({ onClose, onAdded }: { onClose: () => void; onAdded: 
       </div>
       {allIds.length > primaryIds.length && (
         <button onClick={() => setShowMore(!showMore)} className="text-xs text-muted-foreground hover:text-foreground">
-          {showMore ? '收起' : `更多 (${allIds.length - primaryIds.length})...`}
+          {showMore ? t('setup.collapse') : t('models.showMore', { count: allIds.length - primaryIds.length })}
         </button>
       )}
       {cfg?.keyUrl && (
         <a href={cfg.keyUrl} target="_blank" rel="noopener noreferrer" className="block text-xs text-primary hover:underline">
-          获取 {cfg.label} API Key &rarr;
+          {t('models.getApiKey', { provider: cfg.label })} &rarr;
         </a>
       )}
       {cfg?.needsBaseUrl && (
         <input
           type="url"
-          placeholder="API Base URL（如 https://api.example.com/v1）"
+          placeholder={t('models.baseUrlPlaceholder')}
           value={customBaseUrl}
           onChange={(e) => setCustomBaseUrl(e.target.value)}
           className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
@@ -229,7 +233,7 @@ function AddProviderPanel({ onClose, onAdded }: { onClose: () => void; onAdded: 
       )}
       <input
         type="password"
-        placeholder={`输入 ${cfg?.label ?? provider} API Key`}
+        placeholder={t('models.apiKeyPlaceholder', { provider: cfg?.label ?? provider })}
         value={apiKey}
         onChange={(e) => setApiKey(e.target.value)}
         className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
@@ -240,7 +244,7 @@ function AddProviderPanel({ onClose, onAdded }: { onClose: () => void; onAdded: 
         disabled={!apiKey.trim() || busy}
         className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
       >
-        {busy ? '验证并添加中...' : '验证并添加'}
+        {busy ? t('models.verifyAndAdding') : t('models.verifyAndAdd')}
       </button>
     </div>
   )

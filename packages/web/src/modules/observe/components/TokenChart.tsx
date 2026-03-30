@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import type { SessionSummary } from '@/shared/adapters/clawprobe'
 
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export default function TokenChart({ sessions }: Props) {
+  const { t } = useTranslation()
   const chartData = sessions
     ?.slice(0, 10)
     .map((s) => ({
@@ -16,7 +18,7 @@ export default function TokenChart({ sessions }: Props) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
-      <h3 className="font-medium mb-3">Token 用量（最近 10 个会话）</h3>
+      <h3 className="font-medium mb-3">{t('observe.tokenChart')}</h3>
       {chartData.length > 0 ? (
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={chartData}>
@@ -31,7 +33,7 @@ export default function TokenChart({ sessions }: Props) {
         </ResponsiveContainer>
       ) : (
         <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
-          暂无 Token 数据
+          {t('observe.noTokenData')}
         </div>
       )}
     </div>

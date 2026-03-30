@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import type { CostData } from '@/shared/adapters/clawprobe'
 
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function ModelDistribution({ data }: Props) {
+  const { t } = useTranslation()
   const chartData = data?.by_model
     ? Object.entries(data.by_model)
         .map(([name, value]) => ({ name, value: Number(value.toFixed(4)) }))
@@ -16,7 +18,7 @@ export default function ModelDistribution({ data }: Props) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
-      <h3 className="font-medium mb-3">模型费用分布</h3>
+      <h3 className="font-medium mb-3">{t('observe.modelDistribution')}</h3>
       {chartData.length > 0 ? (
         <ResponsiveContainer width="100%" height={200}>
           <PieChart>
@@ -39,7 +41,7 @@ export default function ModelDistribution({ data }: Props) {
         </ResponsiveContainer>
       ) : (
         <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
-          暂无模型分布数据
+          {t('observe.noDistributionData')}
         </div>
       )}
     </div>
