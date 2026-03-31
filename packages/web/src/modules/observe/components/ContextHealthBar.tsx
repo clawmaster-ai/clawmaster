@@ -48,7 +48,7 @@ export default function ContextHealthBar({ data }: Props) {
               <p className="font-medium">{data.compactionCount ?? 0}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">截断文件</p>
+              <p className="text-muted-foreground">{t('observe.truncatedFiles')}</p>
               <p className="font-medium">{data.truncated?.length ?? 0}</p>
             </div>
           </div>
@@ -56,7 +56,7 @@ export default function ContextHealthBar({ data }: Props) {
           {/* 截断告警 */}
           {data.truncated && data.truncated.length > 0 && (
             <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded p-3">
-              <p className="text-sm text-red-600 font-medium">以下文件被截断：</p>
+              <p className="text-sm text-red-600 font-medium">{t('observe.truncatedWarning')}</p>
               <ul className="text-xs text-red-500 mt-1 space-y-0.5">
                 {data.truncated.map((f) => (
                   <li key={f} className="font-mono">

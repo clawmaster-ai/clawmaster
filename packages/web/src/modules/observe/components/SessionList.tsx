@@ -56,14 +56,14 @@ export default function SessionList({ sessions, loading, onRefresh }: Props) {
               {expanded === session.key && (
                 <div className="mt-2 ml-2 pl-4 border-l-2 border-border space-y-1">
                   <p className="text-xs text-muted-foreground">
-                    开始时间: {session.started}
+                    {t('observe.startTime')}: {session.started}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Input: {session.tokens.input.toLocaleString()} | Output: {session.tokens.output.toLocaleString()}
+                    {t('observe.inputTokens')}: {session.tokens.input.toLocaleString()} | {t('observe.outputTokens')}: {session.tokens.output.toLocaleString()}
                   </p>
                   {session.duration && (
                     <p className="text-xs text-muted-foreground">
-                      时长: {Math.round(session.duration / 60)} 分钟
+                      {t('observe.duration')}: {Math.round(session.duration / 60)} {t('observe.minutes')}
                     </p>
                   )}
                 </div>

@@ -1,4 +1,4 @@
-import { PlatformAdapter, SystemInfo, GatewayStatus, OpenClawConfig, ChannelInfo, ChannelConfig, ModelInfo, SkillInfo, AgentInfo, LogEntry, AgentConfig } from '@/lib/types'
+import { PlatformAdapter, SystemInfo, GatewayStatus, OpenClawConfig, ChannelInfo, ChannelConfig, ModelInfo, AgentInfo, LogEntry, AgentConfig } from '@/lib/types'
 
 // 动态检测 Tauri 环境
 function getIsTauri(): boolean {
@@ -113,50 +113,6 @@ const tauriAdapter: PlatformAdapter = {
     config.agents.defaults = config.agents.defaults || {}
     config.agents.defaults.model = { primary: modelId }
     await invoke('save_config', { config })
-  },
-  
-  async getSkills(): Promise<SkillInfo[]> {
-    try {
-      const result = await invoke<string>('run_openclaw_command', { 
-        args: ['clawhub', 'list', '--json'] 
-      })
-      const skills = JSON.parse(result)
-      return skills.map((s: any) => ({
-        slug: s.slug || s.name,
-        name: s.name,
-        description: s.description || '',
-        version: s.version || 'unknown',
-        installed: true,
-      }))
-    } catch {
-      return []
-    }
-  },
-  
-  async searchSkills(query: string): Promise<SkillInfo[]> {
-    try {
-      const result = await invoke<string>('run_openclaw_command', { 
-        args: ['clawhub', 'search', query, '--json'] 
-      })
-      const skills = JSON.parse(result)
-      return skills.map((s: any) => ({
-        slug: s.slug || s.name,
-        name: s.name,
-        description: s.description || '',
-        version: s.version || 'unknown',
-        installed: false,
-      }))
-    } catch {
-      return []
-    }
-  },
-  
-  async installSkill(slug: string): Promise<void> {
-    await invoke('run_openclaw_command', { args: ['clawhub', 'install', slug] })
-  },
-  
-  async uninstallSkill(slug: string): Promise<void> {
-    await invoke('run_openclaw_command', { args: ['clawhub', 'uninstall', slug] })
   },
   
   async getAgents(): Promise<AgentInfo[]> {
@@ -299,34 +255,6 @@ const webAdapter: PlatformAdapter = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ modelId }),
-    })
-  },
-  
-  async getSkills(): Promise<SkillInfo[]> {
-    const res = await fetch('/api/skills')
-    if (!res.ok) return []
-    return res.json()
-  },
-  
-  async searchSkills(query: string): Promise<SkillInfo[]> {
-    const res = await fetch(`/api/skills/search?q=${encodeURIComponent(query)}`)
-    if (!res.ok) return []
-    return res.json()
-  },
-  
-  async installSkill(slug: string): Promise<void> {
-    await fetch('/api/skills/install', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug }),
-    })
-  },
-  
-  async uninstallSkill(slug: string): Promise<void> {
-    await fetch('/api/skills/uninstall', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug }),
     })
   },
   

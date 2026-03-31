@@ -25,6 +25,8 @@ export const demoProbeStatus: ProbeStatus = {
 
 export const demoDayCost: CostData = {
   total: 2.87,
+  inputTokens: 92430,
+  outputTokens: 29020,
   by_model: {
     'qwen-plus': 1.42,
     'glm-4-plus': 0.89,
@@ -37,10 +39,15 @@ export const demoDayCost: CostData = {
     'DeepSeek': 0.34,
   },
   period: 'day',
+  daily: [
+    { date: '2026-03-27', usd: 2.87, inputTokens: 92430, outputTokens: 29020 },
+  ],
 }
 
 export const demoWeekCost: CostData = {
   total: 18.53,
+  inputTokens: 584200,
+  outputTokens: 178500,
   by_model: {
     'qwen-plus': 8.76,
     'glm-4-plus': 5.21,
@@ -48,10 +55,21 @@ export const demoWeekCost: CostData = {
     'text-embedding-v4': 1.68,
   },
   period: 'week',
+  daily: [
+    { date: '2026-03-21', usd: 1.92, inputTokens: 62000, outputTokens: 19800 },
+    { date: '2026-03-22', usd: 3.15, inputTokens: 101000, outputTokens: 31200 },
+    { date: '2026-03-23', usd: 2.41, inputTokens: 78000, outputTokens: 24500 },
+    { date: '2026-03-24', usd: 2.87, inputTokens: 92430, outputTokens: 29020 },
+    { date: '2026-03-25', usd: 3.62, inputTokens: 116000, outputTokens: 35800 },
+    { date: '2026-03-26', usd: 1.69, inputTokens: 54770, outputTokens: 17180 },
+    { date: '2026-03-27', usd: 2.87, inputTokens: 80000, outputTokens: 21000 },
+  ],
 }
 
 export const demoMonthCost: CostData = {
   total: 67.42,
+  inputTokens: 2180000,
+  outputTokens: 645000,
   by_model: {
     'qwen-plus': 31.20,
     'glm-4-plus': 18.55,
@@ -59,6 +77,7 @@ export const demoMonthCost: CostData = {
     'text-embedding-v4': 7.55,
   },
   period: 'month',
+  daily: [],
 }
 
 export const demoSessions: SessionSummary[] = [

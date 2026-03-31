@@ -55,7 +55,7 @@ function CostCard({
       {budget !== null && (
         <div className="mt-2">
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>预算 ${budget.toFixed(2)}</span>
+            <span>{t('observe.budget')} ${budget.toFixed(2)}</span>
             <span>{pct.toFixed(0)}%</span>
           </div>
           <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">

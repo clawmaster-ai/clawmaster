@@ -9,11 +9,22 @@ import { wrapAsync, type AdapterResult } from './types'
 
 // ─── 类型定义 ───
 
+export interface DailyEntry {
+  date: string
+  usd: number
+  inputTokens: number
+  outputTokens: number
+}
+
 export interface CostData {
   total: number
+  inputTokens: number
+  outputTokens: number
   by_model: Record<string, number>
   by_provider?: Record<string, number>
   period: string
+  daily: DailyEntry[]
+  unpricedModels?: string[]
 }
 
 export interface SessionSummary {
@@ -79,12 +90,15 @@ export function getCost(period: 'day' | 'week' | 'month' | 'all' = 'day'): Promi
   return wrapAsync(async () => {
     const raw = await execCommand('clawprobe', ['cost', `--${period}`, '--json'])
     const data = JSON.parse(raw)
-    // clawprobe 输出 totalUsd，UI 期望 total
     return {
       total: data.totalUsd ?? data.total ?? 0,
+      inputTokens: data.inputTokens ?? 0,
+      outputTokens: data.outputTokens ?? 0,
       by_model: data.byModel ?? data.by_model ?? {},
       by_provider: data.byProvider ?? data.by_provider,
       period: data.period ?? period,
+      daily: Array.isArray(data.daily) ? data.daily : [],
+      unpricedModels: data.unpricedModels,
     }
   })
 }

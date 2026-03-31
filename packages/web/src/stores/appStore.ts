@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { SystemInfo, GatewayStatus, OpenClawConfig, ChannelInfo, ModelInfo, SkillInfo, AgentInfo } from '@/lib/types'
+import { SystemInfo, GatewayStatus, OpenClawConfig, ChannelInfo, ModelInfo, AgentInfo } from '@/lib/types'
 
 interface AppState {
   // 系统状态
@@ -19,9 +19,6 @@ interface AppState {
   // 模型
   models: ModelInfo[]
   
-  // 技能
-  skills: SkillInfo[]
-  
   // 代理
   agents: AgentInfo[]
   
@@ -34,7 +31,6 @@ interface AppState {
   setConfig: (config: OpenClawConfig) => void
   setChannels: (channels: ChannelInfo[]) => void
   setModels: (models: ModelInfo[]) => void
-  setSkills: (skills: SkillInfo[]) => void
   setAgents: (agents: AgentInfo[]) => void
   setCurrentInstance: (instance: string) => void
   setLoading: (loading: boolean) => void
@@ -49,7 +45,6 @@ export const useAppStore = create<AppState>((set) => ({
   config: null,
   channels: [],
   models: [],
-  skills: [],
   agents: [],
   currentInstance: 'default',
   
@@ -58,7 +53,6 @@ export const useAppStore = create<AppState>((set) => ({
   setConfig: (config) => set({ config }),
   setChannels: (channels) => set({ channels }),
   setModels: (models) => set({ models }),
-  setSkills: (skills) => set({ skills }),
   setAgents: (agents) => set({ agents }),
   setCurrentInstance: (instance) => set({ currentInstance: instance }),
   setLoading: (loading) => set({ isLoading: loading }),

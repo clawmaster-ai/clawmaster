@@ -26,12 +26,6 @@ export interface PlatformAdapter {
   getModels(): Promise<ModelInfo[]>
   setDefaultModel(modelId: string): Promise<void>
   
-  // 技能
-  getSkills(): Promise<SkillInfo[]>
-  searchSkills(query: string): Promise<SkillInfo[]>
-  installSkill(slug: string): Promise<void>
-  uninstallSkill(slug: string): Promise<void>
-  
   // 代理
   getAgents(): Promise<AgentInfo[]>
   createAgent(agent: AgentConfig): Promise<void>
@@ -102,14 +96,6 @@ export interface ModelInfo {
   name: string
   provider: string
   enabled: boolean
-}
-
-export interface SkillInfo {
-  slug: string
-  name: string
-  description: string
-  version: string
-  installed?: boolean
 }
 
 export interface AgentInfo {
