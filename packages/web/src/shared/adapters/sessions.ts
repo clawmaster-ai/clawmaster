@@ -58,6 +58,62 @@ export function getSessions(): Promise<AdapterResult<SessionsData>> {
   })
 }
 
+// ─── Turn detail from clawprobe ───
+
+export interface TurnInfo {
+  turnIndex: number
+  timestamp: number
+  inputTokensDelta: number
+  outputTokensDelta: number
+  estimatedUsd: number
+  compactOccurred: boolean
+  tools: string[]
+}
+
+export interface SessionDetail {
+  sessionKey: string
+  model: string
+  provider: string
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  estimatedUsd: number
+  startedAt: number
+  lastActiveAt: number
+  durationMin: number
+  compactionCount: number
+  turns: TurnInfo[]
+}
+
+export function getSessionDetail(key: string): Promise<AdapterResult<SessionDetail>> {
+  return wrapAsync(async () => {
+    const raw = await execCommand('clawprobe', ['session', key, '--json'])
+    const data = JSON.parse(raw)
+    return {
+      sessionKey: data.sessionKey ?? key,
+      model: data.model ?? '',
+      provider: data.provider ?? '',
+      inputTokens: data.inputTokens ?? 0,
+      outputTokens: data.outputTokens ?? 0,
+      totalTokens: data.totalTokens ?? 0,
+      estimatedUsd: data.estimatedUsd ?? 0,
+      startedAt: data.startedAt ?? 0,
+      lastActiveAt: data.lastActiveAt ?? 0,
+      durationMin: data.durationMin ?? 0,
+      compactionCount: data.compactionCount ?? 0,
+      turns: (data.turns ?? []).map((t: any) => ({
+        turnIndex: t.turnIndex ?? 0,
+        timestamp: t.timestamp ?? 0,
+        inputTokensDelta: t.inputTokensDelta ?? 0,
+        outputTokensDelta: t.outputTokensDelta ?? 0,
+        estimatedUsd: t.estimatedUsd ?? 0,
+        compactOccurred: t.compactOccurred ?? false,
+        tools: t.tools ?? [],
+      })),
+    }
+  })
+}
+
 export function cleanupSessions(): Promise<AdapterResult<string>> {
   return wrapAsync(async () => {
     const raw = await execCommand('openclaw', ['sessions', 'cleanup'])

@@ -8,31 +8,26 @@ import {
   getCost,
   getContextHealth,
   getSuggestions,
-  getSessions,
   getProbeStatus,
   startProbe,
   stopProbe,
   type CostData,
   type ContextHealth,
   type Suggestion,
-  type SessionSummary,
   type ProbeStatus,
 } from '@/shared/adapters/clawprobe'
 import {
   isObserveDemo,
   demoGetProbeStatus,
   demoGetCost,
-  demoGetSessions,
   demoGetContextHealth,
   demoGetSuggestions,
 } from '@/shared/adapters/clawprobe-demo'
 import CostCards from './components/CostCards'
 import CostTrend from './components/CostTrend'
 import ModelDistribution from './components/ModelDistribution'
-import TokenChart from './components/TokenChart'
 import ContextHealthBar from './components/ContextHealthBar'
 import SuggestionCards from './components/SuggestionCards'
-import SessionList from './components/SessionList'
 
 const demo = isObserveDemo()
 
@@ -68,7 +63,6 @@ function ObserveContent() {
   const monthCost = useAdapterCall<CostData>(() => demo ? demoGetCost('month') : getCost('month'))
   const context = useAdapterCall<ContextHealth>(() => demo ? demoGetContextHealth() : getContextHealth(), { pollInterval: demo ? 0 : 15000 })
   const suggestions = useAdapterCall<Suggestion[]>(() => demo ? demoGetSuggestions() : getSuggestions())
-  const sessions = useAdapterCall<SessionSummary[]>(() => demo ? demoGetSessions() : getSessions())
 
   async function handleProbeToggle() {
     setProbeOperating(true)
@@ -145,19 +139,13 @@ function ObserveContent() {
             <ModelDistribution data={dayCost.data} />
           </div>
 
-          {/* Token + 上下文健康度 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <TokenChart sessions={sessions.data} />
-            <ContextHealthBar data={context.data} />
-          </div>
+          {/* 上下文健康度 */}
+          <ContextHealthBar data={context.data} />
 
           {/* 智能建议 */}
           {suggestions.data && suggestions.data.length > 0 && (
             <SuggestionCards suggestions={suggestions.data} />
           )}
-
-          {/* 会话列表 */}
-          <SessionList sessions={sessions.data} loading={sessions.loading} onRefresh={sessions.refetch} />
         </>
       )}
     </div>
