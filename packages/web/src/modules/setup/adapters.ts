@@ -57,6 +57,18 @@ const realOnboardingAdapter: OnboardingAdapter = {
 
   async testApiKey(provider, apiKey, baseUrl?) {
     const cfg = PROVIDERS[provider]
+
+    // Ollama: probe native /api/tags endpoint (no auth needed)
+    if (provider === 'ollama') {
+      const ollamaBase = (baseUrl || cfg?.baseUrl || 'http://localhost:11434/v1').replace(/\/v1\/?$/, '')
+      try {
+        await execCommand('curl', ['-sf', '--max-time', '5', `${ollamaBase}/api/tags`])
+        return true
+      } catch {
+        return false
+      }
+    }
+
     const endpoint = baseUrl || cfg?.baseUrl || 'https://api.openai.com/v1'
     const model = cfg?.models?.[0]?.id ?? 'gpt-4o-mini'
     try {
@@ -78,8 +90,9 @@ const realOnboardingAdapter: OnboardingAdapter = {
     const cfg = PROVIDERS[provider]
     const configKey = cfg?.configKeyOverride ?? provider
     const effectiveBaseUrl = baseUrl || cfg?.baseUrl
-    // 构建 batch-file JSON 避免 shell 转义问题
-    const providerObj: Record<string, unknown> = { apiKey, models: [] }
+    // Ollama: use placeholder key, always include baseUrl
+    const effectiveKey = provider === 'ollama' ? (apiKey || 'ollama') : apiKey
+    const providerObj: Record<string, unknown> = { apiKey: effectiveKey, models: [] }
     if (effectiveBaseUrl) providerObj.baseUrl = effectiveBaseUrl
     const batchJson = JSON.stringify([{ path: `models.providers.${configKey}`, value: providerObj }])
     // 通过 heredoc 写临时文件，再用 --batch-file 读取

@@ -310,6 +310,22 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     ],
     defaultModel: 'qwen-3-235b-a22b-instruct-2507',
   },
+  // ── 本地推理 ──
+  ollama: {
+    label: 'Ollama',
+    keyUrl: 'https://ollama.com/library',
+    baseUrl: 'http://localhost:11434/v1',
+    needsBaseUrl: true,
+    configKeyOverride: 'ollama',
+    models: [
+      { id: 'llama3.2', name: 'Llama 3.2' },
+      { id: 'qwen2.5', name: 'Qwen 2.5' },
+      { id: 'deepseek-r1', name: 'DeepSeek R1' },
+      { id: 'gemma3', name: 'Gemma 3' },
+      { id: 'phi4', name: 'Phi 4' },
+    ],
+    defaultModel: 'llama3.2',
+  },
   // ── 自定义兼容端点 ──
   'custom-openai-compatible': {
     label: 'Custom (OpenAI Compatible)',
@@ -321,7 +337,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
 }
 
 /** 首屏展示的提供商（按钮行），其余折叠在"更多"中 */
-export const PRIMARY_PROVIDERS = ['openai', 'anthropic', 'google', 'deepseek', 'siliconflow', 'openrouter'] as const
+export const PRIMARY_PROVIDERS = ['openai', 'anthropic', 'google', 'deepseek', 'ollama', 'openrouter'] as const
 
 export interface ChannelTokenField {
   key: string        // CLI flag name (e.g. 'token', 'bot-token')

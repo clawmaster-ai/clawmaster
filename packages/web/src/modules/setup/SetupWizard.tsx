@@ -1,6 +1,14 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Shell, Check, ExternalLink, Globe } from 'lucide-react'
+import { Shell, Check, ExternalLink, Globe, Download, Loader2, Server, HardDrive } from 'lucide-react'
+import {
+  getOllamaStatus,
+  installOllama,
+  startOllama,
+  pullModel,
+  type OllamaStatus,
+  formatModelSize,
+} from '@/shared/adapters/ollama'
 import { changeLanguage } from '@/i18n'
 import { getSetupAdapter } from './adapters'
 import {
@@ -133,7 +141,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   }, [adapter, updateOnboard])
 
   const runSetApiKey = useCallback(async () => {
-    if (!onboard.apiKey.trim()) return
+    // Ollama: auto-fill placeholder key
+    const effectiveKey = onboard.provider === 'ollama' ? (onboard.apiKey.trim() || 'ollama') : onboard.apiKey.trim()
+    if (!effectiveKey) return
     const providerCfg = PROVIDERS[onboard.provider]
     // 需要 baseUrl 但未填
     if (providerCfg?.needsBaseUrl && !onboard.customBaseUrl.trim()) {
@@ -145,17 +155,17 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       // 先验证 key 是否可用
       const valid = await adapter.onboarding.testApiKey(
         onboard.provider,
-        onboard.apiKey,
+        effectiveKey,
         onboard.customBaseUrl.trim() || undefined,
       )
       if (!valid) {
-        updateOnboard({ busy: false, error: t('setup.apiKeyInvalid') })
+        updateOnboard({ busy: false, error: onboard.provider === 'ollama' ? t('ollama.notRunning') : t('setup.apiKeyInvalid') })
         return
       }
       // 验证通过，保存配置
       await adapter.onboarding.setApiKey(
         onboard.provider,
-        onboard.apiKey,
+        effectiveKey,
         onboard.customBaseUrl.trim() || undefined,
       )
       // 预选默认模型
@@ -811,7 +821,12 @@ function ProviderStep({
         {visibleIds.map((p) => (
           <button
             key={p}
-            onClick={() => updateOnboard({ provider: p, apiKey: '', model: '' })}
+            onClick={() => updateOnboard({
+              provider: p,
+              apiKey: '',
+              model: '',
+              customBaseUrl: PROVIDERS[p]?.baseUrl ?? '',
+            })}
             className={`px-3 py-1.5 rounded-lg text-sm border transition ${
               onboard.provider === p
                 ? 'bg-primary text-primary-foreground border-primary'
@@ -830,46 +845,272 @@ function ProviderStep({
           {showMore ? t('setup.collapse') : t('setup.moreProviders', { count: secondaryIds.length })}
         </button>
       )}
-      {providerCfg?.keyUrl && (
-        <a
-          href={providerCfg.keyUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block mb-3 text-center text-xs text-primary hover:underline"
-        >
-          {t('setup.getApiKey', { provider: providerCfg.label })}
-        </a>
-      )}
-      {providerCfg?.needsBaseUrl && (
-        <input
-          type="url"
-          placeholder={t('setup.baseUrlPlaceholder')}
-          value={onboard.customBaseUrl}
-          onChange={(e) => updateOnboard({ customBaseUrl: e.target.value })}
-          className="w-full px-4 py-3 mb-2 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+      {onboard.provider === 'ollama' ? (
+        <OllamaSetupPanel
+          onboard={onboard}
+          updateOnboard={updateOnboard}
+          onSubmit={onSubmit}
         />
+      ) : (
+        <>
+          {providerCfg?.keyUrl && (
+            <a
+              href={providerCfg.keyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block mb-3 text-center text-xs text-primary hover:underline"
+            >
+              {t('setup.getApiKey', { provider: providerCfg.label })}
+            </a>
+          )}
+          {providerCfg?.needsBaseUrl && (
+            <input
+              type="url"
+              placeholder={t('setup.baseUrlPlaceholder')}
+              value={onboard.customBaseUrl}
+              onChange={(e) => updateOnboard({ customBaseUrl: e.target.value })}
+              className="w-full px-4 py-3 mb-2 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          )}
+          <input
+            type="password"
+            placeholder={t('setup.apiKeyPlaceholder', { provider: providerCfg?.label ?? onboard.provider })}
+            value={onboard.apiKey}
+            onChange={(e) => updateOnboard({ apiKey: e.target.value })}
+            className="w-full px-4 py-3 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          {onboard.error && <p className="text-red-500 text-xs mt-2">{onboard.error}</p>}
+          <button
+            onClick={onSubmit}
+            disabled={!onboard.apiKey.trim() || onboard.busy}
+            className="mt-4 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50"
+          >
+            {onboard.busy ? t('setup.verifying') : t('common.nextStep')}
+          </button>
+        </>
       )}
-      <input
-        type="password"
-        placeholder={t('setup.apiKeyPlaceholder', { provider: providerCfg?.label ?? onboard.provider })}
-        value={onboard.apiKey}
-        onChange={(e) => updateOnboard({ apiKey: e.target.value })}
-        className="w-full px-4 py-3 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
-      />
-      {onboard.error && <p className="text-red-500 text-xs mt-2">{onboard.error}</p>}
-      <button
-        onClick={onSubmit}
-        disabled={!onboard.apiKey.trim() || onboard.busy}
-        className="mt-4 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50"
-      >
-        {onboard.busy ? t('setup.verifying') : t('common.nextStep')}
-      </button>
       <button
         onClick={onSkip}
         className="mt-2 w-full py-2 text-sm text-muted-foreground hover:text-foreground transition"
       >
         {t('setup.skipRemaining')}
       </button>
+    </div>
+  )
+}
+
+// ─── Ollama 安装面板 ───
+
+function OllamaSetupPanel({
+  onboard,
+  updateOnboard,
+  onSubmit,
+}: {
+  onboard: OnboardingState
+  updateOnboard: (patch: Partial<OnboardingState>) => void
+  onSubmit: () => void
+}) {
+  const { t } = useTranslation()
+  const [status, setStatus] = useState<OllamaStatus | null>(null)
+  const [checking, setChecking] = useState(true)
+  const [installing, setInstalling] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [pulling, setPulling] = useState<string | null>(null)
+
+  const checkStatus = useCallback(async () => {
+    setChecking(true)
+    const result = await getOllamaStatus(
+      onboard.customBaseUrl.trim().replace(/\/v1\/?$/, '') || 'http://localhost:11434',
+    )
+    if (result.success && result.data) {
+      setStatus(result.data)
+      // Auto-fill models from running Ollama
+      if (result.data.running && result.data.models.length > 0) {
+        updateOnboard({ apiKey: 'ollama' })
+      }
+    }
+    setChecking(false)
+  }, [onboard.customBaseUrl, updateOnboard])
+
+  useEffect(() => { checkStatus() }, [checkStatus])
+
+  async function handleInstall() {
+    setInstalling(true)
+    updateOnboard({ error: null })
+    const result = await installOllama()
+    if (!result.success) {
+      updateOnboard({ error: t('ollama.installFailed') + ': ' + result.error })
+    }
+    setInstalling(false)
+    await checkStatus()
+  }
+
+  async function handleStart() {
+    setStarting(true)
+    updateOnboard({ error: null })
+    await startOllama()
+    // Poll for readiness
+    for (let i = 0; i < 5; i++) {
+      await new Promise(r => setTimeout(r, 2000))
+      const result = await getOllamaStatus(
+        onboard.customBaseUrl.trim().replace(/\/v1\/?$/, '') || 'http://localhost:11434',
+      )
+      if (result.success && result.data?.running) {
+        setStatus(result.data)
+        setStarting(false)
+        updateOnboard({ apiKey: 'ollama' })
+        return
+      }
+    }
+    setStarting(false)
+    updateOnboard({ error: t('ollama.startFailed') })
+    await checkStatus()
+  }
+
+  async function handlePull(modelName: string) {
+    setPulling(modelName)
+    updateOnboard({ error: null })
+    const result = await pullModel(modelName)
+    if (!result.success) {
+      updateOnboard({ error: t('ollama.pullFailed', { model: modelName }) })
+    }
+    setPulling(null)
+    await checkStatus()
+  }
+
+  function handleProceed() {
+    updateOnboard({ apiKey: 'ollama' })
+    onSubmit()
+  }
+
+  if (checking) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        {t('ollama.detecting')}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Base URL */}
+      <input
+        type="url"
+        placeholder="http://localhost:11434/v1"
+        value={onboard.customBaseUrl}
+        onChange={(e) => updateOnboard({ customBaseUrl: e.target.value })}
+        className="w-full px-4 py-3 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+      />
+
+      {/* Step 1: Install */}
+      {!status?.installed && (
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Download className="w-4 h-4 text-muted-foreground" />
+            <span className="font-medium">{t('ollama.installTitle')}</span>
+          </div>
+          <p className="text-sm text-muted-foreground mb-3">{t('ollama.installDesc')}</p>
+          <button
+            onClick={handleInstall}
+            disabled={installing}
+            className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {installing && <Loader2 className="w-4 h-4 animate-spin" />}
+            {installing ? t('ollama.installing') : t('ollama.installButton')}
+          </button>
+        </div>
+      )}
+
+      {/* Step 2: Start service */}
+      {status?.installed && !status?.running && (
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Server className="w-4 h-4 text-muted-foreground" />
+            <span className="font-medium">{t('ollama.startTitle')}</span>
+            <span className="text-xs text-muted-foreground">v{status.version}</span>
+          </div>
+          <p className="text-sm text-muted-foreground mb-3">{t('ollama.notRunning')}</p>
+          <button
+            onClick={handleStart}
+            disabled={starting}
+            className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {starting && <Loader2 className="w-4 h-4 animate-spin" />}
+            {starting ? t('ollama.starting') : t('ollama.startButton')}
+          </button>
+        </div>
+      )}
+
+      {/* Step 3: Running — show models */}
+      {status?.installed && status?.running && (
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+            <span className="font-medium">{t('ollama.running')}</span>
+            <span className="text-xs text-muted-foreground">v{status.version}</span>
+          </div>
+
+          {/* Available models */}
+          {status.models.length > 0 ? (
+            <div className="space-y-2 mb-3">
+              <p className="text-xs text-muted-foreground">{t('ollama.availableModels')}</p>
+              {status.models.map((m) => (
+                <div key={m.name} className="flex items-center justify-between text-sm px-2 py-1.5 bg-muted/50 rounded">
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="font-mono">{m.name}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{formatModelSize(m.size)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground mb-3">{t('ollama.noModels')}</p>
+          )}
+
+          {/* Pull popular models */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {['llama3.2', 'qwen2.5', 'deepseek-r1', 'gemma3', 'phi4'].map((m) => {
+              const alreadyPulled = status.models.some((sm) => sm.name.startsWith(m))
+              if (alreadyPulled) return null
+              return (
+                <button
+                  key={m}
+                  onClick={() => handlePull(m)}
+                  disabled={!!pulling}
+                  className="px-3 py-1 text-xs border border-border rounded-lg hover:bg-accent disabled:opacity-50 flex items-center gap-1"
+                >
+                  {pulling === m ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                  {m}
+                </button>
+              )
+            })}
+          </div>
+
+          <a
+            href="https://ollama.com/library"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary hover:underline"
+          >
+            {t('ollama.browseLibrary')}
+          </a>
+        </div>
+      )}
+
+      {onboard.error && <p className="text-red-500 text-xs">{onboard.error}</p>}
+
+      {/* Proceed button — only when Ollama is running */}
+      {status?.installed && status?.running && (
+        <button
+          onClick={handleProceed}
+          disabled={onboard.busy || status.models.length === 0}
+          className="w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50"
+        >
+          {onboard.busy ? t('setup.verifying') : t('common.nextStep')}
+        </button>
+      )}
     </div>
   )
 }
