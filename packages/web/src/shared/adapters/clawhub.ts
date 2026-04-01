@@ -41,35 +41,52 @@ function parseSkillsOpenclawJson(raw: string, installed: boolean): SkillInfo[] {
   return rows.filter(isRecord).map((s) => mapSkillRow(s, installed))
 }
 
-async function tauriOpenclawSkills(tail: string[]): Promise<string> {
-  let last: Error | undefined
-  for (const root of SKILL_CLI_ROOTS) {
+let tauriSkillsCliRootCache: (typeof SKILL_CLI_ROOTS)[number] | null = null
+
+async function tauriPickSkillsRootAndRun<T>(
+  fn: (root: (typeof SKILL_CLI_ROOTS)[number]) => Promise<T>
+): Promise<T> {
+  if (tauriSkillsCliRootCache) {
     try {
-      return await tauriInvoke<string>('run_openclaw_command', { args: [root, ...tail] })
+      return await fn(tauriSkillsCliRootCache)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      last = e instanceof Error ? e : new Error(msg)
-      if (/unknown command/i.test(msg)) continue
-      throw last
+      if (/unknown command/i.test(msg)) {
+        tauriSkillsCliRootCache = null
+      } else {
+        throw e instanceof Error ? e : new Error(msg)
+      }
     }
   }
-  throw last ?? new Error('openclaw: no matching skills CLI (tried skills, clawbot, clawhub)')
+
+  const settled = await Promise.allSettled(SKILL_CLI_ROOTS.map((root) => fn(root)))
+  const errors: Error[] = []
+  for (let i = 0; i < settled.length; i++) {
+    const r = settled[i]
+    if (r.status === 'fulfilled') {
+      tauriSkillsCliRootCache = SKILL_CLI_ROOTS[i]
+      return r.value
+    }
+    errors.push(r.reason instanceof Error ? r.reason : new Error(String(r.reason)))
+  }
+  const serious = errors.find((e) => !/unknown command/i.test(e.message))
+  if (serious) throw serious
+  throw (
+    errors[errors.length - 1] ??
+    new Error('openclaw: no matching skills CLI (tried skills, clawbot, clawhub)')
+  )
+}
+
+async function tauriOpenclawSkills(tail: string[]): Promise<string> {
+  return tauriPickSkillsRootAndRun((root) =>
+    tauriInvoke<string>('run_openclaw_command', { args: [root, ...tail] })
+  )
 }
 
 async function tauriOpenclawSkillsVoid(tail: string[]): Promise<void> {
-  let last: Error | undefined
-  for (const root of SKILL_CLI_ROOTS) {
-    try {
-      await tauriInvoke('run_openclaw_command', { args: [root, ...tail] })
-      return
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      last = e instanceof Error ? e : new Error(msg)
-      if (/unknown command/i.test(msg)) continue
-      throw last
-    }
-  }
-  throw last ?? new Error('openclaw: no matching skills CLI (tried skills, clawbot, clawhub)')
+  await tauriPickSkillsRootAndRun(async (root) => {
+    await tauriInvoke('run_openclaw_command', { args: [root, ...tail] })
+  })
 }
 
 export async function getSkillsResult(): Promise<AdapterResult<SkillInfo[]>> {

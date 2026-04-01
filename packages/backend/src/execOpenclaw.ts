@@ -5,7 +5,12 @@ import {
   spawn,
   type ExecException,
   type ExecFileException,
+  type ExecFileOptions,
+  type StdioOptions,
 } from 'child_process'
+
+/** Node supports `stdio` on `execFile`; `@types/node` only lists it on spawn options */
+type ExecOpenclawFileOpts = ExecFileOptions & { stdio?: StdioOptions }
 import net from 'node:net'
 
 /** GUI/backend child PATH may omit nvm global bin; resolve absolute path via login shell like Tauri `openclaw_cmd` */
@@ -39,21 +44,162 @@ function resolveOpenclawBin(): string {
   return cachedOpenclawBin ?? 'openclaw'
 }
 
+export type ExecOpenclawOptions = {
+  /** Kill the child after this many ms (Node `execFile` `timeout`). Omit for no limit. */
+  timeoutMs?: number
+  /** Detach stdin so the CLI cannot block on interactive prompts (default inherits). */
+  stdinIgnore?: boolean
+  /**
+   * Write to stdin then close (for `[y/N]` when the CLI has no `--yes`, e.g. OpenClaw 2026.3.x).
+   * Takes precedence over `stdinIgnore`.
+   */
+  stdinInput?: string
+}
+
+function execOpenclawSpawnStdin(
+  bin: string,
+  args: string[],
+  opts: ExecOpenclawOptions & { stdinInput: string }
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const maxBuffer = 20 * 1024 * 1024
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, args, {
+      env: process.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    let killedByTimeout = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const accOut = { s: '' }
+    const accErr = { s: '' }
+    child.stdout?.on('data', (b) => {
+      accOut.s += b.toString('utf8')
+      if (accOut.s.length > maxBuffer) {
+        try {
+          child.kill('SIGKILL')
+        } catch {
+          /* ignore */
+        }
+      }
+    })
+    child.stderr?.on('data', (b) => {
+      accErr.s += b.toString('utf8')
+      if (accErr.s.length > maxBuffer) {
+        try {
+          child.kill('SIGKILL')
+        } catch {
+          /* ignore */
+        }
+      }
+    })
+
+    if (opts.timeoutMs != null && opts.timeoutMs > 0) {
+      timer = setTimeout(() => {
+        killedByTimeout = true
+        try {
+          child.kill('SIGTERM')
+        } catch {
+          /* ignore */
+        }
+        const killHard = setTimeout(() => {
+          try {
+            child.kill('SIGKILL')
+          } catch {
+            /* ignore */
+          }
+        }, 5000)
+        killHard.unref()
+      }, opts.timeoutMs)
+    }
+
+    child.once('error', (e) => {
+      if (timer) clearTimeout(timer)
+      reject(e)
+    })
+    child.once('close', (code, signal) => {
+      if (timer) clearTimeout(timer)
+      const out = accOut.s
+      const err = accErr.s
+      if (killedByTimeout) {
+        resolve({
+          code: 124,
+          stdout: out.trim(),
+          stderr: [err.trim(), `openclaw timed out after ${opts.timeoutMs}ms`].filter(Boolean).join('\n'),
+        })
+        return
+      }
+      const exitCode = code ?? (signal ? 1 : 0)
+      resolve({
+        code: exitCode,
+        stdout: out.trim(),
+        stderr: err.trim(),
+      })
+    })
+
+    try {
+      child.stdin?.write(opts.stdinInput, (wErr) => {
+        if (wErr) {
+          reject(wErr)
+          return
+        }
+        child.stdin?.end()
+      })
+    } catch (e) {
+      reject(e)
+    }
+  })
+}
+
 /** Run openclaw without throwing; use exit code like a shell */
-export function execOpenclaw(args: string[]): Promise<{
+export function execOpenclaw(
+  args: string[],
+  opts?: ExecOpenclawOptions
+): Promise<{
   code: number
   stdout: string
   stderr: string
 }> {
   const bin = resolveOpenclawBin()
+  if (opts?.stdinInput !== undefined) {
+    return execOpenclawSpawnStdin(bin, args, opts as ExecOpenclawOptions & { stdinInput: string })
+  }
   return new Promise((resolve, reject) => {
+    const execOpts: ExecOpenclawFileOpts = {
+      maxBuffer: 20 * 1024 * 1024,
+      env: process.env,
+    }
+    if (opts?.timeoutMs != null && opts.timeoutMs > 0) {
+      execOpts.timeout = opts.timeoutMs
+    }
+    if (opts?.stdinIgnore) {
+      execOpts.stdio = ['ignore', 'pipe', 'pipe']
+    }
     execFile(
       bin,
       args,
-      { maxBuffer: 20 * 1024 * 1024, env: process.env },
-      (error: ExecFileException | null, stdout: string, stderr: string) => {
+      execOpts,
+      (error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => {
+        const out = typeof stdout === 'string' ? stdout : stdout.toString('utf8')
+        const errOut = typeof stderr === 'string' ? stderr : stderr.toString('utf8')
         if (error && error.message?.includes('maxBuffer')) {
           reject(error)
+          return
+        }
+        const errno =
+          error && typeof error === 'object' && 'code' in error
+            ? (error as NodeJS.ErrnoException).code
+            : undefined
+        if (error && errno === 'ETIMEDOUT') {
+          const stderrStr = errOut.trim()
+          const hint =
+            opts?.timeoutMs != null
+              ? `openclaw timed out after ${opts.timeoutMs}ms`
+              : 'openclaw timed out'
+          resolve({
+            code: 124,
+            stdout: out.trim(),
+            stderr: [stderrStr, hint].filter(Boolean).join('\n').trim(),
+          })
           return
         }
         const code =
@@ -64,8 +210,8 @@ export function execOpenclaw(args: string[]): Promise<{
               : 0
         resolve({
           code,
-          stdout: String(stdout ?? '').trim(),
-          stderr: String(stderr ?? '').trim(),
+          stdout: out.trim(),
+          stderr: errOut.trim(),
         })
       }
     )

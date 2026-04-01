@@ -65,7 +65,7 @@ export function parsePluginsJsonString(raw: string): OpenClawPluginInfo[] {
 const BOX_CHARS = /[│┃┌┐└┘├┤┬┴┼─═╌┄╔╗╚╝╠╣╦╩╬]/
 const TABLE_PIPE_SPLIT = /[|│┃]/
 
-function stripAnsi(s: string): string {
+export function stripAnsi(s: string): string {
   return s.replace(/\u001b\[[0-9;]*m/g, '')
 }
 
@@ -90,9 +90,27 @@ function looksLikePluginId(s: string): boolean {
   return /^[a-z0-9][a-z0-9_.-]*$/i.test(x)
 }
 
-function isVersionTableCell(s: string): boolean {
-  const t = s.trim()
-  return t.length > 0 && /^[\d.][\d.a-z+-]*$/i.test(t) && t.length < 40
+function extractPluginIdFromSourceCell(source: string): string | null {
+  const s = source.trim()
+  if (!s) return null
+  const m = /^(?:global|stock):([^/\s│|]+)/i.exec(s)
+  if (!m) return null
+  const slug = (m[1] ?? '').trim()
+  return slug && looksLikePluginId(slug) ? slug : null
+}
+
+function resolveTableRowPluginId(name: string, id: string, source: string): string | null {
+  const idTrim = id.trim()
+  if (idTrim && looksLikePluginId(idTrim)) return idTrim
+  const fromSource = extractPluginIdFromSourceCell(source)
+  if (fromSource) return fromSource
+  const nameTrim = name.trim()
+  if (nameTrim && looksLikePluginId(nameTrim)) return nameTrim
+  return null
+}
+
+function isPluginsTablePluginStartRow(statusCell: string): boolean {
+  return Boolean(statusCell.trim())
 }
 
 function mergeWrappedPluginName(prev: string, next: string): string {
@@ -144,7 +162,7 @@ type TableAcc = {
   descParts: string[]
 }
 
-/** First row of an entry has non-empty Name/ID/Status; empty Status means continuation of previous row. */
+/** Only non-empty Status starts a plugin; Version may continue on later lines. ID may come from Source when cells wrap. */
 function parseOpenclawPluginsTable(lines: string[], headerIdx: number): OpenClawPluginInfo[] {
   const out: OpenClawPluginInfo[] = []
   const seen = new Set<string>()
@@ -178,26 +196,42 @@ function parseOpenclawPluginsTable(lines: string[], headerIdx: number): OpenClaw
     const source = (cells[4] ?? '').trim()
     const versionCell = (cells[5] ?? '').trim()
 
-    const idOk = looksLikePluginId(id)
-
-    if (cur && !statusCell) {
+    if (cur && !isPluginsTablePluginStartRow(statusCell)) {
       if (name) cur.name = mergeWrappedPluginName(cur.name, name)
       if (id) {
         const merged = cur.id + id
         if (looksLikePluginId(merged) && merged.length <= 80) cur.id = merged
       }
       if (source) cur.descParts.push(source)
+      const verCont = versionCell.trim()
+      if (verCont && !cur.version) cur.version = verCont
       continue
     }
 
-    if (name && id && idOk && statusCell) {
-      flush()
-      const ver = isVersionTableCell(versionCell) ? versionCell.trim() : undefined
-      const descParts: string[] = []
-      if (source) descParts.push(source)
-      cur = { name, id, status: statusCell, version: ver, descParts }
+    if (!isPluginsTablePluginStartRow(statusCell)) {
       continue
     }
+
+    const resolvedId = resolveTableRowPluginId(name, id, source)
+    if (resolvedId === null) {
+      continue
+    }
+    if (!name && !id && !source) {
+      continue
+    }
+
+    flush()
+    const verTrim = versionCell.trim()
+    const descParts: string[] = []
+    if (source) descParts.push(source)
+    cur = {
+      name: name || resolvedId,
+      id: resolvedId,
+      status: statusCell.trim(),
+      version: verTrim ? verTrim : undefined,
+      descParts,
+    }
+    continue
   }
   flush()
   return out

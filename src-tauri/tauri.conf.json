@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "OpenClawManager",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "identifier": "ai.openclaw.manager",
   "build": {
     "frontendDist": "../packages/web/dist",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "龙虾管家 - OpenClaw Manager",
+        "title": "OpenClaw Manager",
         "width": 800,
         "height": 600,
         "resizable": true,

@@ -106,6 +106,55 @@ export interface OpenClawConfig {
   channels?: Record<string, OpenClawChannelEntry>
   models?: { providers?: Record<string, OpenClawModelProvider> }
   bindings?: OpenClawBinding[]
+  /** OpenClaw plugins.entries + metadata (from openclaw.json) */
+  plugins?: {
+    entries?: Record<
+      string,
+      {
+        enabled?: boolean
+        config?: Record<string, unknown>
+      }
+    >
+  }
+}
+
+/** `openclaw memory status --json` (backend may still set exitCode !== 0) */
+export interface OpenclawMemoryStatusPayload {
+  exitCode: number
+  data: unknown
+  stderr?: string
+}
+
+/** Resolved PowerMem CLI `--env-file` target for viewing/editing in the UI */
+export interface PowermemEnvPayload {
+  path: string
+  content: string
+}
+
+export interface PowermemMeta {
+  pluginId: string
+  configured: boolean
+  enabled: boolean
+  mode: 'cli' | 'http' | null
+  userId: string
+  agentId: string
+  pmemPath?: string
+  baseUrl?: string
+  envFileResolved?: string
+  /** Backend-managed venv under ~/.openclaw/powermem (Web API) */
+  managedRuntimeDir?: string
+  managedRuntimeReady?: boolean
+  managedRuntimeDisabled?: boolean
+  /** Present while backend is creating venv / pip installing powermem */
+  managedBootstrapPhase?: 'venv' | 'pip' | null
+}
+
+export interface PowermemMemoryRow {
+  id: string
+  memoryId: number
+  content: string
+  score?: number
+  metadata?: Record<string, unknown>
 }
 
 export interface ChannelInfo {

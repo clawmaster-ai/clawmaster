@@ -1,5 +1,10 @@
 import type express from 'express'
-import { installOpenclawPlugin, listOpenclawPlugins, setOpenclawPluginEnabled } from '../services/openclawPlugins.js'
+import {
+  installOpenclawPlugin,
+  listOpenclawPlugins,
+  setOpenclawPluginEnabled,
+  uninstallOpenclawPlugin,
+} from '../services/openclawPlugins.js'
 import { runOpenclawSkillsChecked, runOpenclawSkillsUninstall } from '../skillsCli.js'
 import { mapSkillJson } from '../skillsParse.js'
 import { isRecord, sendOpenclawFailure } from '../serverUtils.js'
@@ -43,6 +48,24 @@ export function registerPluginsRoutes(app: express.Express): void {
       }
       await installOpenclawPlugin(body.id)
       res.json({ ok: true, installedId: body.id.trim() })
+    } catch (error: unknown) {
+      sendOpenclawFailure(res, error)
+    }
+  })
+
+  app.post('/api/plugins/uninstall', async (req, res) => {
+    try {
+      const body = req.body
+      if (!isRecord(body) || typeof body.id !== 'string') {
+        return res
+          .status(400)
+          .type('text')
+          .send('Body must be JSON: { "id": string, "keepFiles"?: boolean, "disableLoadedFirst"?: boolean }')
+      }
+      const keepFiles = body.keepFiles === true
+      const disableLoadedFirst = body.disableLoadedFirst === true
+      await uninstallOpenclawPlugin(body.id, keepFiles, { disableLoadedFirst })
+      res.status(204).end()
     } catch (error: unknown) {
       sendOpenclawFailure(res, error)
     }

@@ -23,6 +23,12 @@ function isPluginDisabledStatus(status?: string): boolean {
 
 type StatusFilterMode = 'loaded' | 'all' | 'disabled'
 
+type PluginBusy =
+  | { kind: 'enable'; id: string }
+  | { kind: 'disable'; id: string }
+  | { kind: 'install'; id: string }
+  | { kind: 'uninstall'; id: string }
+
 const DESCRIPTION_COLLAPSE_CHARS = 96
 
 function PluginDescriptionCell({ text }: { text: string | undefined }) {
@@ -57,9 +63,10 @@ export default function PluginsPage() {
   const { t, i18n } = useTranslation()
   const [filter, setFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilterMode>('loaded')
-  const [busy, setBusy] = useState<{ id: string; enabling: boolean } | null>(null)
+  const [busy, setBusy] = useState<PluginBusy | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [installId, setInstallId] = useState('')
+  const [uninstallKeepFiles, setUninstallKeepFiles] = useState(false)
 
   const statusFilterOptions = useMemo(
     () =>
@@ -77,7 +84,7 @@ export default function PluginsPage() {
   const runSetEnabled = useCallback(
     async (id: string, enabled: boolean) => {
       setActionError(null)
-      setBusy({ id, enabling: enabled })
+      setBusy({ kind: enabled ? 'enable' : 'disable', id })
       const r = await platformResults.setPluginEnabled(id, enabled)
       setBusy(null)
       if (!r.success) {
@@ -96,7 +103,7 @@ export default function PluginsPage() {
       return
     }
     setActionError(null)
-    setBusy({ id, enabling: true })
+    setBusy({ kind: 'install', id })
     const r = await platformResults.installPlugin(id)
     setBusy(null)
     if (!r.success) {
@@ -106,6 +113,31 @@ export default function PluginsPage() {
     setInstallId('')
     void refetch()
   }, [installId, refetch, t])
+
+  const runUninstall = useCallback(
+    async (p: OpenClawPluginInfo) => {
+      if (
+        !window.confirm(
+          t('plugins.uninstallConfirm', { id: p.id, name: p.name?.trim() || p.id })
+        )
+      ) {
+        return
+      }
+      setActionError(null)
+      setBusy({ kind: 'uninstall', id: p.id })
+      const r = await platformResults.uninstallPlugin(p.id, {
+        keepFiles: uninstallKeepFiles,
+        disableLoadedFirst: isPluginEnabled(p.status),
+      })
+      setBusy(null)
+      if (!r.success) {
+        setActionError(r.error ?? t('plugins.uninstallFailed'))
+        return
+      }
+      void refetch()
+    },
+    [refetch, t, uninstallKeepFiles]
+  )
 
   const plugins = data?.plugins ?? []
   const rawCliOutput = data?.rawCliOutput
@@ -203,22 +235,35 @@ export default function PluginsPage() {
             ))}
           </select>
         </label>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={installId}
-            onChange={(e) => setInstallId(e.target.value)}
-            placeholder={t('plugins.installPlaceholder')}
-            className="px-3 py-2 rounded border border-border bg-background text-sm min-w-[16rem]"
-          />
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void runInstall()}
-            className="px-3 py-2 text-sm border border-border rounded hover:bg-accent disabled:opacity-50"
-          >
-            {busy?.id === installId.trim() ? t('plugins.installBusy') : t('plugins.install')}
-          </button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={installId}
+              onChange={(e) => setInstallId(e.target.value)}
+              placeholder={t('plugins.installPlaceholder')}
+              className="px-3 py-2 rounded border border-border bg-background text-sm min-w-[16rem]"
+            />
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void runInstall()}
+              className="px-3 py-2 text-sm border border-border rounded hover:bg-accent disabled:opacity-50"
+            >
+              {busy?.kind === 'install' && busy.id === installId.trim()
+                ? t('plugins.installBusy')
+                : t('plugins.install')}
+            </button>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={uninstallKeepFiles}
+              onChange={(e) => setUninstallKeepFiles(e.target.checked)}
+              className="rounded border-border"
+            />
+            {t('plugins.uninstallKeepFilesLabel')}
+          </label>
         </div>
       </div>
 
@@ -268,7 +313,7 @@ export default function PluginsPage() {
                           onClick={() => void runSetEnabled(p.id, true)}
                           className="px-2 py-0.5 text-xs rounded border border-border bg-background hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
                         >
-                          {busy?.id === p.id && busy.enabling ? '…' : t('plugins.enable')}
+                          {busy?.kind === 'enable' && busy.id === p.id ? '…' : t('plugins.enable')}
                         </button>
                         <button
                           type="button"
@@ -276,7 +321,17 @@ export default function PluginsPage() {
                           onClick={() => void runSetEnabled(p.id, false)}
                           className="px-2 py-0.5 text-xs rounded border border-border bg-background hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
                         >
-                          {busy?.id === p.id && !busy.enabling ? '…' : t('plugins.disable')}
+                          {busy?.kind === 'disable' && busy.id === p.id ? '…' : t('plugins.disable')}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() => void runUninstall(p)}
+                          className="px-2 py-0.5 text-xs rounded border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 bg-background hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 disabled:pointer-events-none"
+                        >
+                          {busy?.kind === 'uninstall' && busy.id === p.id
+                            ? t('plugins.uninstallBusy')
+                            : t('plugins.uninstall')}
                         </button>
                       </div>
                     </div>

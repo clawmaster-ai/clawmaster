@@ -23,7 +23,12 @@ export function statusForOpenclawCliError(message: string): number {
   return 500
 }
 
+function stripAnsiForHttp(s: string): string {
+  return s.replace(/\u001b\[[0-9;]*m/g, '')
+}
+
 export function sendOpenclawFailure(res: express.Response, error: unknown): void {
-  const msg = error instanceof Error ? error.message : String(error)
+  const raw = error instanceof Error ? error.message : String(error)
+  const msg = stripAnsiForHttp(raw)
   res.status(statusForOpenclawCliError(msg)).type('text').send(msg)
 }

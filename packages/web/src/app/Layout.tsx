@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { Outlet, useLocation, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { getIsTauri } from '@/shared/adapters/platform'
 import { getClawModules } from './moduleRegistry'
 
 function normalizeLang(lng: string): 'en' | 'zh' | 'ja' {
@@ -20,6 +22,16 @@ export default function Layout() {
   }))
 
   const currentTitle = navItems.find((item) => item.path === currentPath)?.label ?? t('layout.appTitle')
+
+  useEffect(() => {
+    if (!getIsTauri()) return
+    const title = `${currentTitle} – ${t('layout.appTitle')}`
+    void import('@tauri-apps/api/window')
+      .then(({ getCurrentWindow }) => getCurrentWindow().setTitle(title))
+      .catch(() => {
+        /* ignore */
+      })
+  }, [currentTitle, t, i18n.language])
 
   return (
     <div className="flex h-screen bg-background">

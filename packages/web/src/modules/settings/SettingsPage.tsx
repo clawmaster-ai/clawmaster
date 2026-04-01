@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { platformResults } from '@/adapters'
+import { openclawVersionLabel } from '@/lib/systemVersionLabel'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
+import { formatAdapterResultError } from '@/shared/adapters/tauriCommandError'
+import type { AdapterResult } from '@/shared/adapters/types'
 import LoadingState from '@/shared/components/LoadingState'
 import OpenClawUninstallWizard from '@/modules/settings/OpenClawUninstallWizard'
 
 export default function Settings() {
+  const { t } = useTranslation()
   const fetcher = useCallback(async () => platformResults.detectSystem(), [])
   const { data: systemInfo, loading, error, refetch } = useAdapterCall(fetcher)
   const [uninstallWizardOpen, setUninstallWizardOpen] = useState(false)
@@ -21,47 +26,41 @@ export default function Settings() {
     if (!loading && systemInfo) void refreshBackups()
   }, [loading, systemInfo, refreshBackups])
 
+  function fmtErr(r: AdapterResult<unknown>): string {
+    return formatAdapterResultError(r, t)
+  }
+
   async function handleResetConfig() {
-    if (
-      !window.confirm(
-        '将把 OpenClaw 主配置文件（openclaw.json）清空为默认空对象 {}，原有内容不可恢复。\n不会卸载 OpenClaw 程序，仅重置配置。确定吗？'
-      )
-    ) {
+    if (!window.confirm(t('settings.resetConfigConfirm'))) {
       return
     }
-    if (!window.confirm('请再次确认：清空配置文件内容。')) return
+    if (!window.confirm(t('settings.resetConfigConfirmAgain'))) return
     const r = await platformResults.resetOpenclawConfig()
     if (!r.success) {
-      alert(`重置失败：${r.error ?? '未知错误'}`)
+      window.alert(t('settings.alertResetFailed', { detail: fmtErr(r) }))
       return
     }
-    alert(
-      '已重置配置（openclaw.json 现为空白 {}）。\n\n多数版本下未填的项会用内置默认，网关仍可能正常启动；若启动失败或校验报错，请在终端执行 openclaw doctor 或 openclaw onboard 再配一遍。'
-    )
+    window.alert(t('settings.alertResetOk'))
     void refetch()
   }
 
   async function handleRestoreBackup() {
     const p = restorePath.trim()
     if (!p) {
-      alert('请填写备份 .tar.gz 的完整路径')
+      window.alert(t('settings.alertRestorePathEmpty'))
       return
     }
-    if (
-      !window.confirm(
-        '将把备份中的 openclaw_data 恢复到 ~/.openclaw；若目录已存在会先改名为 .bak.时间戳。确定？'
-      )
-    ) {
+    if (!window.confirm(t('settings.restoreConfirm'))) {
       return
     }
     setRestoreBusy(true)
     try {
       const r = await platformResults.restoreOpenclawBackup(p)
       if (!r.success) {
-        alert(`恢复失败：${r.error ?? '未知错误'}`)
+        window.alert(t('settings.alertRestoreFailed', { detail: fmtErr(r) }))
         return
       }
-      alert('恢复完成。建议重启网关并检查 openclaw doctor。')
+      window.alert(t('settings.alertRestoreOk'))
       await refreshBackups()
       void refetch()
     } finally {
@@ -70,137 +69,132 @@ export default function Settings() {
   }
 
   if (loading) {
-    return <LoadingState message="加载系统信息…" />
+    return <LoadingState message={t('settings.loadingSystem')} />
   }
 
   if (error || !systemInfo) {
     return (
-      <div className="py-16 text-center text-sm text-red-500">加载失败：{error ?? '未知错误'}</div>
+      <div className="py-16 text-center text-sm text-red-500">
+        {t('settings.loadFailed')} {error ?? t('common.unknownError')}
+      </div>
     )
   }
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <h1 className="text-2xl font-bold">设置</h1>
+      <h1 className="text-2xl font-bold">{t('settings.title')}</h1>
 
-      {/* Appearance */}
       <section className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">外观</h3>
+        <h3 className="font-medium mb-3">{t('settings.appearance')}</h3>
         <div className="space-y-3">
           <div className="flex items-center gap-4">
-            <label className="w-20 text-sm text-muted-foreground">主题:</label>
-            <div className="flex gap-4">
+            <span className="w-24 text-sm text-muted-foreground shrink-0">{t('settings.themeLabel')}</span>
+            <div className="flex flex-wrap gap-4">
               <label className="flex items-center gap-2">
                 <input type="radio" name="theme" defaultChecked />
-                <span className="text-sm">跟随系统</span>
+                <span className="text-sm">{t('settings.themeFollowSystem')}</span>
               </label>
               <label className="flex items-center gap-2">
                 <input type="radio" name="theme" />
-                <span className="text-sm">浅色</span>
+                <span className="text-sm">{t('settings.themeLight')}</span>
               </label>
               <label className="flex items-center gap-2">
                 <input type="radio" name="theme" />
-                <span className="text-sm">深色</span>
+                <span className="text-sm">{t('settings.themeDarkUi')}</span>
               </label>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <label className="w-20 text-sm text-muted-foreground">语言:</label>
-            <select className="px-3 py-1.5 bg-muted rounded border border-border">
-              <option>简体中文</option>
-              <option>English</option>
-            </select>
-          </div>
+          <p className="text-xs text-muted-foreground pl-24">{t('settings.appearanceLangNote')}</p>
         </div>
       </section>
 
-      {/* System */}
       <section className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">系统</h3>
+        <h3 className="font-medium mb-3">{t('settings.system')}</h3>
         <div className="space-y-2">
           <label className="flex items-center gap-2">
             <input type="checkbox" defaultChecked />
-            <span className="text-sm">开机时启动</span>
+            <span className="text-sm">{t('settings.launchAtLogin')}</span>
           </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" defaultChecked />
-            <span className="text-sm">显示系统托盘图标</span>
+            <span className="text-sm">{t('settings.showTrayIcon')}</span>
           </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" defaultChecked />
-            <span className="text-sm">关闭时最小化到托盘</span>
+            <span className="text-sm">{t('settings.minimizeToTrayOnClose')}</span>
           </label>
         </div>
       </section>
 
-      {/* System info */}
       <section className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">系统信息</h3>
+        <h3 className="font-medium mb-3">{t('settings.systemInfo')}</h3>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">OpenClaw</span>
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">{t('settings.labelOpenClaw')}</span>
             <span className={systemInfo.openclaw.installed ? 'text-green-600' : 'text-red-500'}>
-              {systemInfo.openclaw.installed ? `v${systemInfo.openclaw.version}` : '未安装'}
+              {systemInfo.openclaw.installed
+                ? openclawVersionLabel(systemInfo.openclaw.version, t)
+                : t('common.notInstalled')}
             </span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Node.js</span>
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">{t('settings.labelNode')}</span>
             <span className={systemInfo.nodejs.installed ? 'text-green-600' : 'text-red-500'}>
-              {systemInfo.nodejs.installed ? systemInfo.nodejs.version : '未安装'}
+              {systemInfo.nodejs.installed
+                ? systemInfo.nodejs.version.trim() || t('common.unknownVersion')
+                : t('common.notInstalled')}
             </span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">npm</span>
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">{t('settings.labelNpm')}</span>
             <span className={systemInfo.npm.installed ? 'text-green-600' : 'text-red-500'}>
-              {systemInfo.npm.installed ? systemInfo.npm.version : '未安装'}
+              {systemInfo.npm.installed
+                ? systemInfo.npm.version.trim() || t('common.unknownVersion')
+                : t('common.notInstalled')}
             </span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">配置路径</span>
-            <span className="font-mono text-xs">{systemInfo.openclaw.configPath}</span>
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">{t('settings.labelConfigPath')}</span>
+            <span className="font-mono text-xs break-all text-right">{systemInfo.openclaw.configPath}</span>
           </div>
         </div>
       </section>
 
-      {/* Updates */}
       <section className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">更新</h3>
+        <h3 className="font-medium mb-3">{t('settings.updates')}</h3>
         <div className="space-y-3 text-sm">
-          <div className="flex items-center justify-between">
-            <span>龙虾管家</span>
-            <span className="text-muted-foreground">v0.1.0 (开发中)</span>
+          <div className="flex items-center justify-between gap-2">
+            <span>{t('settings.appNameShort')}</span>
+            <span className="text-muted-foreground">{t('settings.appVersionLine')}</span>
           </div>
-          <div className="flex items-center justify-between">
-            <span>OpenClaw CLI</span>
+          <div className="flex items-center justify-between gap-2">
+            <span>{t('settings.labelOpenClawCli')}</span>
             <span className="text-muted-foreground">
-              {systemInfo.openclaw.installed ? `v${systemInfo.openclaw.version}` : '未安装'}
+              {systemInfo.openclaw.installed
+                ? openclawVersionLabel(systemInfo.openclaw.version, t)
+                : t('common.notInstalled')}
             </span>
           </div>
-          <button className="px-4 py-2 border border-border rounded hover:bg-accent">
-            检查更新
+          <button type="button" className="px-4 py-2 border border-border rounded hover:bg-accent">
+            {t('settings.checkUpdates')}
           </button>
-          <div className="flex items-center gap-4 mt-2">
-            <label className="text-muted-foreground">更新通道:</label>
+          <div className="flex flex-wrap items-center gap-4 mt-2">
+            <span className="text-muted-foreground">{t('settings.updateChannel')}</span>
             <select className="px-3 py-1.5 bg-muted rounded border border-border">
-              <option>Stable</option>
-              <option>Beta</option>
-              <option>Dev</option>
+              <option>{t('settings.channelStable')}</option>
+              <option>{t('settings.channelBeta')}</option>
+              <option>{t('settings.channelDev')}</option>
             </select>
           </div>
         </div>
       </section>
 
-      {/* Restore from backup */}
       <section className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">从备份恢复</h3>
-        <p className="text-xs text-muted-foreground mb-3">
-          支持由本向导或 openclaw-uninstaller 生成的{' '}
-          <code className="bg-muted px-1 rounded">openclaw_backup_*.tar.gz</code>（内含{' '}
-          <code className="bg-muted px-1 rounded">openclaw_data</code> 与 snapshot.json）。
-        </p>
+        <h3 className="font-medium mb-3">{t('settings.restoreSection')}</h3>
+        <p className="text-xs text-muted-foreground mb-3">{t('settings.restoreBlurb')}</p>
         {snapshotFiles.length > 0 && (
           <div className="mb-3">
-            <p className="text-xs text-muted-foreground mb-1">~/.openclaw_snapshots 中的备份：</p>
+            <p className="text-xs text-muted-foreground mb-1">{t('settings.snapshotsListLabel')}</p>
             <ul className="text-xs font-mono space-y-1 max-h-28 overflow-y-auto bg-muted/50 rounded p-2">
               {snapshotFiles.map((f) => (
                 <li key={f}>
@@ -216,13 +210,13 @@ export default function Settings() {
             </ul>
           </div>
         )}
-        <label className="block text-xs text-muted-foreground mb-1">备份文件路径（.tar.gz）</label>
+        <label className="block text-xs text-muted-foreground mb-1">{t('settings.restorePathLabel')}</label>
         <input
           type="text"
           className="w-full px-3 py-2 bg-muted rounded border border-border font-mono text-xs mb-2"
           value={restorePath}
           onChange={(e) => setRestorePath(e.target.value)}
-          placeholder="/path/to/openclaw_backup_xxx.tar.gz"
+          placeholder={t('settings.restorePathPlaceholder')}
         />
         <button
           type="button"
@@ -230,30 +224,29 @@ export default function Settings() {
           disabled={restoreBusy}
           onClick={() => void handleRestoreBackup()}
         >
-          {restoreBusy ? '恢复中…' : '恢复到 ~/.openclaw'}
+          {restoreBusy ? t('settings.restoreBusy') : t('settings.restoreButton')}
         </button>
       </section>
 
-      {/* Danger zone */}
       <section className="bg-card border border-red-500/50 rounded-lg p-4">
-        <h3 className="font-medium text-red-500 mb-3">危险操作</h3>
+        <h3 className="font-medium text-red-500 mb-3">{t('settings.danger')}</h3>
         <div className="flex gap-3 flex-wrap">
           <button
             type="button"
             className="px-4 py-2 border border-border rounded hover:bg-accent"
             onClick={() => void handleResetConfig()}
           >
-            重置配置
+            {t('settings.resetConfig')}
           </button>
           <button
             type="button"
             className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
             onClick={() => setUninstallWizardOpen(true)}
           >
-            卸载 OpenClaw（引导）
+            {t('settings.uninstallWizard')}
           </button>
         </div>
-        <p className="text-xs text-muted-foreground mt-2">⚠️ 这些操作不可逆，请谨慎操作</p>
+        <p className="text-xs text-muted-foreground mt-2">{t('settings.dangerHint')}</p>
       </section>
 
       <OpenClawUninstallWizard
@@ -265,20 +258,21 @@ export default function Settings() {
         }}
       />
 
-      {/* About */}
       <section className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-2">关于</h3>
-        <p className="text-sm text-muted-foreground">龙虾管家 v0.1.0</p>
-        <p className="text-sm text-muted-foreground">基于 Tauri + React 构建</p>
-        <p className="text-sm text-muted-foreground">© 2026 OpenClaw Team</p>
-        <div className="mt-3 flex gap-4">
+        <h3 className="font-medium mb-2">{t('settings.about')}</h3>
+        <p className="text-sm text-muted-foreground">
+          {t('settings.appNameShort')} {t('settings.appVersionLine')}
+        </p>
+        <p className="text-sm text-muted-foreground">{t('settings.aboutBuiltWith')}</p>
+        <p className="text-sm text-muted-foreground">{t('settings.aboutCopyright')}</p>
+        <div className="mt-3 flex gap-4 flex-wrap">
           <a
             href="https://docs.openclaw.ai"
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-primary hover:underline"
           >
-            文档
+            {t('settings.linkDocs')}
           </a>
           <a
             href="https://github.com/openclaw/openclaw"
@@ -286,7 +280,7 @@ export default function Settings() {
             rel="noopener noreferrer"
             className="text-sm text-primary hover:underline"
           >
-            GitHub
+            {t('settings.linkGitHub')}
           </a>
           <a
             href="https://clawhub.com"
@@ -294,7 +288,7 @@ export default function Settings() {
             rel="noopener noreferrer"
             className="text-sm text-primary hover:underline"
           >
-            ClawHub
+            {t('settings.linkClawHub')}
           </a>
         </div>
       </section>

@@ -1,4 +1,23 @@
-import { execOpenclaw } from '../execOpenclaw.js'
+import { execOpenclaw, type ExecOpenclawOptions } from '../execOpenclaw.js'
+
+/** Unload from gateway before removing files; best-effort (CLI may non-zero if already off) */
+const PLUGIN_DISABLE_BEFORE_UNINSTALL_OPTS: ExecOpenclawOptions = {
+  timeoutMs: 2 * 60 * 1000,
+  stdinIgnore: true,
+}
+
+/** OpenClaw 2026.3.x has no `--yes` on `plugins uninstall|install`; answer `[y/N]` via stdin. */
+const PLUGIN_CONFIRM_LINE = 'y\n'
+
+const PLUGIN_INSTALL_CLI_OPTS: ExecOpenclawOptions = {
+  timeoutMs: 5 * 60 * 1000,
+  stdinInput: PLUGIN_CONFIRM_LINE,
+}
+
+const PLUGIN_UNINSTALL_CLI_OPTS: ExecOpenclawOptions = {
+  timeoutMs: 5 * 60 * 1000,
+  stdinInput: PLUGIN_CONFIRM_LINE,
+}
 
 export interface OpenClawPluginRow {
   id: string
@@ -96,9 +115,32 @@ function looksLikePluginId(s: string): boolean {
   return /^[a-z0-9][a-z0-9_.-]*$/i.test(x)
 }
 
-function isVersionTableCell(s: string): boolean {
-  const t = s.trim()
-  return t.length > 0 && /^[\d.][\d.a-z+-]*$/i.test(t) && t.length < 40
+/**
+ * CLI often puts the real slug in Source when Name/ID wrap across lines, e.g.
+ * `global:memory-powermem/index.ts`, `stock:zalouser/index.ts`.
+ */
+function extractPluginIdFromSourceCell(source: string): string | null {
+  const s = source.trim()
+  if (!s) return null
+  const m = /^(?:global|stock):([^/\s│|]+)/i.exec(s)
+  if (!m) return null
+  const slug = (m[1] ?? '').trim()
+  return slug && looksLikePluginId(slug) ? slug : null
+}
+
+function resolveTableRowPluginId(name: string, id: string, source: string): string | null {
+  const idTrim = id.trim()
+  if (idTrim && looksLikePluginId(idTrim)) return idTrim
+  const fromSource = extractPluginIdFromSourceCell(source)
+  if (fromSource) return fromSource
+  const nameTrim = name.trim()
+  if (nameTrim && looksLikePluginId(nameTrim)) return nameTrim
+  return null
+}
+
+/** Only Status is guaranteed non-empty on the first line of a plugin and does not wrap. */
+function isPluginsTablePluginStartRow(statusCell: string): boolean {
+  return Boolean(statusCell.trim())
 }
 
 /** Merge wrapped Name cells, e.g. `@openclaw/` + `bluebubbles` → `@openclaw/bluebubbles` */
@@ -154,8 +196,9 @@ type TableAcc = {
 
 /**
  * Standard table after Doctor banner: Name | ID | Status | Source | Version.
- * A plugin starts on a row with non-empty Name/ID/Status; Status does not wrap, so a row with
- * empty Status continues the previous row (wrapped name or Source-only continuation).
+ * Only Status marks a new plugin (non-empty, no wrap). Other columns may continue on following
+ * lines while Status stays empty. When the ID cell is empty on the first line, resolve id from
+ * Source (`global:…/index.ts`). Version may appear on a continuation row — pick it up there.
  */
 function parseOpenclawPluginsTable(lines: string[], headerIdx: number): OpenClawPluginRow[] {
   const out: OpenClawPluginRow[] = []
@@ -190,26 +233,42 @@ function parseOpenclawPluginsTable(lines: string[], headerIdx: number): OpenClaw
     const source = (cells[4] ?? '').trim()
     const versionCell = (cells[5] ?? '').trim()
 
-    const idOk = looksLikePluginId(id)
-
-    if (cur && !statusCell) {
+    if (cur && !isPluginsTablePluginStartRow(statusCell)) {
       if (name) cur.name = mergeWrappedPluginName(cur.name, name)
       if (id) {
         const merged = cur.id + id
         if (looksLikePluginId(merged) && merged.length <= 80) cur.id = merged
       }
       if (source) cur.descParts.push(source)
+      const verCont = versionCell.trim()
+      if (verCont && !cur.version) cur.version = verCont
       continue
     }
 
-    if (name && id && idOk && statusCell) {
-      flush()
-      const ver = isVersionTableCell(versionCell) ? versionCell.trim() : undefined
-      const descParts: string[] = []
-      if (source) descParts.push(source)
-      cur = { name, id, status: statusCell, version: ver, descParts }
+    if (!isPluginsTablePluginStartRow(statusCell)) {
       continue
     }
+
+    const resolvedId = resolveTableRowPluginId(name, id, source)
+    if (resolvedId === null) {
+      continue
+    }
+    if (!name && !id && !source) {
+      continue
+    }
+
+    flush()
+    const verTrim = versionCell.trim()
+    const descParts: string[] = []
+    if (source) descParts.push(source)
+    cur = {
+      name: name || resolvedId,
+      id: resolvedId,
+      status: statusCell.trim(),
+      version: verTrim ? verTrim : undefined,
+      descParts,
+    }
+    continue
   }
   flush()
   return out
@@ -333,20 +392,38 @@ export async function listOpenclawPlugins(): Promise<{
   rows: OpenClawPluginRow[]
   fallbackText?: string
 }> {
+  // Warnings (e.g. plugins.allow empty) often go to stderr with ANSI; CLI may still exit non-zero
+  // even when stdout has valid --json or a table. Parse stdout first; do not require code === 0.
   let r = await execOpenclaw(['plugins', 'list', '--json'])
-  const jsonBlob = [r.stdout, r.stderr].filter(Boolean).join('\n')
-  if (r.code === 0 && jsonBlob.trim()) {
-    const rows = parsePluginsJsonString(jsonBlob)
-    if (rows.length > 0) return { rows }
+  let jsonRows = parsePluginsJsonString(stripAnsi(r.stdout))
+  if (jsonRows.length === 0) {
+    jsonRows = parsePluginsJsonString(stripAnsi(r.stderr))
   }
+  if (jsonRows.length > 0) {
+    return { rows: jsonRows }
+  }
+
   r = await execOpenclaw(['plugins', 'list'])
-  if (r.code !== 0) {
-    throw new Error(r.stderr || r.stdout || `openclaw plugins list failed (${r.code})`)
+  const out = stripAnsi(r.stdout).trim()
+  let fromText = parsePluginsPlainText(out)
+  if (fromText.length === 0) {
+    const combined = stripAnsi([r.stdout, r.stderr].filter(Boolean).join('\n')).trim()
+    fromText = parsePluginsPlainText(combined)
   }
-  const text = [r.stdout, r.stderr].filter(Boolean).join('\n').trim()
-  const fromText = parsePluginsPlainText(text)
-  if (fromText.length > 0) return { rows: fromText }
-  return { rows: [], fallbackText: text || undefined }
+  if (fromText.length > 0) {
+    return { rows: fromText }
+  }
+  const fallback = stripAnsi([r.stdout, r.stderr].filter(Boolean).join('\n')).trim()
+  if (r.code !== 0) {
+    return {
+      rows: [],
+      fallbackText:
+        fallback ||
+        stripAnsi(r.stderr || r.stdout).trim() ||
+        `openclaw plugins list failed (${r.code})`,
+    }
+  }
+  return { rows: [], fallbackText: fallback || undefined }
 }
 
 /** Run `openclaw plugins enable|disable <id>`; id is allowlisted to avoid shell injection */
@@ -356,7 +433,7 @@ export async function setOpenclawPluginEnabled(id: string, enabled: boolean): Pr
     throw new Error('Invalid plugin id')
   }
   const sub = enabled ? 'enable' : 'disable'
-  const r = await execOpenclaw(['plugins', sub, x])
+  const r = await execOpenclaw(['plugins', sub, x], { stdinIgnore: true })
   if (r.code !== 0) {
     throw new Error(
       [r.stderr, r.stdout].filter(Boolean).join('\n').trim() || `openclaw plugins ${sub} failed (${r.code})`
@@ -370,10 +447,35 @@ export async function installOpenclawPlugin(id: string): Promise<void> {
   if (!looksLikePluginId(x)) {
     throw new Error('Invalid plugin id')
   }
-  const r = await execOpenclaw(['plugins', 'install', x])
+  const r = await execOpenclaw(['plugins', 'install', x], PLUGIN_INSTALL_CLI_OPTS)
   if (r.code !== 0) {
     throw new Error(
       [r.stderr, r.stdout].filter(Boolean).join('\n').trim() || `openclaw plugins install failed (${r.code})`
+    )
+  }
+}
+
+/** Run `openclaw plugins uninstall <id>`; optional `--keep-files` per OpenClaw CLI */
+export async function uninstallOpenclawPlugin(
+  id: string,
+  keepFiles?: boolean,
+  options?: { disableLoadedFirst?: boolean }
+): Promise<void> {
+  const x = id.trim()
+  if (!looksLikePluginId(x)) {
+    throw new Error('Invalid plugin id')
+  }
+  if (options?.disableLoadedFirst === true) {
+    await execOpenclaw(['plugins', 'disable', x], PLUGIN_DISABLE_BEFORE_UNINSTALL_OPTS)
+  }
+  const args = ['plugins', 'uninstall', x]
+  if (keepFiles) {
+    args.push('--keep-files')
+  }
+  const r = await execOpenclaw(args, PLUGIN_UNINSTALL_CLI_OPTS)
+  if (r.code !== 0) {
+    throw new Error(
+      [r.stderr, r.stdout].filter(Boolean).join('\n').trim() || `openclaw plugins uninstall failed (${r.code})`
     )
   }
 }

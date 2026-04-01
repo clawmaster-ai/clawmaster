@@ -4,6 +4,7 @@ import type { AdapterResult } from '@/shared/adapters/types'
 import { getIsTauri } from '@/shared/adapters/platform'
 import { webFetchJson } from '@/shared/adapters/webHttp'
 import i18n from '@/i18n'
+import { formatTauriErrorString } from '@/shared/adapters/tauriCommandError'
 
 export interface DoctorFixBootstrapResult {
   ok: boolean
@@ -42,7 +43,7 @@ export function formatBootstrapSummary(r: AdapterResult<BootstrapAfterInstallRes
     gatewayStart.ok
       ? i18n.t('bootstrap.gatewayOk')
       : i18n.t('bootstrap.gatewayWarn', {
-          detail: gatewayStart.error ?? i18n.t('common.unknownError'),
+          detail: formatTauriErrorString(gatewayStart.error, i18n.t.bind(i18n)),
         })
   )
   return parts.join('\n')

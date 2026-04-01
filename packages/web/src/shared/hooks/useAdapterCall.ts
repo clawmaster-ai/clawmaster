@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import i18n from '@/i18n'
+import { useTranslation } from 'react-i18next'
 import type { AdapterResult } from '@/shared/adapters/types'
+import { formatAdapterResultError } from '@/shared/adapters/tauriCommandError'
 
 export interface UseAdapterCallOptions {
   /** Poll interval in ms; omit to disable polling */
@@ -11,6 +12,7 @@ export function useAdapterCall<T>(
   fetcher: () => Promise<AdapterResult<T>>,
   options?: UseAdapterCallOptions
 ) {
+  const { t } = useTranslation()
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -24,14 +26,14 @@ export function useAdapterCall<T>(
         setData(res.data ?? null)
         setError(null)
       } else {
-        setError(res.error ?? i18n.t('common.unknownError'))
+        setError(formatAdapterResultError(res, t))
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
-  }, [fetcher])
+  }, [fetcher, t])
 
   useEffect(() => {
     void refetch()

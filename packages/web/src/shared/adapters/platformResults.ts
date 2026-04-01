@@ -56,13 +56,29 @@ import {
   reinstallUninstallStepResult,
 } from '@/shared/adapters/npmOpenclaw'
 import { bootstrapAfterInstallResult } from '@/shared/adapters/openclawBootstrap'
-import { installPluginResult, listPluginsResult, setPluginEnabledResult } from '@/shared/adapters/plugins'
+import {
+  installPluginResult,
+  listPluginsResult,
+  setPluginEnabledResult,
+  uninstallPluginResult,
+} from '@/shared/adapters/plugins'
 import {
   clawprobeBootstrapResult,
   clawprobeConfigResult,
   clawprobeCostResult,
   clawprobeStatusResult,
 } from '@/shared/adapters/clawprobeClient'
+import {
+  openclawMemorySearchResult,
+  openclawMemoryStatusResult,
+  powermemBootstrapStreamResult,
+  powermemDeleteResult,
+  powermemEnvGetResult,
+  powermemEnvPutResult,
+  powermemListResult,
+  powermemMetaResult,
+  powermemSearchResult,
+} from '@/shared/adapters/memory'
 
 export const platformResults = {
   detectSystem: detectSystemResult,
@@ -97,6 +113,7 @@ export const platformResults = {
   listPlugins: listPluginsResult,
   setPluginEnabled: setPluginEnabledResult,
   installPlugin: installPluginResult,
+  uninstallPlugin: uninstallPluginResult,
   getBindings: getBindingsResult,
   upsertBinding: upsertBindingResult,
   deleteBinding: deleteBindingResult,
@@ -118,6 +135,15 @@ export const platformResults = {
   clawprobeCost: clawprobeCostResult,
   clawprobeConfig: clawprobeConfigResult,
   clawprobeBootstrap: clawprobeBootstrapResult,
+  openclawMemoryStatus: openclawMemoryStatusResult,
+  openclawMemorySearch: openclawMemorySearchResult,
+  powermemMeta: powermemMetaResult,
+  powermemBootstrapStream: powermemBootstrapStreamResult,
+  powermemList: powermemListResult,
+  powermemSearch: powermemSearchResult,
+  powermemDelete: powermemDeleteResult,
+  powermemEnvGet: powermemEnvGetResult,
+  powermemEnvPut: powermemEnvPutResult,
 } as const
 
 export type PlatformResults = typeof platformResults

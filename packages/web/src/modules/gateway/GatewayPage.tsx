@@ -85,8 +85,10 @@ export default function Gateway() {
     }
   }
 
+  // Defer WhatsApp status until after paint so the main gateway/config request isn’t contending on the network thread.
   useEffect(() => {
-    let timer: number | undefined
+    let pollTimer: number | undefined
+    let raf2: number | undefined
     let active = true
     const tick = async () => {
       const r = await platformResults.getWhatsAppLoginStatus()
@@ -98,13 +100,19 @@ export default function Gateway() {
       setWaError(null)
       setWaStatus(r.data)
       if (r.data.status === 'pending') {
-        timer = window.setTimeout(() => void tick(), 2000)
+        pollTimer = window.setTimeout(() => void tick(), 2000)
       }
     }
-    void tick()
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        if (active) void tick()
+      })
+    })
     return () => {
       active = false
-      if (timer) window.clearTimeout(timer)
+      cancelAnimationFrame(raf1)
+      if (raf2 !== undefined) cancelAnimationFrame(raf2)
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer)
     }
   }, [t])
 

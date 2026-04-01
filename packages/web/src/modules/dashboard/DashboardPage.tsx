@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { platformResults } from '@/adapters'
 import { formatBootstrapSummary } from '@/shared/adapters/openclawBootstrap'
 import type { SystemInfo, GatewayStatus, OpenClawConfig, OpenClawChannelEntry } from '@/lib/types'
+import { openclawVersionLabel } from '@/lib/systemVersionLabel'
 
 const DASHBOARD_CACHE_KEY = 'dashboard:overview:v1'
 const MAX_VISIBLE_CHANNELS = 20
@@ -195,19 +196,25 @@ export default function Dashboard() {
             <div>
               <span className="text-muted-foreground">Node.js: </span>
               <span className={systemInfo.nodejs.installed ? 'text-green-600' : 'text-red-500'}>
-                {systemInfo.nodejs.installed ? systemInfo.nodejs.version : t('common.notInstalled')}
+                {systemInfo.nodejs.installed
+                  ? systemInfo.nodejs.version.trim() || t('common.unknownVersion')
+                  : t('common.notInstalled')}
               </span>
             </div>
             <div>
               <span className="text-muted-foreground">npm: </span>
               <span className={systemInfo.npm.installed ? 'text-green-600' : 'text-red-500'}>
-                {systemInfo.npm.installed ? systemInfo.npm.version : t('common.notInstalled')}
+                {systemInfo.npm.installed
+                  ? systemInfo.npm.version.trim() || t('common.unknownVersion')
+                  : t('common.notInstalled')}
               </span>
             </div>
             <div>
               <span className="text-muted-foreground">OpenClaw: </span>
               <span className={systemInfo.openclaw.installed ? 'text-green-600' : 'text-red-500'}>
-                {systemInfo.openclaw.installed ? `v${systemInfo.openclaw.version}` : t('common.notInstalled')}
+                {systemInfo.openclaw.installed
+                  ? openclawVersionLabel(systemInfo.openclaw.version, t)
+                  : t('common.notInstalled')}
               </span>
             </div>
           </div>

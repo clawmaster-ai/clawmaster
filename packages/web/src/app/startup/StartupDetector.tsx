@@ -18,6 +18,7 @@ import {
 } from '@/shared/adapters/openclawBootstrap'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
+import { openclawVersionLabel } from '@/lib/systemVersionLabel'
 
 interface StartupDetectorProps {
   onDetected: (info: SystemInfo) => void
@@ -656,7 +657,7 @@ export default function StartupDetector({
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t('startup.labelOcVersion')}</span>
-              <span className="font-medium">{systemInfo.openclaw.version}</span>
+              <span className="font-medium">{openclawVersionLabel(systemInfo.openclaw.version, t)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t('startup.labelConfigPath')}</span>
@@ -665,13 +666,17 @@ export default function StartupDetector({
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t('startup.labelNode')}</span>
               <span className={systemInfo.nodejs.installed ? 'text-green-600' : 'text-red-500'}>
-                {systemInfo.nodejs.installed ? systemInfo.nodejs.version : t('common.notInstalled')}
+                {systemInfo.nodejs.installed
+                  ? systemInfo.nodejs.version.trim() || t('common.unknownVersion')
+                  : t('common.notInstalled')}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t('startup.labelNpm')}</span>
               <span className={systemInfo.npm.installed ? 'text-green-600' : 'text-red-500'}>
-                {systemInfo.npm.installed ? systemInfo.npm.version : t('common.notInstalled')}
+                {systemInfo.npm.installed
+                  ? systemInfo.npm.version.trim() || t('common.unknownVersion')
+                  : t('common.notInstalled')}
               </span>
             </div>
           </div>
@@ -712,14 +717,18 @@ export default function StartupDetector({
               {systemInfo?.nodejs.installed ? '✅' : '❌'}
               <span>{t('startup.reqNode')}</span>
               {systemInfo?.nodejs.installed && (
-                <span className="text-muted-foreground ml-auto">{systemInfo.nodejs.version}</span>
+                <span className="text-muted-foreground ml-auto">
+                  {systemInfo.nodejs.version.trim() || t('common.unknownVersion')}
+                </span>
               )}
             </div>
             <div className="flex items-center gap-2">
               {systemInfo?.npm.installed ? '✅' : '❌'}
               <span>{t('startup.reqNpm')}</span>
               {systemInfo?.npm.installed && (
-                <span className="text-muted-foreground ml-auto">{systemInfo.npm.version}</span>
+                <span className="text-muted-foreground ml-auto">
+                  {systemInfo.npm.version.trim() || t('common.unknownVersion')}
+                </span>
               )}
             </div>
           </div>

@@ -17,6 +17,11 @@ export async function getGatewayStatus() {
   const gwc = cfg?.gateway
   if (isRecord(gwc) && typeof gwc.port === 'number') port = gwc.port
 
+  // Fast path: listening on configured port → skip slow login-shell `openclaw gateway status` (common when gateway is up).
+  if (await probeGatewayTcpPort(port)) {
+    return { running: true, port }
+  }
+
   const r = await execOpenclawGatewayStatusJson()
   const combined = `${r.stdout}\n${r.stderr}`
   const parsed =
@@ -26,6 +31,12 @@ export async function getGatewayStatus() {
     port = parsed.port
   }
   if (parsed?.running) return { running: true, port }
+
+  // JSON explicitly says stopped → skip second expensive plain-text status call; re-probe port (may differ from config).
+  if (parsed !== null && !parsed.running) {
+    if (await probeGatewayTcpPort(port)) return { running: true, port }
+    return { running: false, port }
+  }
 
   const plain = await execOpenclawGatewayStatusPlain()
   const text = `${plain.stdout}\n${plain.stderr}`

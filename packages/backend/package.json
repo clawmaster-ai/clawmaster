@@ -1,11 +1,11 @@
 {
   "name": "@openclaw-manager/backend",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc && node --input-type=module -e \"import fs from 'node:fs'; fs.copyFileSync('src/powermem.env.example','dist/powermem.env.example')\"",
     "start": "node dist/index.js"
   },
   "dependencies": {

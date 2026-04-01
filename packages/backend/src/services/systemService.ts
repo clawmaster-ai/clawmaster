@@ -36,7 +36,7 @@ export async function detectSystemInfo() {
     configPath,
   }
   if (ocRaw || configExists) {
-    let version = '未知'
+    let version = ''
     if (ocRaw) {
       version = ocRaw.replace(/^openclaw\s+/i, '').replace(/^v/, '').trim()
     }
