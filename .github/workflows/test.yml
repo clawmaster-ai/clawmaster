@@ -205,22 +205,23 @@ jobs:
           const browser = await chromium.launch({ headless: true });
           const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 
+          // Use locale-agnostic checks: each page has a term that appears in ALL languages
           const pages = [
-            { path: '/?demo=skip', name: 'dashboard', expect: '概览' },
-            { path: '/gateway?demo=skip', name: 'gateway', expect: '网关' },
-            { path: '/observe?demo=skip', name: 'observe', expect: '可观测' },
+            { path: '/?demo=skip', name: 'dashboard', expect: 'ClawMaster' },
+            { path: '/gateway?demo=skip', name: 'gateway', expect: '18789' },
+            { path: '/observe?demo=skip', name: 'observe', expect: 'ClawProbe' },
             { path: '/mcp?demo=skip', name: 'mcp', expect: 'MCP' },
-            { path: '/channels?demo=skip', name: 'channels', expect: '通道' },
-            { path: '/memory?demo=skip', name: 'memory', expect: '记忆' },
-            { path: '/sessions?demo=skip', name: 'sessions', expect: '会话' },
-            { path: '/models?demo=skip', name: 'models', expect: '模型' },
-            { path: '/skills?demo=skip', name: 'skills', expect: '技能' },
-            { path: '/agents?demo=skip', name: 'agents', expect: '智能体' },
-            { path: '/plugins?demo=skip', name: 'plugins', expect: '插件' },
-            { path: '/config?demo=skip', name: 'config', expect: '配置' },
-            { path: '/docs?demo=skip', name: 'docs', expect: '文档' },
-            { path: '/logs?demo=skip', name: 'logs', expect: '日志' },
-            { path: '/settings?demo=skip', name: 'settings', expect: '设置' },
+            { path: '/channels?demo=skip', name: 'channels', expect: 'Telegram' },
+            { path: '/memory?demo=skip', name: 'memory', expect: 'OpenClaw' },
+            { path: '/sessions?demo=skip', name: 'sessions', expect: 'Agent' },
+            { path: '/models?demo=skip', name: 'models', expect: 'OpenAI' },
+            { path: '/skills?demo=skip', name: 'skills', expect: 'ClawHub' },
+            { path: '/agents?demo=skip', name: 'agents', expect: '.openclaw' },
+            { path: '/plugins?demo=skip', name: 'plugins', expect: 'openclaw' },
+            { path: '/config?demo=skip', name: 'config', expect: 'openclaw.json' },
+            { path: '/docs?demo=skip', name: 'docs', expect: 'openclaw' },
+            { path: '/logs?demo=skip', name: 'logs', expect: 'gateway.log' },
+            { path: '/settings?demo=skip', name: 'settings', expect: 'Node.js' },
           ];
 
           let pass = 0, fail = 0;
@@ -260,12 +261,12 @@ jobs:
           const text = await page.evaluate(() => document.body.innerText);
 
           const checks = [
-            ['Title', text.includes('技能市场')],
-            ['Category pills', text.includes('OCR') && text.includes('编程工程')],
-            ['Scene bundles', text.includes('拍照答题') && text.includes('编程增强')],
-            ['Curated catalog', text.includes('精选目录')],
-            ['Catalog entries', text.includes('Self-Improving Agent') && text.includes('ClawVet')],
-            ['Install buttons', text.includes('安装')],
+            ['ClawHub link', text.includes('ClawHub')],
+            ['Category: OCR', text.includes('OCR')],
+            ['Scene: PaddleOCR', text.includes('PaddleOCR')],
+            ['Catalog: Self-Improving', text.includes('Self-Improving Agent')],
+            ['Catalog: ClawVet', text.includes('ClawVet')],
+            ['Catalog: Writing Style', text.includes('Writing Style')],
             ['No i18n leaks', !text.includes('skills.catalog.')],
           ];
 
