@@ -1,0 +1,127 @@
+suite: plugins-module
+name: 插件管理功能
+description: |
+  验证插件管理页面的完整功能：
+  插件表格、搜索过滤、状态过滤、启用/禁用、安装/卸载、描述展开
+
+preconditions:
+  - dev server 已启动（{BASE_URL} 可访问）
+  - 已进入主界面
+
+viewport: { width: 1280, height: 800 }
+
+cases:
+  - id: plg-01
+    name: 插件表格渲染
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/plugins"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: plugins-table
+    assertions:
+      - 页面标题"插件管理"
+      - 显示介绍副标题
+      - 显示"刷新"按钮
+      - 如有插件：显示表格
+      - 表头包含：名称/ID、状态、版本、描述
+      - 每行显示：插件名（粗体）+ ID（mono 字体灰色）
+      - 状态列：已启用为绿色文字、已禁用为灰色文字
+      - 状态列显示"启用""禁用""卸载"三个按钮
+      - 版本列显示版本号或"—"
+      - 如无插件：显示空状态提示
+
+  - id: plg-02
+    name: 搜索过滤
+    preconditions:
+      - 已安装至少 2 个插件
+    steps:
+      - action: fill
+        target: input[type="search"]
+        value: "mcp"
+      - action: wait
+        duration: 500ms
+      - action: screenshot
+        name: plugins-search
+    assertions:
+      - 表格仅显示名称/ID/状态/描述中包含"mcp"的插件
+      - 不匹配的插件行被隐藏
+      - 如无匹配：表格下方显示"无匹配结果"
+      - 清空搜索框后恢复完整列表
+
+  - id: plg-03
+    name: 状态过滤下拉框
+    steps:
+      - action: select
+        target: 状态过滤下拉框
+        value: "全部"
+      - action: wait
+        duration: 500ms
+    assertions:
+      - 下拉框有三个选项：已加载、全部、已禁用
+      - 默认选择"已加载"（仅显示启用的插件）
+      - 选择"全部"显示所有插件（含禁用）
+      - 选择"已禁用"仅显示禁用状态的插件
+      - 排序：启用的排在前面
+
+  - id: plg-04
+    name: 启用/禁用插件
+    preconditions:
+      - 已安装至少一个插件
+    steps:
+      - action: click
+        target: 某插件的"禁用"按钮
+      - action: wait
+        duration: 2000ms
+    assertions:
+      - 按钮显示"…"（busy 状态）
+      - 操作完成后状态文字变为 disabled/灰色
+      - 该行"禁用"按钮变为 disabled，"启用"按钮变为可用
+      - 列表自动刷新
+
+  - id: plg-05
+    name: 安装插件
+    steps:
+      - action: fill
+        target: input[placeholder*="插件 ID"]
+        value: "test-plugin"
+      - action: click
+        target: text("安装")
+      - action: observe
+        duration: 10000ms
+    assertions:
+      - 安装按钮显示"安装中..."
+      - 所有操作按钮在 busy 期间 disabled
+      - 安装成功后插件出现在表格中
+      - 安装失败显示红色错误信息
+
+  - id: plg-06
+    name: 卸载插件
+    preconditions:
+      - 已安装至少一个插件
+    steps:
+      - action: click
+        target: 某插件的"卸载"按钮
+      - action: observe
+        duration: 1000ms
+    assertions:
+      - 弹出确认对话框"确定要卸载 XXX 吗？"
+      - 确认后按钮显示"卸载中..."
+      - 卸载完成后该插件从表格移除
+      - 取消则保持原状态
+      - "卸载时保留文件"复选框生效（在工具栏中可勾选）
+
+  - id: plg-07
+    name: 描述展开/折叠
+    preconditions:
+      - 存在描述超过 96 字符的插件
+    steps:
+      - action: observe
+        target: 长描述插件行
+    assertions:
+      - 描述默认截断为 2 行（line-clamp-2）
+      - 显示"展开"按钮
+      - 点击"展开"后显示完整描述
+      - 按钮变为"收起"
+      - 点击"收起"恢复截断

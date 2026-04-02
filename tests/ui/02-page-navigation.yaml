@@ -207,3 +207,53 @@ cases:
       - 显示"系统信息"区块
       - 显示"关于"区块，包含"龙虾管理大师 v0.3.0"
       - 主题 radio 按钮可点击切换
+
+  - id: nav-13
+    name: MCP 服务器页
+    steps:
+      - action: click
+        target: role(link, "MCP")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-mcp
+    assertions:
+      - 侧边栏"MCP"项高亮
+      - 页面标题"MCP 服务器"
+      - 显示分类过滤器（全部 + 各分类 pill 按钮）
+      - 显示 MCP 服务器卡片网格（至少 5 个服务器）
+      - 底部显示"自定义服务器"表单区域
+
+  - id: nav-14
+    name: 会话页
+    steps:
+      - action: click
+        target: role(link, "会话")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-sessions
+    assertions:
+      - 侧边栏"会话"项高亮
+      - 页面标题"会话管理"
+      - 显示刷新按钮和清理按钮
+      - 显示 Agent 过滤下拉框
+      - 如有会话：显示会话卡片列表（含 session key、模型、token 使用条）
+      - 如无会话：显示空状态提示
+
+  - id: nav-15
+    name: 插件页
+    steps:
+      - action: click
+        target: role(link, "插件")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-plugins
+    assertions:
+      - 侧边栏"插件"项高亮
+      - 页面标题"插件管理"
+      - 显示搜索输入框 + 状态过滤下拉框
+      - 显示安装插件输入区域
+      - 如有插件：显示插件表格（名称、状态、版本、描述列）
+      - 如无插件：显示空状态提示

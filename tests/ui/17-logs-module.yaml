@@ -1,0 +1,90 @@
+suite: logs-module
+name: 日志查看功能
+description: |
+  验证日志查看页面的完整功能：
+  日志列表、级别过滤、搜索过滤、颜色编码、刷新
+
+preconditions:
+  - dev server 已启动（{BASE_URL} 可访问）
+  - 已进入主界面
+
+viewport: { width: 1280, height: 800 }
+
+cases:
+  - id: log-01
+    name: 日志查看器渲染
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/logs"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: logs-viewer
+    assertions:
+      - 页面标题"日志"
+      - 显示级别过滤下拉框
+      - 显示搜索输入框
+      - 显示"刷新"按钮
+      - 日志区域为 monospace 字体、可滚动的容器
+      - 每行日志格式：时间戳 | [级别] | 消息
+      - 如有日志：行数 > 0
+      - 如无日志：显示"暂无日志"居中提示
+      - 底部显示日志文件路径提示（~/.openclaw/logs/gateway.log）
+
+  - id: log-02
+    name: 级别过滤
+    preconditions:
+      - 日志中包含不同级别的条目
+    steps:
+      - action: select
+        target: 级别过滤下拉框
+        value: "ERROR"
+      - action: wait
+        duration: 500ms
+      - action: screenshot
+        name: logs-filter-error
+    assertions:
+      - 下拉框有 5 个选项：全部、INFO、DEBUG、WARN、ERROR
+      - 选择"ERROR"后仅显示 ERROR 级别的日志行
+      - 其他级别的日志被过滤隐藏
+      - 选择"全部"恢复所有日志
+
+  - id: log-03
+    name: 搜索过滤
+    steps:
+      - action: fill
+        target: input[placeholder*="搜索"]
+        value: "gateway"
+      - action: wait
+        duration: 500ms
+    assertions:
+      - 仅显示消息中包含"gateway"的日志行
+      - 过滤实时生效（输入即过滤）
+      - 可与级别过滤组合使用（同时选 ERROR + 搜索"gateway"）
+      - 清空搜索框恢复完整列表
+
+  - id: log-04
+    name: 颜色编码
+    steps:
+      - action: observe
+        target: 日志行
+    assertions:
+      - INFO 级别文字为蓝色（text-blue-500）
+      - DEBUG 级别文字为灰色（text-gray-400）
+      - WARN 级别文字为黄色（text-yellow-500）
+      - ERROR 级别文字为红色（text-red-500）
+      - 时间戳为 muted 颜色
+      - 行 hover 时有浅色背景高亮（bg-accent/30）
+
+  - id: log-05
+    name: 刷新按钮
+    steps:
+      - action: click
+        target: text("刷新")
+      - action: wait
+        duration: 1500ms
+    assertions:
+      - 点击后重新加载日志列表
+      - 加载期间可能短暂显示 loading
+      - 新日志条目（如果有）出现在列表中
+      - 当前过滤条件保持不变

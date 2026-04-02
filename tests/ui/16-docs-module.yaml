@@ -1,0 +1,74 @@
+suite: docs-module
+name: 文档中心功能
+description: |
+  验证文档中心页面的完整功能：
+  快速链接网格、搜索输入、搜索结果显示、外部链接
+
+preconditions:
+  - dev server 已启动（{BASE_URL} 可访问）
+  - 已进入主界面
+
+viewport: { width: 1280, height: 800 }
+
+cases:
+  - id: doc-01
+    name: 快速链接网格
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/docs"
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: docs-quicklinks
+    assertions:
+      - 页面标题"文档中心"
+      - 显示 2 列快速链接网格
+      - 6 个链接卡片：快速开始、CLI 参考、通道配置、模型配置、技能开发、安全指南
+      - 每张卡片包含标题 + 描述文字
+      - 卡片 hover 时 border 变色（border-primary/50）
+      - 底部显示"查看完整文档 →"链接
+      - 所有链接指向 docs.openclaw.ai 域名
+
+  - id: doc-02
+    name: 搜索输入交互
+    steps:
+      - action: fill
+        target: input[placeholder*="搜索"]
+        value: "channel"
+      - action: screenshot
+        name: docs-search-input
+    assertions:
+      - 搜索输入框显示已填入的文字"channel"
+      - "搜索"按钮可用（不再 disabled）
+      - 可按 Enter 触发搜索
+
+  - id: doc-03
+    name: 搜索结果显示
+    steps:
+      - action: fill
+        target: input[placeholder*="搜索"]
+        value: "channel"
+      - action: click
+        target: text("搜索")
+      - action: wait
+        duration: 3000ms
+      - action: screenshot
+        name: docs-search-results
+    assertions:
+      - 搜索按钮在请求期间显示"搜索中..."
+      - 搜索完成后显示结果列表
+      - 每条结果包含：标题（primary 颜色）、URL（mono 字体）、摘要
+      - 结果条数显示在列表上方
+      - 搜索后快速链接区域隐藏
+      - 如无结果：显示"未找到相关文档"
+
+  - id: doc-04
+    name: 外部链接属性
+    steps:
+      - action: observe
+        target: 所有链接元素
+    assertions:
+      - 快速链接卡片有 target="_blank" 属性
+      - 快速链接卡片有 rel="noopener noreferrer" 属性
+      - 搜索结果链接同样有 target="_blank"
+      - 点击链接在新标签页打开
