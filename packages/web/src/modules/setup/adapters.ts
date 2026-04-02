@@ -9,7 +9,8 @@
 import { execCommand } from '@/shared/adapters/platform'
 
 const TEMP = '${TMPDIR:-/tmp}'
-import { detectMirrors, getMirrorSetupCommands } from '@/shared/adapters/mirror'
+// Mirror detection removed — PR #2 uses probeMirrorResult instead
+// import { detectMirrors, getMirrorSetupCommands } from '@/shared/adapters/mirror'
 import {
   CAPABILITIES,
   PROVIDERS,
@@ -192,18 +193,6 @@ export const realSetupAdapter: SetupAdapter = {
   },
 
   async installCapabilities(ids, onProgress) {
-    // 先检测网络，配置镜像
-    const { mirrors } = await detectMirrors()
-    const mirrorCmds = getMirrorSetupCommands(mirrors)
-    for (const cmd of mirrorCmds) {
-      const [bin, ...args] = cmd.split(' ')
-      try {
-        await execCommand(bin, args)
-      } catch {
-        // 镜像配置失败不阻断安装
-      }
-    }
-
     // 逐项安装
     for (const id of ids) {
       const cap = CAPABILITIES.find((c) => c.id === id)

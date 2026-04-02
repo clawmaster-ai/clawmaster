@@ -1,64 +1,153 @@
-/**
- * ClawHub 适配器
- *
- * 封装 clawhub CLI 命令，管理技能的安装/卸载/列表/搜索
- */
+import type { SkillInfo } from '@/lib/types'
+import { tauriInvoke } from '@/shared/adapters/invoke'
+import { fromPromise } from '@/shared/adapters/resultHelpers'
+import type { AdapterResult } from '@/shared/adapters/types'
+import { fail, ok } from '@/shared/adapters/types'
+import { getIsTauri } from '@/shared/adapters/platform'
+import { webFetchJson } from '@/shared/adapters/webHttp'
 
-import { execCommand } from './platform'
-import { wrapAsync, type AdapterResult } from './types'
+/** Same order as packages/backend/src/skillsCli.ts SKILL_CLI_ROOTS */
+const SKILL_CLI_ROOTS = ['skills', 'clawbot', 'clawhub'] as const
 
-// ─── 类型定义 ───
-
-export interface HubSkill {
-  slug: string
-  name: string
-  description: string
-  version: string
-  installed: boolean
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-// ─── API 函数 ───
+function mapSkillRow(s: Record<string, unknown>, installed: boolean): SkillInfo {
+  const slug = (s.slug as string) || (s.name as string)
+  return {
+    slug,
+    name: (s.name as string) || slug,
+    description: (s.description as string) || '',
+    version: (s.version as string) || 'unknown',
+    installed,
+  }
+}
 
-export function listInstalledSkills(): Promise<AdapterResult<HubSkill[]>> {
-  return wrapAsync(async () => {
-    const raw = await execCommand('clawhub', ['list', '--json'])
-    const data = JSON.parse(raw)
-    const skills = Array.isArray(data) ? data : data.skills ?? data.installed ?? []
-    return skills.map((s: any) => ({
-      slug: s.slug ?? s.name,
-      name: s.name ?? s.slug,
-      description: s.description ?? '',
-      version: s.version ?? 'unknown',
-      installed: true,
-    }))
+function parseSkillsOpenclawJson(raw: string, installed: boolean): SkillInfo[] {
+  let data: unknown
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    throw new Error('Invalid JSON from openclaw skills')
+  }
+  const rows = Array.isArray(data)
+    ? data
+    : isRecord(data) && Array.isArray(data.items)
+      ? data.items
+      : isRecord(data) && Array.isArray(data.skills)
+        ? data.skills
+        : []
+  return rows.filter(isRecord).map((s) => mapSkillRow(s, installed))
+}
+
+let tauriSkillsCliRootCache: (typeof SKILL_CLI_ROOTS)[number] | null = null
+
+async function tauriPickSkillsRootAndRun<T>(
+  fn: (root: (typeof SKILL_CLI_ROOTS)[number]) => Promise<T>
+): Promise<T> {
+  if (tauriSkillsCliRootCache) {
+    try {
+      return await fn(tauriSkillsCliRootCache)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (/unknown command/i.test(msg)) {
+        tauriSkillsCliRootCache = null
+      } else {
+        throw e instanceof Error ? e : new Error(msg)
+      }
+    }
+  }
+
+  const settled = await Promise.allSettled(SKILL_CLI_ROOTS.map((root) => fn(root)))
+  const errors: Error[] = []
+  for (let i = 0; i < settled.length; i++) {
+    const r = settled[i]
+    if (r.status === 'fulfilled') {
+      tauriSkillsCliRootCache = SKILL_CLI_ROOTS[i]
+      return r.value
+    }
+    errors.push(r.reason instanceof Error ? r.reason : new Error(String(r.reason)))
+  }
+  const serious = errors.find((e) => !/unknown command/i.test(e.message))
+  if (serious) throw serious
+  throw (
+    errors[errors.length - 1] ??
+    new Error('openclaw: no matching skills CLI (tried skills, clawbot, clawhub)')
+  )
+}
+
+async function tauriOpenclawSkills(tail: string[]): Promise<string> {
+  return tauriPickSkillsRootAndRun((root) =>
+    tauriInvoke<string>('run_openclaw_command', { args: [root, ...tail] })
+  )
+}
+
+async function tauriOpenclawSkillsVoid(tail: string[]): Promise<void> {
+  await tauriPickSkillsRootAndRun(async (root) => {
+    await tauriInvoke('run_openclaw_command', { args: [root, ...tail] })
   })
 }
 
-export function searchSkills(query: string): Promise<AdapterResult<HubSkill[]>> {
-  return wrapAsync(async () => {
-    const raw = await execCommand('clawhub', ['search', query, '--json'])
-    const data = JSON.parse(raw)
-    const skills = Array.isArray(data) ? data : data.skills ?? data.results ?? []
-    return skills.map((s: any) => ({
-      slug: s.slug ?? s.name,
-      name: s.name ?? s.slug,
-      description: s.description ?? '',
-      version: s.version ?? 'unknown',
-      installed: false,
-    }))
-  })
+export async function getSkillsResult(): Promise<AdapterResult<SkillInfo[]>> {
+  if (getIsTauri()) {
+    const parsed = await fromPromise(async () => {
+      const result = await tauriOpenclawSkills(['list', '--json'])
+      return parseSkillsOpenclawJson(result, true)
+    })
+    return parsed
+  }
+  return webFetchJson<SkillInfo[]>('/api/skills')
 }
 
-export function installSkill(slug: string): Promise<AdapterResult<string>> {
-  return wrapAsync(async () => {
-    const raw = await execCommand('clawhub', ['install', slug])
-    return raw.trim()
-  })
+export async function searchSkillsResult(query: string): Promise<AdapterResult<SkillInfo[]>> {
+  if (getIsTauri()) {
+    return fromPromise(async () => {
+      const result = await tauriOpenclawSkills(['search', query, '--json'])
+      return parseSkillsOpenclawJson(result, false)
+    })
+  }
+  return webFetchJson<SkillInfo[]>(`/api/skills/search?q=${encodeURIComponent(query)}`)
 }
 
-export function uninstallSkill(slug: string): Promise<AdapterResult<string>> {
-  return wrapAsync(async () => {
-    const raw = await execCommand('clawhub', ['uninstall', slug])
-    return raw.trim()
+export async function installSkillResult(slug: string): Promise<AdapterResult<void>> {
+  if (getIsTauri()) {
+    return fromPromise(() => tauriOpenclawSkillsVoid(['install', slug]))
+  }
+  const res = await fetch('/api/skills/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug }),
   })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    return fail(text ? `HTTP ${res.status}: ${text.slice(0, 240)}` : `HTTP ${res.status}`)
+  }
+  return ok(undefined)
+}
+
+async function tauriOpenclawSkillsUninstall(slug: string): Promise<void> {
+  try {
+    await tauriOpenclawSkillsVoid(['uninstall', slug])
+  } catch (first) {
+    const msg = first instanceof Error ? first.message : String(first)
+    if (!/unknown command/i.test(msg)) throw first
+    await tauriOpenclawSkillsVoid(['remove', slug])
+  }
+}
+
+export async function uninstallSkillResult(slug: string): Promise<AdapterResult<void>> {
+  if (getIsTauri()) {
+    return fromPromise(() => tauriOpenclawSkillsUninstall(slug))
+  }
+  const res = await fetch('/api/skills/uninstall', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    return fail(text ? `HTTP ${res.status}: ${text.slice(0, 240)}` : `HTTP ${res.status}`)
+  }
+  return ok(undefined)
 }

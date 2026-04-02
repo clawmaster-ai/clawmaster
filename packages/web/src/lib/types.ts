@@ -1,42 +1,30 @@
-// 检测运行环境
-export const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
+// For runtime detection use getIsTauri() from @/shared/adapters/platform
 
-// 平台适配器接口
+/** Platform adapter contract (legacy) */
 export interface PlatformAdapter {
-  // 系统
   detectSystem(): Promise<SystemInfo>
-  
-  // 网关
   getGatewayStatus(): Promise<GatewayStatus>
   startGateway(): Promise<void>
   stopGateway(): Promise<void>
   restartGateway(): Promise<void>
-  
-  // 配置
   getConfig(): Promise<OpenClawConfig>
-  setConfig(path: string, value: any): Promise<void>
-  saveFullConfig(config: OpenClawConfig): Promise<void>
-  
-  // 通道
+  setConfig(path: string, value: unknown): Promise<void>
   getChannels(): Promise<ChannelInfo[]>
   addChannel(channel: ChannelConfig): Promise<void>
   removeChannel(id: string): Promise<void>
-  
-  // 模型
   getModels(): Promise<ModelInfo[]>
   setDefaultModel(modelId: string): Promise<void>
-  
-  // 代理
+  getSkills(): Promise<SkillInfo[]>
+  searchSkills(query: string): Promise<SkillInfo[]>
+  installSkill(slug: string): Promise<void>
+  uninstallSkill(slug: string): Promise<void>
   getAgents(): Promise<AgentInfo[]>
   createAgent(agent: AgentConfig): Promise<void>
   deleteAgent(id: string): Promise<void>
-  
-  // 日志
   getLogs(lines: number): Promise<LogEntry[]>
   streamLogs(callback: (entry: LogEntry) => void): () => void
 }
 
-// 类型定义
 export interface SystemInfo {
   nodejs: { installed: boolean; version: string }
   npm: { installed: boolean; version: string }
@@ -50,12 +38,62 @@ export interface GatewayStatus {
   connections?: number
 }
 
+/** Display fields for one account under a channel (common config shape) */
+export interface ChannelAccountInfo {
+  name?: string
+  enabled?: boolean
+  groupPolicy?: string
+}
+
+export interface OpenClawChannelEntry {
+  enabled?: boolean
+  accounts?: Record<string, ChannelAccountInfo>
+}
+
+export interface OpenClawModelRef {
+  id?: string
+  name?: string
+}
+
+export interface OpenClawModelProvider {
+  baseUrl?: string
+  models?: Array<string | OpenClawModelRef>
+}
+
+export interface OpenClawBinding {
+  match?: { channel?: string }
+  agentId: string
+}
+
+export interface ChannelVerifyResult {
+  ok: boolean
+  message: string
+  detail?: string
+}
+
+export interface WhatsAppLoginStatus {
+  status: 'idle' | 'pending' | 'authorized' | 'failed'
+  qr?: string
+  message?: string
+  updatedAt: string
+}
+
+export interface OpenClawAgentListItem {
+  id: string
+  name?: string
+  workspace?: string
+  model?: string
+  agentDir?: string
+}
+
 export interface OpenClawConfig {
   gateway?: {
     port?: number
     mode?: string
     bind?: string
     auth?: { mode?: string; token?: string }
+    /** Control UI path prefix, e.g. `/openclaw` (see OpenClaw `gateway.controlUi.basePath`) */
+    controlUi?: { basePath?: string }
   }
   agents?: {
     defaults?: {
@@ -63,18 +101,60 @@ export interface OpenClawConfig {
       workspace?: string
       maxConcurrent?: number
     }
-    list?: Array<{
-      id: string
-      name?: string
-      workspace?: string
-      model?: string
-      agentDir?: string
-    }>
+    list?: OpenClawAgentListItem[]
   }
-  channels?: Record<string, any>
-  models?: { providers?: Record<string, any> }
-  bindings?: Array<{ match?: { channel: string }; agentId: string }>
-  [key: string]: any
+  channels?: Record<string, OpenClawChannelEntry>
+  models?: { providers?: Record<string, OpenClawModelProvider> }
+  bindings?: OpenClawBinding[]
+  /** OpenClaw plugins.entries + metadata (from openclaw.json) */
+  plugins?: {
+    entries?: Record<
+      string,
+      {
+        enabled?: boolean
+        config?: Record<string, unknown>
+      }
+    >
+  }
+}
+
+/** `openclaw memory status --json` (backend may still set exitCode !== 0) */
+export interface OpenclawMemoryStatusPayload {
+  exitCode: number
+  data: unknown
+  stderr?: string
+}
+
+/** Resolved PowerMem CLI `--env-file` target for viewing/editing in the UI */
+export interface PowermemEnvPayload {
+  path: string
+  content: string
+}
+
+export interface PowermemMeta {
+  pluginId: string
+  configured: boolean
+  enabled: boolean
+  mode: 'cli' | 'http' | null
+  userId: string
+  agentId: string
+  pmemPath?: string
+  baseUrl?: string
+  envFileResolved?: string
+  /** Backend-managed venv under ~/.openclaw/powermem (Web API) */
+  managedRuntimeDir?: string
+  managedRuntimeReady?: boolean
+  managedRuntimeDisabled?: boolean
+  /** Present while backend is creating venv / pip installing powermem */
+  managedBootstrapPhase?: 'venv' | 'pip' | null
+}
+
+export interface PowermemMemoryRow {
+  id: string
+  memoryId: number
+  content: string
+  score?: number
+  metadata?: Record<string, unknown>
 }
 
 export interface ChannelInfo {
@@ -88,7 +168,7 @@ export interface ChannelInfo {
 export interface ChannelConfig {
   type: string
   name: string
-  config: Record<string, any>
+  config: Record<string, unknown>
 }
 
 export interface ModelInfo {
@@ -96,6 +176,30 @@ export interface ModelInfo {
   name: string
   provider: string
   enabled: boolean
+}
+
+export interface SkillInfo {
+  slug: string
+  name: string
+  description: string
+  version: string
+  installed?: boolean
+}
+
+/** One row from parsed `openclaw plugins list` */
+export interface OpenClawPluginInfo {
+  id: string
+  name: string
+  /** e.g. enabled / disabled (from CLI Status column or JSON) */
+  status?: string
+  version?: string
+  description?: string
+}
+
+/** Response body for GET /api/plugins and Tauri plugin list */
+export interface PluginsListPayload {
+  plugins: OpenClawPluginInfo[]
+  rawCliOutput?: string | null
 }
 
 export interface AgentInfo {

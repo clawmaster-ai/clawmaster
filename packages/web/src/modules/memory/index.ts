@@ -3,11 +3,12 @@ import type { ClawModule } from '@/types/module'
 
 export default {
   id: 'memory',
-  name: '记忆',
+  nameKey: 'nav.memory',
   icon: 'brain',
+  group: 'manage',
+  navOrder: 28,
   route: {
     path: '/memory',
-    component: lazy(() => import('./MemoryPage')),
+    LazyPage: lazy(() => import('./MemoryPage')),
   },
-  navOrder: 25,
 } satisfies ClawModule

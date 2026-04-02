@@ -1,76 +1,49 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { AdapterResult } from '@/shared/adapters/types'
+import { formatAdapterResultError } from '@/shared/adapters/tauriCommandError'
 
 export interface UseAdapterCallOptions {
-  /** 自动轮询间隔（毫秒），不传则不轮询 */
+  /** Poll interval in ms; omit to disable polling */
   pollInterval?: number
-  /** 是否在挂载时自动调用，默认 true */
-  immediate?: boolean
 }
 
-export interface UseAdapterCallReturn<T> {
-  data: T | null
-  loading: boolean
-  error: string | null
-  /** 手动重新获取 */
-  refetch: () => Promise<void>
-}
-
-/**
- * 通用数据获取 Hook
- *
- * 替代各页面重复的 useState + useEffect + try/catch 模板
- *
- * @example
- * const { data, loading, error, refetch } = useAdapterCall(
- *   () => getClawProbeCost('day'),
- *   { pollInterval: 30000 }
- * )
- */
 export function useAdapterCall<T>(
   fetcher: () => Promise<AdapterResult<T>>,
-  options: UseAdapterCallOptions = {},
-): UseAdapterCallReturn<T> {
-  const { pollInterval, immediate = true } = options
-
+  options?: UseAdapterCallOptions
+) {
+  const { t } = useTranslation()
   const [data, setData] = useState<T | null>(null)
-  const [loading, setLoading] = useState(immediate)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // 用 ref 保存 fetcher 避免 useEffect 无限循环
-  const fetcherRef = useRef(fetcher)
-  fetcherRef.current = fetcher
 
   const refetch = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const result = await fetcherRef.current()
-      if (result.success && result.data !== undefined) {
-        setData(result.data)
+      const res = await fetcher()
+      if (res.success) {
+        setData(res.data ?? null)
+        setError(null)
       } else {
-        setError(result.error ?? '未知错误')
+        setError(formatAdapterResultError(res, t))
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [fetcher, t])
 
-  // 挂载时自动调用
   useEffect(() => {
-    if (immediate) {
-      refetch()
-    }
-  }, [immediate, refetch])
+    void refetch()
+  }, [refetch])
 
-  // 轮询
   useEffect(() => {
-    if (!pollInterval || pollInterval <= 0) return
-    const id = setInterval(refetch, pollInterval)
-    return () => clearInterval(id)
-  }, [pollInterval, refetch])
+    if (!options?.pollInterval || options.pollInterval <= 0) return
+    const id = window.setInterval(() => void refetch(), options.pollInterval)
+    return () => window.clearInterval(id)
+  }, [refetch, options?.pollInterval])
 
   return { data, loading, error, refetch }
 }

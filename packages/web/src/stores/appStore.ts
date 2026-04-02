@@ -1,36 +1,48 @@
 import { create } from 'zustand'
-import { SystemInfo, GatewayStatus, OpenClawConfig, ChannelInfo, ModelInfo, AgentInfo } from '@/lib/types'
+import {
+  SystemInfo,
+  GatewayStatus,
+  OpenClawConfig,
+  ChannelInfo,
+  ModelInfo,
+  SkillInfo,
+  AgentInfo,
+} from '@/lib/types'
 
 interface AppState {
-  // 系统状态
+  // System
   systemInfo: SystemInfo | null
   isLoading: boolean
   error: string | null
-  
-  // 网关
+
+  // Gateway
   gatewayStatus: GatewayStatus | null
-  
-  // 配置
+
+  // Config
   config: OpenClawConfig | null
-  
-  // 通道
+
+  // Channels
   channels: ChannelInfo[]
-  
-  // 模型
+
+  // Models
   models: ModelInfo[]
-  
-  // 代理
+
+  // Skills
+  skills: SkillInfo[]
+
+  // Agents
   agents: AgentInfo[]
-  
-  // 当前实例
+
+  // Current instance
   currentInstance: string
-  
+
   // Actions
   setSystemInfo: (info: SystemInfo) => void
   setGatewayStatus: (status: GatewayStatus) => void
   setConfig: (config: OpenClawConfig) => void
   setChannels: (channels: ChannelInfo[]) => void
   setModels: (models: ModelInfo[]) => void
+  setSkills: (skills: SkillInfo[]) => void
   setAgents: (agents: AgentInfo[]) => void
   setCurrentInstance: (instance: string) => void
   setLoading: (loading: boolean) => void
@@ -45,14 +57,16 @@ export const useAppStore = create<AppState>((set) => ({
   config: null,
   channels: [],
   models: [],
+  skills: [],
   agents: [],
   currentInstance: 'default',
-  
+
   setSystemInfo: (info) => set({ systemInfo: info }),
   setGatewayStatus: (status) => set({ gatewayStatus: status }),
   setConfig: (config) => set({ config }),
   setChannels: (channels) => set({ channels }),
   setModels: (models) => set({ models }),
+  setSkills: (skills) => set({ skills }),
   setAgents: (agents) => set({ agents }),
   setCurrentInstance: (instance) => set({ currentInstance: instance }),
   setLoading: (loading) => set({ isLoading: loading }),

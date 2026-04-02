@@ -3,11 +3,12 @@ import type { ClawModule } from '@/types/module'
 
 export default {
   id: 'observe',
-  name: '可观测',
-  icon: 'bar-chart',
+  nameKey: 'nav.observe',
+  icon: 'bar-chart-3',
+  group: 'main',
+  navOrder: 20,
   route: {
     path: '/observe',
-    component: lazy(() => import('./ObservePage')),
+    LazyPage: lazy(() => import('./ObservePage')),
   },
-  navOrder: 20,
 } satisfies ClawModule

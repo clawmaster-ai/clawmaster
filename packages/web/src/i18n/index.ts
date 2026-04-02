@@ -1,8 +1,8 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
-import zh from './zh.json'
-import en from './en.json'
-import ja from './ja.json'
+import zh from '@/locales/zh'
+import en from '@/locales/en'
+import ja from '@/locales/ja'
 
 const storedLang = localStorage.getItem('clawmaster-language') || 'zh'
 

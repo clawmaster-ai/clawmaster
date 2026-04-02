@@ -3,11 +3,12 @@ import type { ClawModule } from '@/types/module'
 
 export default {
   id: 'mcp',
-  name: 'MCP',
+  nameKey: 'nav.mcp',
   icon: 'plug',
+  group: 'main',
+  navOrder: 22,
   route: {
     path: '/mcp',
-    component: lazy(() => import('./McpPage')),
+    LazyPage: lazy(() => import('./McpPage')),
   },
-  navOrder: 22,
 } satisfies ClawModule

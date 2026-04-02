@@ -1,38 +1,25 @@
 import type { ComponentType, LazyExoticComponent } from 'react'
 
-/**
- * 能力模块注册接口
- *
- * 每个 modules/xxx/index.ts 导出此类型的默认值
- * App Shell 通过 import.meta.glob 自动收集并注册路由 + 导航
- *
- * @example
- * // modules/observe/index.ts
- * import { lazy } from 'react'
- * import type { ClawModule } from '@/types/module'
- *
- * export default {
- *   id: 'observe',
- *   name: '可观测',
- *   icon: 'bar-chart',
- *   route: { path: '/observe', component: lazy(() => import('./ObservePage')) },
- *   navOrder: 20,
- * } satisfies ClawModule
- */
+/** Feature module registration: shell collects via import.meta.glob for routes and nav */
+/** Nav groups for sidebar organization */
+export type NavGroup = 'main' | 'manage' | 'system'
+
 export interface ClawModule {
-  /** 模块唯一标识 */
+  /** Unique module identifier */
   id: string
-  /** 显示名称（侧边栏 + 页面标题） */
-  name: string
-  /** 图标（emoji 或 Lucide icon 名） */
+  /** i18n key under nav.* (e.g. 'nav.observe') */
+  nameKey: string
+  /** Lucide icon name (e.g. 'bar-chart', 'plug') */
   icon: string
-  /** 路由配置 */
+  /** Sidebar sort order — lower = higher */
+  navOrder: number
+  /** Nav group: 'main' (top), 'manage' (middle), 'system' (bottom). Default 'main' */
+  group?: NavGroup
+  /** Route configuration */
   route: {
     path: string
-    component: LazyExoticComponent<ComponentType> | ComponentType
+    LazyPage: LazyExoticComponent<ComponentType<object>>
   }
-  /** 侧边栏排序，数字越小越靠前 */
-  navOrder: number
-  /** 是否在侧边栏显示，默认 true */
+  /** Whether to show in sidebar nav, default true */
   showInNav?: boolean
 }

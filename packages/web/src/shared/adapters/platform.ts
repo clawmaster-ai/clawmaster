@@ -10,6 +10,9 @@ export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI__' in window
 }
 
+/** Alias for PR #2 compatibility */
+export const getIsTauri = isTauri
+
 /** 检测 Windows 环境（前端侧 — 通过 userAgent 推断） */
 export function isWindows(): boolean {
   if (typeof navigator !== 'undefined') {
