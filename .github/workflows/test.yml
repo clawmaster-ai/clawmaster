@@ -185,7 +185,10 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npx playwright install chromium
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright
+          npx playwright install chromium
 
       - name: Start dev servers
         run: |
@@ -197,7 +200,7 @@ jobs:
 
       - name: Verify all pages render
         run: |
-          cat << 'SCRIPT' > /tmp/e2e-smoke.mjs
+          cat << 'SCRIPT' > e2e-smoke.mjs
           import { chromium } from 'playwright';
           const browser = await chromium.launch({ headless: true });
           const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -243,11 +246,11 @@ jobs:
           await browser.close();
           process.exit(fail > 0 ? 1 : 0);
           SCRIPT
-          node /tmp/e2e-smoke.mjs
+          node e2e-smoke.mjs
 
       - name: Verify Skills catalog page
         run: |
-          cat << 'SCRIPT' > /tmp/e2e-skills.mjs
+          cat << 'SCRIPT' > e2e-skills.mjs
           import { chromium } from 'playwright';
           const browser = await chromium.launch({ headless: true });
           const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -275,4 +278,4 @@ jobs:
           await browser.close();
           process.exit(fail > 0 ? 1 : 0);
           SCRIPT
-          node /tmp/e2e-skills.mjs
+          node e2e-skills.mjs
