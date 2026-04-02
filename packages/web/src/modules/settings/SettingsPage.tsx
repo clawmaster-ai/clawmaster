@@ -1,8 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
+import { platformResults } from '@/shared/adapters/platformResults'
 import { changeLanguage } from '@/i18n'
+import { useInstallTask } from '@/shared/hooks/useInstallTask'
+import { InstallTask } from '@/shared/components/InstallTask'
+import { CheckCircle2, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, FileText } from 'lucide-react'
 import type { SystemInfo } from '@/lib/types'
+import type { OpenclawNpmVersions } from '@/shared/adapters/npmOpenclaw'
 
 type ThemeMode = 'system' | 'light' | 'dark'
 
@@ -200,31 +205,7 @@ export default function Settings() {
       </section>
 
       {/* 更新 */}
-      <section className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">{t('settings.update')}</h3>
-        <div className="space-y-3 text-sm">
-          <div className="flex items-center justify-between">
-            <span>{t('settings.aboutName')}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>OpenClaw CLI</span>
-            <span className="text-muted-foreground">
-              {systemInfo?.openclaw.installed ? `v${systemInfo.openclaw.version}` : t('common.notInstalled')}
-            </span>
-          </div>
-          <button className="px-4 py-2 border border-border rounded-lg hover:bg-accent">
-            {t('settings.checkUpdate')}
-          </button>
-          <div className="flex items-center gap-4 mt-2">
-            <label className="text-muted-foreground">{t('settings.updateChannel')}</label>
-            <select className="px-3 py-1.5 bg-card rounded-lg border border-border text-sm">
-              <option>Stable</option>
-              <option>Beta</option>
-              <option>Dev</option>
-            </select>
-          </div>
-        </div>
-      </section>
+      <UpdateSection currentVersion={systemInfo?.openclaw.version} installed={!!systemInfo?.openclaw.installed} onUpdated={loadSystemInfo} />
 
       {/* 危险操作 */}
       <section className="bg-card border border-red-500/50 rounded-lg p-4">
@@ -259,5 +240,279 @@ export default function Settings() {
         </div>
       </section>
     </div>
+  )
+}
+
+// ─── Update Section ───
+
+type UpdateState = 'idle' | 'checking' | 'up-to-date' | 'available' | 'error'
+type Channel = 'stable' | 'beta' | 'dev'
+
+interface ReleaseNote {
+  version: string
+  name: string
+  body: string
+  date: string
+  url: string
+}
+
+const CHANNEL_TAG_MAP: Record<Channel, string[]> = {
+  stable: ['latest'],
+  beta: ['beta', 'next', 'rc'],
+  dev: ['dev', 'canary', 'nightly'],
+}
+
+const GITHUB_REPO = 'openclaw/openclaw'
+
+async function fetchReleaseNotes(limit = 10): Promise<ReleaseNote[]> {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=${limit}`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.map((r: any) => ({
+      version: (r.tag_name || '').replace(/^v/, ''),
+      name: r.name || r.tag_name || '',
+      body: r.body || '',
+      date: r.published_at ? new Date(r.published_at).toLocaleDateString() : '',
+      url: r.html_url || '',
+    }))
+  } catch {
+    return []
+  }
+}
+
+function UpdateSection({
+  currentVersion,
+  installed,
+  onUpdated,
+}: {
+  currentVersion?: string
+  installed: boolean
+  onUpdated: () => void
+}) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<UpdateState>('idle')
+  const [versions, setVersions] = useState<OpenclawNpmVersions | null>(null)
+  const [channel, setChannel] = useState<Channel>('stable')
+  const [selectedVersion, setSelectedVersion] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [releases, setReleases] = useState<ReleaseNote[]>([])
+  const [changelogOpen, setChangelogOpen] = useState(false)
+  const updateTask = useInstallTask()
+
+  const channelVersion = versions
+    ? CHANNEL_TAG_MAP[channel].map((tag) => versions.distTags[tag]).find(Boolean) ?? versions.versions[0]
+    : null
+
+  const isUpToDate = currentVersion && channelVersion && currentVersion.includes(channelVersion)
+
+  const handleCheck = useCallback(async () => {
+    setState('checking')
+    setError(null)
+    const [result, notes] = await Promise.all([
+      platformResults.listOpenclawNpmVersions(),
+      fetchReleaseNotes(),
+    ])
+    if (result.success && result.data) {
+      setVersions(result.data)
+      setReleases(notes)
+      const latest = result.data.distTags.latest ?? result.data.versions[0]
+      setSelectedVersion(latest)
+      const upToDate = currentVersion && currentVersion.includes(latest)
+      setState(upToDate ? 'up-to-date' : 'available')
+    } else {
+      setError(result.error ?? t('common.unknownError'))
+      setState('error')
+    }
+  }, [currentVersion, t])
+
+  const handleUpdate = useCallback(async () => {
+    if (!selectedVersion) return
+    await updateTask.run(async () => {
+      if (installed) {
+        const result = await platformResults.reinstallOpenclawGlobal(selectedVersion)
+        if (!result.success) throw new Error(result.error)
+        if (result.data && !result.data.ok) {
+          const failedStep = result.data.steps.find((s) => !s.ok)
+          throw new Error(failedStep?.message ?? t('settings.updateFailed'))
+        }
+      } else {
+        const result = await platformResults.installOpenclawGlobal(selectedVersion)
+        if (!result.success) throw new Error(result.error)
+      }
+      // Bootstrap after install
+      await platformResults.bootstrapAfterInstall()
+      onUpdated()
+    })
+  }, [selectedVersion, installed, updateTask, onUpdated, t])
+
+  // Recent versions for dropdown (max 20)
+  const recentVersions = versions?.versions.slice(0, 20) ?? []
+
+  return (
+    <section className="bg-card border border-border rounded-lg p-4">
+      <h3 className="font-medium mb-3">{t('settings.update')}</h3>
+      <div className="space-y-3 text-sm">
+        {/* Current version */}
+        <div className="flex items-center justify-between">
+          <span>OpenClaw CLI</span>
+          <span className="text-muted-foreground font-mono">
+            {installed ? `v${currentVersion}` : t('common.notInstalled')}
+          </span>
+        </div>
+
+        {/* Check button (idle/error state) */}
+        {(state === 'idle' || state === 'error') && updateTask.status === 'idle' && (
+          <button
+            onClick={handleCheck}
+            className="flex items-center gap-1.5 px-4 py-2 border border-border rounded-lg hover:bg-accent"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {t('settings.checkUpdate')}
+          </button>
+        )}
+
+        {/* Checking spinner */}
+        {state === 'checking' && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {t('settings.checking')}
+          </div>
+        )}
+
+        {/* Error */}
+        {state === 'error' && error && (
+          <div className="flex items-center gap-2 text-red-500">
+            <AlertCircle className="w-4 h-4" />
+            {error}
+          </div>
+        )}
+
+        {/* Up to date */}
+        {state === 'up-to-date' && updateTask.status === 'idle' && (
+          <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+            <CheckCircle2 className="w-4 h-4" />
+            {t('settings.upToDate')}
+          </div>
+        )}
+
+        {/* Update available */}
+        {(state === 'available' || state === 'up-to-date') && versions && updateTask.status === 'idle' && (
+          <div className="bg-muted/30 rounded-lg p-3 space-y-3">
+            {/* Channel selector */}
+            <div className="flex items-center gap-3">
+              <label className="text-muted-foreground">{t('settings.updateChannel')}</label>
+              <select
+                value={channel}
+                onChange={(e) => {
+                  const ch = e.target.value as Channel
+                  setChannel(ch)
+                  const ver = CHANNEL_TAG_MAP[ch].map((tag) => versions.distTags[tag]).find(Boolean) ?? versions.versions[0]
+                  setSelectedVersion(ver)
+                  const upToDate = currentVersion && currentVersion.includes(ver)
+                  setState(upToDate ? 'up-to-date' : 'available')
+                }}
+                className="px-3 py-1.5 bg-background rounded border border-border text-sm"
+              >
+                <option value="stable">Stable</option>
+                <option value="beta">Beta</option>
+                <option value="dev">Dev</option>
+              </select>
+            </div>
+
+            {/* Version selector */}
+            <div className="flex items-center gap-3">
+              <label className="text-muted-foreground">{t('settings.targetVersion')}</label>
+              <select
+                value={selectedVersion}
+                onChange={(e) => {
+                  setSelectedVersion(e.target.value)
+                  const upToDate = currentVersion && currentVersion.includes(e.target.value)
+                  setState(upToDate ? 'up-to-date' : 'available')
+                }}
+                className="px-3 py-1.5 bg-background rounded border border-border text-sm font-mono min-w-[180px]"
+              >
+                {recentVersions.map((v) => (
+                  <option key={v} value={v}>
+                    {v}{v === versions.distTags.latest ? ' (latest)' : ''}{v === versions.distTags.beta ? ' (beta)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Update/downgrade button */}
+            {!isUpToDate && selectedVersion && (
+              <button
+                onClick={handleUpdate}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 text-sm"
+              >
+                {currentVersion && selectedVersion < currentVersion
+                  ? t('settings.downgrade', { version: selectedVersion })
+                  : t('settings.updateTo', { version: selectedVersion })}
+              </button>
+            )}
+
+            {/* Dist tags info */}
+            <div className="text-xs text-muted-foreground">
+              {Object.entries(versions.distTags).map(([tag, ver]) => (
+                <span key={tag} className="mr-3">
+                  <span className="font-medium">{tag}</span>: <span className="font-mono">{ver}</span>
+                </span>
+              ))}
+            </div>
+
+            {/* Changelog */}
+            {releases.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setChangelogOpen(!changelogOpen)}
+                  className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                >
+                  <FileText className="w-3 h-3" />
+                  {t('settings.changelog')}
+                  {changelogOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+                {changelogOpen && (
+                  <div className="mt-2 max-h-64 overflow-y-auto space-y-3 border border-border rounded-lg p-3 bg-background">
+                    {releases.map((r) => (
+                      <div key={r.version} className={`text-xs ${
+                        currentVersion && r.version === currentVersion ? 'opacity-50' : ''
+                      }`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium font-mono">{r.version}</span>
+                          <span className="text-muted-foreground">{r.date}</span>
+                          {currentVersion && r.version === currentVersion && (
+                            <span className="text-xs text-green-600 dark:text-green-400">{t('settings.currentLabel')}</span>
+                          )}
+                          {r.url && (
+                            <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline ml-auto">
+                              GitHub
+                            </a>
+                          )}
+                        </div>
+                        <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-sans leading-relaxed">
+                          {r.body.length > 500 ? r.body.slice(0, 500) + '...' : r.body}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Install progress */}
+        {updateTask.status !== 'idle' && (
+          <InstallTask
+            label="OpenClaw CLI"
+            description={selectedVersion}
+            status={updateTask.status}
+            error={updateTask.error}
+            onRetry={updateTask.reset}
+          />
+        )}
+      </div>
+    </section>
   )
 }

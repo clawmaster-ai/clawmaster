@@ -1,0 +1,247 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+
+// Mock window.matchMedia for theme code
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+})
+
+// Mock dependencies before import
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, opts?: any) => {
+      const map: Record<string, string> = {
+        'settings.update': 'Update',
+        'settings.checkUpdate': 'Check for updates',
+        'settings.checking': 'Checking...',
+        'settings.upToDate': 'Up to date',
+        'settings.updateChannel': 'Channel:',
+        'settings.targetVersion': 'Version:',
+        'settings.updateTo': `Update to ${opts?.version ?? ''}`,
+        'settings.downgrade': `Downgrade to ${opts?.version ?? ''}`,
+        'settings.updateFailed': 'Update failed',
+        'common.notInstalled': 'Not installed',
+        'common.unknownError': 'Unknown error',
+        'install.running': 'Installing...',
+        'install.done': 'Done',
+        'install.failed': 'Failed',
+        'install.retry': 'Retry',
+      }
+      return map[key] ?? key
+    },
+    i18n: { language: 'en' },
+  }),
+}))
+
+const mockListVersions = vi.fn()
+const mockReinstall = vi.fn()
+const mockInstall = vi.fn()
+const mockBootstrap = vi.fn()
+
+vi.mock('@/shared/adapters/platformResults', () => ({
+  platformResults: {
+    listOpenclawNpmVersions: (...args: any[]) => mockListVersions(...args),
+    reinstallOpenclawGlobal: (...args: any[]) => mockReinstall(...args),
+    installOpenclawGlobal: (...args: any[]) => mockInstall(...args),
+    bootstrapAfterInstall: (...args: any[]) => mockBootstrap(...args),
+  },
+}))
+
+vi.mock('@/adapters', () => ({
+  platform: {
+    detectSystem: vi.fn().mockResolvedValue({
+      nodejs: { installed: true, version: '20.0.0' },
+      npm: { installed: true, version: '10.0.0' },
+      openclaw: { installed: true, version: '2026.3.28', configPath: '/home/.openclaw/openclaw.json' },
+    }),
+  },
+}))
+
+vi.mock('@/i18n', () => ({
+  changeLanguage: vi.fn(),
+}))
+
+// Import after mocks
+import Settings from '../SettingsPage'
+
+describe('UpdateSection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockBootstrap.mockResolvedValue({ success: true })
+  })
+
+  it('renders current version and check button', async () => {
+    render(<Settings />)
+    await waitFor(() => {
+      expect(screen.getByText('Update')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Check for updates')).toBeInTheDocument()
+    // Version appears in both system info and update section
+    expect(screen.getAllByText(/v2026\.3\.28/).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('shows checking state when button clicked', async () => {
+    mockListVersions.mockImplementation(() => new Promise(() => {})) // never resolves
+    render(<Settings />)
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    expect(screen.getByText('Checking...')).toBeInTheDocument()
+  })
+
+  it('shows up-to-date when version matches latest', async () => {
+    mockListVersions.mockResolvedValue({
+      success: true,
+      data: {
+        versions: ['2026.3.28', '2026.3.20', '2026.3.10'],
+        distTags: { latest: '2026.3.28' },
+      },
+    })
+    render(<Settings />)
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    await waitFor(() => {
+      expect(screen.getByText('Up to date')).toBeInTheDocument()
+    })
+  })
+
+  it('shows update available when newer version exists', async () => {
+    mockListVersions.mockResolvedValue({
+      success: true,
+      data: {
+        versions: ['2026.4.1', '2026.3.28', '2026.3.20'],
+        distTags: { latest: '2026.4.1' },
+      },
+    })
+    render(<Settings />)
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    await waitFor(() => {
+      expect(screen.getByText('Update to 2026.4.1')).toBeInTheDocument()
+    })
+  })
+
+  it('shows version dropdown with recent versions', async () => {
+    mockListVersions.mockResolvedValue({
+      success: true,
+      data: {
+        versions: ['2026.4.1', '2026.3.28', '2026.3.20', '2026.3.10'],
+        distTags: { latest: '2026.4.1' },
+      },
+    })
+    render(<Settings />)
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    await waitFor(() => {
+      expect(screen.getByText('Version:')).toBeInTheDocument()
+    })
+    // Version dropdown should have options
+    const selects = screen.getAllByRole('combobox')
+    const versionSelect = selects.find((s) => s.querySelector('option[value="2026.4.1"]'))
+    expect(versionSelect).toBeTruthy()
+  })
+
+  it('shows channel selector', async () => {
+    mockListVersions.mockResolvedValue({
+      success: true,
+      data: {
+        versions: ['2026.4.1', '2026.3.28'],
+        distTags: { latest: '2026.4.1', beta: '2026.5.0-beta.1' },
+      },
+    })
+    render(<Settings />)
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    await waitFor(() => {
+      expect(screen.getByText('Channel:')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Stable')).toBeInTheDocument()
+    expect(screen.getByText('Beta')).toBeInTheDocument()
+    expect(screen.getByText('Dev')).toBeInTheDocument()
+  })
+
+  it('handles version fetch error', async () => {
+    mockListVersions.mockResolvedValue({
+      success: false,
+      error: 'network timeout',
+    })
+    render(<Settings />)
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    await waitFor(() => {
+      expect(screen.getByText('network timeout')).toBeInTheDocument()
+    })
+  })
+
+  it('calls reinstallOpenclawGlobal when update clicked', async () => {
+    mockListVersions.mockResolvedValue({
+      success: true,
+      data: {
+        versions: ['2026.4.1', '2026.3.28'],
+        distTags: { latest: '2026.4.1' },
+      },
+    })
+    mockReinstall.mockResolvedValue({
+      success: true,
+      data: { ok: true, steps: [] },
+    })
+    render(<Settings />)
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    await waitFor(() => screen.getByText('Update to 2026.4.1'))
+    fireEvent.click(screen.getByText('Update to 2026.4.1'))
+    await waitFor(() => {
+      expect(mockReinstall).toHaveBeenCalledWith('2026.4.1')
+    })
+  })
+
+  it('shows downgrade label for older version', async () => {
+    mockListVersions.mockResolvedValue({
+      success: true,
+      data: {
+        versions: ['2026.4.1', '2026.3.28', '2026.3.20'],
+        distTags: { latest: '2026.4.1' },
+      },
+    })
+    render(<Settings />)
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    await waitFor(() => screen.getByText('Version:'))
+
+    // Select older version
+    const selects = screen.getAllByRole('combobox')
+    const versionSelect = selects.find((s) => s.querySelector('option[value="2026.3.20"]'))
+    if (versionSelect) {
+      fireEvent.change(versionSelect, { target: { value: '2026.3.20' } })
+      await waitFor(() => {
+        expect(screen.getByText('Downgrade to 2026.3.20')).toBeInTheDocument()
+      })
+    }
+  })
+
+  it('shows dist-tags info', async () => {
+    mockListVersions.mockResolvedValue({
+      success: true,
+      data: {
+        versions: ['2026.4.1'],
+        distTags: { latest: '2026.4.1', beta: '2026.5.0-beta.1' },
+      },
+    })
+    render(<Settings />)
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    await waitFor(() => {
+      expect(screen.getByText('latest')).toBeInTheDocument()
+      expect(screen.getByText('2026.4.1')).toBeInTheDocument()
+    })
+  })
+})

@@ -188,3 +188,53 @@ cases:
       - 选中"浅色"后页面恢复亮色
       - <html> 元素的 class 包含 "dark" 或 "light"
       - 刷新后主题保持（localStorage 持久化）
+
+  - id: cfg-11
+    name: 更新区块渲染
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 2000ms
+      - action: scroll_to
+        target: 更新区块
+      - action: screenshot
+        name: settings-update-section
+    assertions:
+      - 显示更新区块标题
+      - 显示 OpenClaw CLI 当前版本号
+      - 显示检查更新按钮
+
+  - id: cfg-12
+    name: 检查更新显示版本列表
+    steps:
+      - action: click
+        target: text("检查更新")
+      - action: wait
+        duration: 5000ms
+        reason: 需要从 npm registry 获取版本列表
+      - action: screenshot
+        name: settings-update-check
+    assertions:
+      - 显示更新通道选择器（Stable/Beta/Dev）
+      - 显示目标版本下拉框（含多个版本号）
+      - 显示 dist-tags 信息（latest、beta 等标签）
+      - 如有新版本：显示更新按钮
+      - 如已是最新：显示绿色已是最新版本提示
+
+  - id: cfg-13
+    name: 更新通道切换
+    preconditions:
+      - 已点击检查更新且版本列表已加载
+    steps:
+      - action: select
+        target: 更新通道下拉框
+        value: "Beta"
+      - action: wait
+        duration: 500ms
+      - action: screenshot
+        name: settings-update-beta
+    assertions:
+      - 通道切换为 Beta
+      - 目标版本更新为 beta dist-tag 对应的版本
+      - 如 beta 版本与当前版本不同：显示更新/降级按钮
