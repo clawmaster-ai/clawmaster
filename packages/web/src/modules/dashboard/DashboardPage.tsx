@@ -59,7 +59,7 @@ export default function Dashboard() {
   const agentCount = config?.agents?.list?.length || 0
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-5xl space-y-6">
       <h1 className="text-2xl font-bold">{t('dashboard.title')}</h1>
 
       {/* 系统信息 */}

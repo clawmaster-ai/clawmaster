@@ -62,7 +62,7 @@ function McpContent() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-5xl space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>

@@ -88,7 +88,7 @@ export default function Config() {
   const defaultModel = config.agents?.defaults?.model?.primary || t('common.notSet')
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-5xl space-y-6">
       <h1 className="text-2xl font-bold">{t('config.title')}</h1>
 
       {/* 配置概览 */}

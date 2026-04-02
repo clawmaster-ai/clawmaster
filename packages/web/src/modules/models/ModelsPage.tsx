@@ -39,7 +39,7 @@ export default function Models() {
   const providers = config?.models?.providers || {}
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">{t('models.title')}</h1>
