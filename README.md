@@ -95,6 +95,24 @@ npm run build             # production web build
 npm run tauri:build       # production desktop build
 ```
 
+## Acknowledgments
+
+ClawMaster is built on top of outstanding open-source projects:
+
+| Project | Role |
+|---------|------|
+| [OpenClaw](https://github.com/openclaw/openclaw) | Core AI gateway engine -- ClawMaster is a GUI for its CLI |
+| [ClawProbe](https://github.com/openclaw/clawprobe) | Observability daemon for cost, token, and context tracking |
+| [ClawHub](https://clawhub.ai) | Skill registry and marketplace |
+| [PowerMem](https://github.com/openclaw/powermem) | Long-term memory management for agents |
+| [Tauri](https://tauri.app) | Desktop app framework (Rust + WebView) |
+| [React](https://react.dev) | Frontend UI library |
+| [Vite](https://vitejs.dev) | Frontend build tool |
+| [Tailwind CSS](https://tailwindcss.com) | Utility-first CSS framework |
+| [Lucide](https://lucide.dev) | Icon library |
+| [Playwright](https://playwright.dev) | E2E testing and UI automation |
+| [Ollama](https://ollama.com) | Local LLM inference engine |
+
 ## Contributing
 
 Contributions are welcome. Please:

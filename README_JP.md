@@ -95,6 +95,24 @@ npm run build             # Webプロダクションビルド
 npm run tauri:build       # デスクトッププロダクションビルド
 ```
 
+## 謝辞
+
+ClawMaster は以下の優れたオープンソースプロジェクトを基盤としています：
+
+| プロジェクト | 役割 |
+|-------------|------|
+| [OpenClaw](https://github.com/openclaw/openclaw) | コア AI ゲートウェイエンジン -- ClawMaster はその CLI の GUI |
+| [ClawProbe](https://github.com/openclaw/clawprobe) | コスト・トークン・コンテキスト追跡のオブザーバビリティデーモン |
+| [ClawHub](https://clawhub.ai) | スキルレジストリとマーケットプレイス |
+| [PowerMem](https://github.com/openclaw/powermem) | エージェントの長期記憶管理 |
+| [Tauri](https://tauri.app) | デスクトップアプリフレームワーク（Rust + WebView） |
+| [React](https://react.dev) | フロントエンド UI ライブラリ |
+| [Vite](https://vitejs.dev) | フロントエンドビルドツール |
+| [Tailwind CSS](https://tailwindcss.com) | ユーティリティファースト CSS フレームワーク |
+| [Lucide](https://lucide.dev) | アイコンライブラリ |
+| [Playwright](https://playwright.dev) | E2E テストと UI 自動化 |
+| [Ollama](https://ollama.com) | ローカル LLM 推論エンジン |
+
 ## コントリビューション
 
 コントリビューションを歓迎します：

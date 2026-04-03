@@ -227,16 +227,35 @@ export default function Settings() {
         <p className="text-sm text-muted-foreground">{t('settings.aboutName')}</p>
         <p className="text-sm text-muted-foreground">{t('settings.aboutDesc')}</p>
         <p className="text-sm text-muted-foreground">{t('settings.aboutCommunity')}</p>
-        <div className="mt-3 flex gap-4">
+        <div className="mt-3 flex gap-4 flex-wrap">
           <a href="https://docs.openclaw.ai" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">
             {t('settings.aboutDocs')}
           </a>
           <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">
             GitHub
           </a>
-          <a href="https://clawhub.com" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">
+          <a href="https://clawhub.ai" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">
             ClawHub
           </a>
+        </div>
+
+        {/* Acknowledgments */}
+        <div className="mt-4 pt-3 border-t border-border">
+          <h4 className="text-sm font-medium mb-2">{t('settings.acknowledgments')}</h4>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {[
+              { name: 'OpenClaw', url: 'https://github.com/openclaw/openclaw', desc: t('settings.ack.openclaw') },
+              { name: 'ClawProbe', url: 'https://github.com/openclaw/clawprobe', desc: t('settings.ack.clawprobe') },
+              { name: 'ClawHub', url: 'https://clawhub.ai', desc: t('settings.ack.clawhub') },
+              { name: 'PowerMem', url: 'https://github.com/openclaw/powermem', desc: t('settings.ack.powermem') },
+              { name: 'Tauri', url: 'https://tauri.app', desc: t('settings.ack.tauri') },
+              { name: 'Ollama', url: 'https://ollama.com', desc: t('settings.ack.ollama') },
+            ].map((p) => (
+              <a key={p.name} href={p.url} target="_blank" rel="noopener noreferrer" className="hover:text-primary truncate" title={p.desc}>
+                <span className="font-medium text-foreground">{p.name}</span> {p.desc}
+              </a>
+            ))}
+          </div>
         </div>
       </section>
     </div>

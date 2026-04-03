@@ -95,6 +95,24 @@ npm run build             # Web 生产构建
 npm run tauri:build       # 桌面端生产构建
 ```
 
+## 致谢
+
+ClawMaster 基于以下优秀的开源项目构建：
+
+| 项目 | 用途 |
+|------|------|
+| [OpenClaw](https://github.com/openclaw/openclaw) | 核心 AI 网关引擎 -- ClawMaster 是其 CLI 的图形界面 |
+| [ClawProbe](https://github.com/openclaw/clawprobe) | 可观测性守护进程，负责费用、Token 和上下文追踪 |
+| [ClawHub](https://clawhub.ai) | 技能注册中心与市场 |
+| [PowerMem](https://github.com/openclaw/powermem) | 智能体长期记忆管理 |
+| [Tauri](https://tauri.app) | 桌面应用框架（Rust + WebView） |
+| [React](https://react.dev) | 前端 UI 库 |
+| [Vite](https://vitejs.dev) | 前端构建工具 |
+| [Tailwind CSS](https://tailwindcss.com) | 原子化 CSS 框架 |
+| [Lucide](https://lucide.dev) | 图标库 |
+| [Playwright](https://playwright.dev) | E2E 测试与 UI 自动化 |
+| [Ollama](https://ollama.com) | 本地大模型推理引擎 |
+
 ## 参与贡献
 
 欢迎贡献代码。请：
