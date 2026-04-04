@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
 import { BarChart3, Brain, Zap, ExternalLink, ScrollText, Settings2 } from 'lucide-react'
 import type { SystemInfo, GatewayStatus, OpenClawConfig } from '@/lib/types'
+import { buildGatewayUrl } from '@/shared/gatewayUrl'
 
 export default function Dashboard() {
   const { t } = useTranslation()
@@ -187,15 +188,15 @@ export default function Dashboard() {
       <div className="bg-card border border-border rounded-lg p-4">
         <h3 className="font-medium mb-3">{t('dashboard.quickActions')}</h3>
         <div className="flex gap-3">
-          <a 
-            href="http://localhost:18789" 
-            target="_blank" 
+          <a
+            href={buildGatewayUrl(config)}
+            target="_blank"
             rel="noopener noreferrer"
             className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90"
           >
             <ExternalLink className="w-4 h-4 inline mr-1" />{t('dashboard.openConsole')}
           </a>
-          <Link to="/logs" className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent flex items-center gap-1">
+          <Link to="/gateway" className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent flex items-center gap-1">
             <ScrollText className="w-4 h-4" />{t('dashboard.viewLogs')}
           </Link>
           <Link to="/config" className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent flex items-center gap-1">

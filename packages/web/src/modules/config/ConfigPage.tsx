@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
+import { platformResults } from '@/shared/adapters/platformResults'
 import type { OpenClawConfig } from '@/lib/types'
 
 export default function Config() {
@@ -47,10 +48,9 @@ export default function Config() {
     setSaveError(false)
     try {
       const parsed = JSON.parse(jsonText)
-      // Save full config by setting each top-level key
-      for (const [key, value] of Object.entries(parsed)) {
-        await platform.setConfig(key, value)
-      }
+      // Atomic full-config save
+      const r = await platformResults.saveFullConfig(parsed)
+      if (!r.success) throw new Error(r.error ?? 'Save failed')
       setConfig(parsed)
       setSaveMsg(t('config.saveSuccess'))
       setTimeout(() => setSaveMsg(null), 2000)

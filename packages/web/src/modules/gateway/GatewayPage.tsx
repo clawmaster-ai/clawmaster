@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
 import type { GatewayStatus, OpenClawConfig } from '@/lib/types'
+import { buildGatewayUrl } from '@/shared/gatewayUrl'
 
 export default function Gateway() {
   const { t } = useTranslation()
@@ -78,7 +79,7 @@ export default function Gateway() {
     return <div className="flex items-center justify-center h-64">{t('common.loading')}</div>
   }
 
-  const gatewayUrl = `ws://127.0.0.1:${config?.gateway?.port || 18789}`
+  const gatewayUrl = buildGatewayUrl(config, { protocol: 'ws' })
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -120,7 +121,7 @@ export default function Gateway() {
             </button>
           )}
           <a 
-            href={`http://127.0.0.1:${config?.gateway?.port || 18789}`}
+            href={buildGatewayUrl(config)}
             target="_blank"
             rel="noopener noreferrer"
             className="px-4 py-2 border border-border rounded-lg hover:bg-accent"

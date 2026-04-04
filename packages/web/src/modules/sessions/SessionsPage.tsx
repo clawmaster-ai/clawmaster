@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary'
@@ -284,9 +284,11 @@ function ConversationHistory({ sessionKey }: { sessionKey: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch on mount
-  useState(() => {
+  // Fetch on mount / when sessionKey changes
+  useEffect(() => {
+    let cancelled = false
     getSessionDetail(sessionKey).then((result) => {
+      if (cancelled) return
       if (result.success && result.data) {
         setDetail(result.data)
       } else {
@@ -294,7 +296,8 @@ function ConversationHistory({ sessionKey }: { sessionKey: string }) {
       }
       setLoading(false)
     })
-  })
+    return () => { cancelled = true }
+  }, [sessionKey])
 
   if (loading) {
     return (

@@ -92,3 +92,30 @@ cases:
       - 显示"安装记忆管理"按钮
       - 显示"重新检测"按钮
       - 不显示记忆列表（被 guard 拦截）
+
+  # === Issue #4 修复验证 ===
+
+  - id: setup-06
+    name: 检测使用 useEffect 触发（非 useState 副作用）
+    steps:
+      - action: navigate
+        url: "{BASE_URL}?demo=install"
+      - action: wait
+        duration: 3000ms
+      - action: screenshot
+        name: setup-useeffect
+    assertions:
+      - 安装向导正常渲染并开始检测
+      - 检测通过 useEffect 触发（非 useState 初始化器）
+      - StrictMode 下不会导致 startDetection 被重复调用
+
+  - id: setup-07
+    name: 完成页控制台链接使用动态 URL
+    preconditions:
+      - 完成安装流程到达结果页
+    steps:
+      - action: observe
+        target: 控制台链接
+    assertions:
+      - 控制台链接 href 由 buildGatewayUrl 生成
+      - 链接使用配置中的网关端口（非硬编码 127.0.0.1）

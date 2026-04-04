@@ -77,12 +77,13 @@ cases:
         name: dashboard-actions
     assertions:
       - 显示"快捷操作"标题
-      - "打开控制台"按钮（外部链接 http://localhost:18789）
-      - "查看日志"按钮（链接到 /logs）
+      - "打开控制台"按钮（外部链接，href 由 buildGatewayUrl 生成，非硬编码 localhost:18789）
+      - "查看日志"按钮（链接到 /gateway，非不存在的 /logs）
       - "编辑配置"按钮（链接到 /config）
       - "打开控制台"有 ExternalLink 图标
       - "查看日志"有 ScrollText 图标
       - "编辑配置"有 Settings2 图标
+      - 页面不存在 href="/logs" 的链接
 
   - id: dash-06
     name: 当前模型与代理卡片
@@ -98,3 +99,43 @@ cases:
       - 显示代理数量统计
       - 最多显示前 3 个代理名称
       - 显示"管理代理"按钮（链接到 /agents）
+
+  # === Issue #4 修复验证 ===
+
+  - id: dash-07
+    name: 页脚网关状态反映真实运行时（非硬编码）
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/"
+      - action: wait
+        duration: 2500ms
+      - action: screenshot
+        name: dashboard-footer-status
+    assertions:
+      - 页脚不包含硬编码版本 "v2026.3.8"
+      - 页脚显示已翻译的网关状态（"Gateway 已停止"或"Gateway 运行中"）
+      - 页脚不显示 i18n raw key（如 "layout.status.gatewayStopped"）
+      - 页脚状态指示灯颜色与真实状态一致（红色=停止，绿色=运行）
+      - 如网关运行中，页脚额外显示端口号
+
+  - id: dash-08
+    name: 所有页面页脚一致性
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/gateway"
+      - action: wait
+        duration: 1500ms
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 1500ms
+      - action: navigate
+        url: "{BASE_URL}/agents"
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: dashboard-footer-xpage
+    assertions:
+      - 每个页面的 footer 都显示相同的网关翻译状态
+      - footer 不出现 i18n raw key
+      - footer 不显示硬编码版本号

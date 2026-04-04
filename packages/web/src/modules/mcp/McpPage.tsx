@@ -315,7 +315,7 @@ function McpCard({
                       ? fsPath.split(',').map((p) => p.trim()).filter(Boolean)
                       : undefined
                     installTask.run(async () => {
-                      onInstall(envInputs, extraArgs)
+                      await onInstall(envInputs, extraArgs)
                     })
                   }}
                   disabled={operating || catalog.envVars.some((ev) => ev.required && !envInputs[ev.key]?.trim())}

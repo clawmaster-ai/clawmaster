@@ -89,6 +89,7 @@ cases:
     assertions:
       - 点击后显示 InstallTask 进度组件
       - 进度组件显示安装状态（进行中/成功/失败）
+      - 安装完成前不提前显示 done（onInstall 已被 await）
       - 安装成功后卡片显示"已安装"绿色标签
       - 安装成功后按钮变为"卸载"
 
@@ -137,6 +138,7 @@ cases:
         duration: 10000ms
     assertions:
       - 显示 InstallTask 进度组件替代安装按钮
+      - 安装进度与真实异步操作一致（onInstall 已被 await，不提前 done）
       - 安装完成后场景显示"已全部安装"绿色标签
       - 已安装 tab 数字更新
 

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
 import { platformResults } from '@/shared/adapters/platformResults'
+import { isTauri } from '@/shared/adapters/platform'
 import { changeLanguage } from '@/i18n'
 import { useInstallTask } from '@/shared/hooks/useInstallTask'
 import { InstallTask } from '@/shared/components/InstallTask'
@@ -122,24 +123,27 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* 系统 */}
-      <section className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">{t('settings.system')}</h3>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" defaultChecked />
-            <span className="text-sm">{t('settings.launchOnStartup')}</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" defaultChecked />
-            <span className="text-sm">{t('settings.showTrayIcon')}</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" defaultChecked />
-            <span className="text-sm">{t('settings.minimizeToTray')}</span>
-          </label>
-        </div>
-      </section>
+      {/* 系统 — desktop-only settings */}
+      {isTauri() && (
+        <section className="bg-card border border-border rounded-lg p-4">
+          <h3 className="font-medium mb-3">{t('settings.system')}</h3>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" defaultChecked disabled />
+              <span className="text-sm text-muted-foreground">{t('settings.launchOnStartup')}</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" defaultChecked disabled />
+              <span className="text-sm text-muted-foreground">{t('settings.showTrayIcon')}</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" defaultChecked disabled />
+              <span className="text-sm text-muted-foreground">{t('settings.minimizeToTray')}</span>
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">{t('common.comingSoon')}</p>
+        </section>
+      )}
 
       {/* 花费预算 */}
       <section className="bg-card border border-border rounded-lg p-4">
@@ -211,10 +215,33 @@ export default function Settings() {
       <section className="bg-card border border-red-500/50 rounded-lg p-4">
         <h3 className="font-medium text-red-500 mb-3">{t('settings.danger')}</h3>
         <div className="flex gap-3">
-          <button className="px-4 py-2 border border-border rounded-lg hover:bg-accent">
+          <button
+            className="px-4 py-2 border border-border rounded-lg hover:bg-accent"
+            onClick={async () => {
+              if (!window.confirm(t('settings.resetConfigConfirm'))) return
+              const r = await platformResults.resetOpenclawConfig()
+              if (r.success) {
+                window.location.reload()
+              } else {
+                alert(r.error ?? 'Failed to reset config')
+              }
+            }}
+          >
             {t('settings.resetConfig')}
           </button>
-          <button className="px-4 py-2 bg-red-500 text-primary-foreground rounded-lg hover:bg-red-600">
+          <button
+            className="px-4 py-2 bg-red-500 text-primary-foreground rounded-lg hover:bg-red-600"
+            onClick={async () => {
+              if (!window.confirm(t('settings.uninstallConfirm'))) return
+              const r = await platformResults.uninstallOpenclawCli()
+              if (r.success) {
+                alert(t('settings.uninstallSuccess'))
+                window.location.reload()
+              } else {
+                alert(r.error ?? 'Failed to uninstall')
+              }
+            }}
+          >
             {t('settings.uninstallOpenClaw')}
           </button>
         </div>

@@ -12,6 +12,7 @@ import {
   formatModelSize,
 } from '@/shared/adapters/ollama'
 import { changeLanguage } from '@/i18n'
+import { buildGatewayUrl } from '@/shared/gatewayUrl'
 import { getSetupAdapter } from './adapters'
 import {
   CAPABILITIES,
@@ -86,9 +87,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   }, [adapter])
 
   // 首次挂载自动开始检测
-  useState(() => {
+  useEffect(() => {
     startDetection()
-  })
+  }, [startDetection])
 
   // ─── 安装阶段 ───
   const startInstall = useCallback(async () => {
@@ -636,7 +637,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           </div>
           {onboard.gatewayRunning && (
             <a
-              href={`http://127.0.0.1:${onboard.gatewayPort}`}
+              href={buildGatewayUrl({ gateway: { port: onboard.gatewayPort } })}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-4 w-full py-3 border border-primary text-primary rounded-lg font-medium hover:bg-primary/5 transition block text-center"

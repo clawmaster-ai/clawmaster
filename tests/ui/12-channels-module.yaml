@@ -67,17 +67,27 @@ cases:
       - 显示"验证连接""保存""取消"按钮
 
   - id: ch-04
-    name: 验证连接功能
+    name: 验证连接功能（Web 模式）
     steps:
       - action: click
         target: text("验证连接")
       - action: observe
         duration: 5000ms
     assertions:
+      - Web 模式下显示"验证连接"按钮
       - 按钮显示加载状态
       - 验证成功：显示绿色成功反馈
       - 验证失败：显示红色失败反馈 + 详情
       - 验证结果不影响保存按钮状态
+
+  - id: ch-04b
+    name: Tauri 模式隐藏验证连接按钮
+    steps:
+      - action: observe
+        target: 通道编辑器
+    assertions:
+      - Tauri 模式下（window.__TAURI__ 存在）不渲染"验证连接"按钮
+      - 因为后端 adapter 返回 "tauriVerifyUnsupported"
 
   - id: ch-05
     name: 启用/禁用通道

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { platformResults } from '@/adapters'
 import type { OpenClawChannelEntry } from '@/lib/types'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
+import { isTauri } from '@/shared/adapters/platform'
 import { LoadingState } from '@/shared/components/LoadingState'
 import { buildChannelRegistry } from '@/modules/channels/channelRegistry'
 import type { ChannelFieldDef } from '@/modules/channels/channelRegistry'
@@ -737,14 +738,16 @@ export default function Channels() {
               </div>
             ) : null}
             <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                className="px-3 py-1.5 text-sm border border-border rounded hover:bg-accent disabled:opacity-50"
-                disabled={busy || verifyBusy}
-                onClick={() => void runVerifyEditor()}
-              >
-                {verifyBusy ? t('channelsPage.verifying') : t('channelsPage.verifyConnection')}
-              </button>
+              {!isTauri() && (
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-sm border border-border rounded hover:bg-accent disabled:opacity-50"
+                  disabled={busy || verifyBusy}
+                  onClick={() => void runVerifyEditor()}
+                >
+                  {verifyBusy ? t('channelsPage.verifying') : t('channelsPage.verifyConnection')}
+                </button>
+              )}
               <button
                 type="button"
                 className="px-3 py-1.5 text-sm border border-border rounded hover:bg-accent"

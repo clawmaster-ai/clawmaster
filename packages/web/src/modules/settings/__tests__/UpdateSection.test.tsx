@@ -81,6 +81,14 @@ describe('UpdateSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockBootstrap.mockResolvedValue({ success: true })
+    // Mock fetch to prevent real GitHub API calls in fetchReleaseNotes()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([]), { status: 200 }),
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('renders current version and check button', async () => {

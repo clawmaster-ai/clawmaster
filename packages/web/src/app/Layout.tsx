@@ -1,8 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { changeLanguage } from '@/i18n'
+import type { GatewayStatus } from '@/lib/types'
+import { getGatewayStatusResult } from '@/shared/adapters/gateway'
 import { getClawModules } from './moduleRegistry'
 import type { NavGroup } from '@/types/module'
 import {
@@ -106,6 +108,19 @@ export default function Layout({ children }: LayoutProps) {
   const currentPath = location.pathname
   const [dark, setDark] = useState(isDark)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [gwStatus, setGwStatus] = useState<GatewayStatus | null>(null)
+
+  // Poll gateway status for footer indicator
+  const pollGateway = useCallback(async () => {
+    const r = await getGatewayStatusResult()
+    if (r.success && r.data) setGwStatus(r.data)
+  }, [])
+
+  useEffect(() => {
+    void pollGateway()
+    const id = window.setInterval(() => void pollGateway(), 30_000)
+    return () => window.clearInterval(id)
+  }, [pollGateway])
 
   const modules = getClawModules()
   const navItems: NavItem[] = useMemo(() =>
@@ -251,11 +266,15 @@ export default function Layout({ children }: LayoutProps) {
 
         <footer className="h-7 border-t border-border flex items-center px-4 text-[11px] text-muted-foreground gap-3 shrink-0">
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            {t('layout.status.gatewayRunning')}
+            <span className={`w-1.5 h-1.5 rounded-full ${gwStatus?.running ? 'bg-green-500' : 'bg-red-500'}`} />
+            {gwStatus?.running ? t('layout.status.gatewayRunning') : t('layout.status.gatewayStopped')}
           </span>
-          <span className="text-border">|</span>
-          <span>v2026.3.8</span>
+          {gwStatus?.running && gwStatus.port && (
+            <>
+              <span className="text-border">|</span>
+              <span>:{gwStatus.port}</span>
+            </>
+          )}
         </footer>
       </div>
     </div>

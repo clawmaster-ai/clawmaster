@@ -44,7 +44,7 @@ cases:
       - 显示模型标签（灰色 bg-muted 小标签）
       - 如有工作空间路径则显示（monospace 字体）
       - 如有 agentDir 则显示配置路径
-      - 卡片右侧显示"编辑"和"删除"按钮
+      - 非 main 代理显示"删除"按钮（已接线，点击弹出确认对话框）
 
   - id: agt-03
     name: 路由绑定显示
@@ -84,6 +84,41 @@ cases:
       - action: observe
         target: main 代理卡片
     assertions:
-      - main 代理卡片显示"编辑"按钮
       - main 代理卡片不显示"删除"按钮（agent.id !== 'main' 条件）
-      - 其他代理（非 main）同时显示"编辑"和"删除"按钮
+      - 其他代理（非 main）显示"删除"按钮
+
+  # === Issue #4 修复验证 ===
+
+  - id: agt-06
+    name: "创建代理"按钮已接线
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/agents"
+      - action: wait
+        duration: 2000ms
+    assertions:
+      - "+ 创建代理"按钮有 click handler（非死按钮）
+      - 点击后弹出 window.prompt 输入代理 ID
+      - 取消后不创建代理
+
+  - id: agt-07
+    name: "删除"按钮已接线
+    preconditions:
+      - 存在非 main 代理
+    steps:
+      - action: observe
+        target: 非 main 代理卡片的删除按钮
+    assertions:
+      - 删除按钮有 click handler
+      - 点击后弹出 window.confirm 确认对话框
+      - 取消后不删除代理
+
+  - id: agt-08
+    name: 无死"编辑"按钮
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/agents"
+      - action: wait
+        duration: 2000ms
+    assertions:
+      - 页面不存在无 handler 的"编辑"按钮

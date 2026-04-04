@@ -24,7 +24,7 @@ cases:
       - 页面标题"网关管理"
       - 显示圆形状态指示灯（绿色运行中 / 红色已停止）
       - 显示状态文字"运行中"或"已停止"（大号字体）
-      - 显示 WebSocket URL（ws://127.0.0.1:XXXXX 格式）
+      - 显示 WebSocket URL（由 buildGatewayUrl 生成，格式 ws://host:port）
       - 显示操作按钮区域
 
   - id: gw-02
@@ -77,7 +77,7 @@ cases:
         target: text("在浏览器中打开")
     assertions:
       - "在浏览器中打开"按钮可见
-      - 按钮 href 指向 http://127.0.0.1:PORT
+      - 按钮 href 由 buildGatewayUrl(config) 生成（使用 config.gateway.bind/port）
       - 按钮有 target="_blank" 属性
 
   - id: gw-06

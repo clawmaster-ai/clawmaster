@@ -23,6 +23,15 @@ function resolveShell(): string {
 
 const RESOLVED_SHELL = resolveShell()
 
+/**
+ * Generic exec endpoint — used as a fallback for CLI commands that don't yet
+ * have dedicated backend routes.
+ *
+ * NOTE: On Windows, ClawMaster (like OpenClaw) expects WSL2 as the runtime
+ * environment. The `shell: false` flag works correctly inside WSL2 since the
+ * backend runs in a Linux environment. Native Windows `.cmd/.bat` wrappers
+ * are NOT supported without WSL2.
+ */
 export function registerExecRoutes(app: Express): void {
   app.get('/api/shell-info', (_req, res) => {
     res.json({

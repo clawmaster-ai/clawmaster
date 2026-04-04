@@ -340,7 +340,7 @@ function SceneCard({
         />
       ) : (
         <button
-          onClick={() => sceneTask.run(async () => { onInstall() })}
+          onClick={() => sceneTask.run(async () => { await onInstall() })}
           disabled={installing}
           className="w-full py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1.5"
         >
@@ -422,7 +422,7 @@ function CatalogCard({
           </button>
         ) : (
           <button
-            onClick={() => installTask.run(async () => { onInstall() })}
+            onClick={() => installTask.run(async () => { await onInstall() })}
             disabled={operating}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50"
           >

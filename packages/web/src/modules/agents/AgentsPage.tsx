@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { platform } from '@/adapters'
+import { platformResults } from '@/shared/adapters/platformResults'
 import type { OpenClawConfig } from '@/lib/types'
 
 export default function Agents() {
@@ -24,6 +25,29 @@ export default function Agents() {
     }
   }
 
+  async function handleCreateAgent() {
+    const id = window.prompt(t('agents.enterAgentId'))
+    if (!id?.trim()) return
+    const name = window.prompt(t('agents.enterAgentName'), id) ?? id
+    const model = config?.agents?.defaults?.model?.primary ?? ''
+    const r = await platformResults.createAgent({ id: id.trim(), name, model })
+    if (r.success) {
+      await loadData()
+    } else {
+      alert(r.error ?? 'Failed to create agent')
+    }
+  }
+
+  async function handleDeleteAgent(agentId: string) {
+    if (!window.confirm(t('agents.deleteConfirm', { id: agentId }))) return
+    const r = await platformResults.deleteAgent(agentId)
+    if (r.success) {
+      await loadData()
+    } else {
+      alert(r.error ?? 'Failed to delete agent')
+    }
+  }
+
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">{t('common.loading')}</div>
   }
@@ -35,7 +59,7 @@ export default function Agents() {
     <div className="max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('agents.title')}</h1>
-        <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
+        <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90" onClick={handleCreateAgent}>
           {t('agents.createAgent')}
         </button>
       </div>
@@ -85,11 +109,11 @@ export default function Agents() {
               )}
             </div>
             <div className="flex gap-2">
-              <button className="px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-accent">
-                {t('common.edit')}
-              </button>
               {agent.id !== 'main' && (
-                <button className="px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-accent text-red-500">
+                <button
+                  className="px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-accent text-red-500"
+                  onClick={() => handleDeleteAgent(agent.id)}
+                >
                   {t('common.delete')}
                 </button>
               )}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AdapterResult } from '@/shared/adapters/types'
 import { formatAdapterResultError } from '@/shared/adapters/tauriCommandError'
@@ -17,11 +17,15 @@ export function useAdapterCall<T>(
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Keep a stable ref to the latest fetcher so callers don't need to memoize
+  const fetcherRef = useRef(fetcher)
+  fetcherRef.current = fetcher
+
   const refetch = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetcher()
+      const res = await fetcherRef.current()
       if (res.success) {
         setData(res.data ?? null)
         setError(null)
@@ -33,7 +37,7 @@ export function useAdapterCall<T>(
     } finally {
       setLoading(false)
     }
-  }, [fetcher, t])
+  }, [t])
 
   useEffect(() => {
     void refetch()

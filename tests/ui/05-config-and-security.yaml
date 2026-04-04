@@ -77,7 +77,7 @@ cases:
       - "保存"按钮置灰（disabled）
 
   - id: cfg-05
-    name: 配置保存
+    name: 配置保存（原子 saveFullConfig）
     steps:
       - action: click
         target: text("可视化编辑")
@@ -90,6 +90,7 @@ cases:
       - 保存成功显示绿色"保存成功"提示
       - 保存失败显示红色错误信息
       - 提示 2 秒后自动消失
+      - 保存使用 saveFullConfigResult（原子整文件写入），非逐 key 循环 setConfig
 
   - id: cfg-06
     name: 配置导出
@@ -238,3 +239,46 @@ cases:
       - 通道切换为 Beta
       - 目标版本更新为 beta dist-tag 对应的版本
       - 如 beta 版本与当前版本不同：显示更新/降级按钮
+
+  # === Issue #4 修复验证：Settings 死按钮 ===
+
+  - id: cfg-14
+    name: "重置配置"按钮已接线
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: settings-danger-wired
+    assertions:
+      - 危险操作区显示"重置配置"按钮
+      - 按钮有 click handler（非死按钮）
+      - 点击后弹出 window.confirm 确认对话框
+      - 取消后不执行重置
+
+  - id: cfg-15
+    name: "卸载 OpenClaw"按钮已接线
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 2000ms
+    assertions:
+      - 危险操作区显示"卸载 OpenClaw"按钮
+      - 按钮有 click handler（非死按钮）
+      - 点击后弹出 window.confirm 确认对话框
+
+  - id: cfg-16
+    name: Web 模式隐藏 Tauri 专用系统设置
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 2000ms
+    assertions:
+      - Web 模式下不显示"系统"设置区块
+      - 不显示"开机自启"复选框
+      - 不显示"显示托盘图标"复选框
+      - 不显示"最小化到托盘"复选框
+      - 页面无 defaultChecked 且无 onChange 的复选框

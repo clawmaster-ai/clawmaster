@@ -7,10 +7,8 @@
  */
 
 import { execCommand } from '@/shared/adapters/platform'
-
-const TEMP = '${TMPDIR:-/tmp}'
-// Mirror detection removed — PR #2 uses probeMirrorResult instead
-// import { detectMirrors, getMirrorSetupCommands } from '@/shared/adapters/mirror'
+import { startGatewayResult, getGatewayStatusResult } from '@/shared/adapters/gateway'
+import { setConfigResult } from '@/shared/adapters/openclaw'
 import {
   CAPABILITIES,
   PROVIDERS,
@@ -97,35 +95,26 @@ const realOnboardingAdapter: OnboardingAdapter = {
     const effectiveKey = provider === 'ollama' ? (apiKey || 'ollama') : apiKey
     const providerObj: Record<string, unknown> = { apiKey: effectiveKey, models: [] }
     if (effectiveBaseUrl) providerObj.baseUrl = effectiveBaseUrl
-    const batchJson = JSON.stringify([{ path: `models.providers.${configKey}`, value: providerObj }])
-    // 通过 heredoc 写临时文件，再用 --batch-file 读取
-    await execCommand('bash', [
-      '-c',
-      `cat > ${TEMP}/.openclaw-batch.json << 'CLAWEOF'\n${batchJson}\nCLAWEOF\nopenclaw config set --batch-file ${TEMP}/.openclaw-batch.json --strict-json && rm -f ${TEMP}/.openclaw-batch.json`,
-    ])
+    const r = await setConfigResult(`models.providers.${configKey}`, providerObj)
+    if (!r.success) throw new Error(r.error ?? 'Failed to set API key')
   },
 
   async setDefaultModel(model) {
     await execCommand('openclaw', ['models', 'set', model])
   },
 
-  async startGateway(port) {
-    // 使用 nohup 直接启动，不通过 bash -c（避免后台进程被 shell 退出时杀死）
-    // 注意：此调用会阻塞直到 gateway 退出，所以调用方不应 await 此结果
-    // 但 checkGateway 会在网关启动后探测到它
-    execCommand('nohup', ['openclaw', 'gateway', 'run', '--port', String(port), '--auth', 'none']).catch(() => {})
-    // 给网关一点启动时间
+  async startGateway(_port) {
+    // Use the cross-platform gateway adapter (Tauri invoke or POST /api/gateway/start)
+    const r = await startGatewayResult()
+    if (!r.success) throw new Error(r.error ?? 'Failed to start gateway')
+    // Give the gateway a moment to start
     await new Promise((r) => setTimeout(r, 2000))
   },
 
-  async checkGateway(port) {
-    try {
-      // 通过 curl 检查网关健康，避免浏览器 CORS 限制
-      const output = await execCommand('curl', ['-sf', `http://127.0.0.1:${port}/health`])
-      return output.includes('"ok":true')
-    } catch {
-      return false
-    }
+  async checkGateway(_port) {
+    // Use the cross-platform gateway status adapter
+    const r = await getGatewayStatusResult()
+    return r.success && !!r.data?.running
   },
 
   async addChannel(channelType, tokens) {

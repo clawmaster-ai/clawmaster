@@ -55,11 +55,17 @@ async function execViaTauri(cmd: string, args: string[]): Promise<string> {
   // 动态拼接模块路径，避免 Vite 在 Web 模式静态分析时报错
   const tauriModule = '@tauri-apps/api' + '/core'
   const { invoke } = await import(/* @vite-ignore */ tauriModule)
-  const result = await (invoke as (cmd: string, args: Record<string, unknown>) => Promise<string>)('exec_command', {
-    cmd,
-    args,
-  })
-  return result
+  const inv = invoke as (cmd: string, args: Record<string, unknown>) => Promise<string>
+
+  // Route to the correct registered Tauri command
+  switch (cmd) {
+    case 'openclaw':
+      return inv('run_openclaw_command', { args })
+    case 'clawprobe':
+      return inv('run_clawprobe_command', { args })
+    default:
+      throw new Error(`Tauri: unsupported command "${cmd}". Use specialized adapters.`)
+  }
 }
 
 // ─── Web 执行路径 ───

@@ -78,6 +78,7 @@ cases:
       - 轮次时间线中每轮显示：序号圆圈、时间戳、token 增量、费用
       - 工具调用显示为灰色标签（font-mono）
       - 再次点击可折叠
+      - 展开使用 useEffect 获取详情（非 useState 副作用），仅触发一次请求
 
   - id: ses-05
     name: 清理会话
@@ -108,3 +109,31 @@ cases:
       - 显示"暂无会话"空状态提示文字
       - 不显示会话卡片
       - 刷新按钮和过滤器仍然可用
+
+  # === Issue #4 修复验证 ===
+
+  - id: ses-07
+    name: useAdapterCall 不因 inline fetcher 触发无限循环
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/sessions"
+      - action: wait
+        duration: 6000ms
+      - action: screenshot
+        name: sessions-stability
+    assertions:
+      - 页面在初始加载后稳定，不持续闪烁或重新加载
+      - 无 "loading → data → loading → data" 的状态抖动
+      - 控制台无 "Maximum update depth exceeded" 警告
+      - 5 秒内网络请求数量合理（≤3 次，含初始 + 轮询）
+
+  - id: ses-08
+    name: 轮询 interval 不因 refetch 重建导致泄漏
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/sessions"
+      - action: wait
+        duration: 60000ms
+    assertions:
+      - 60 秒内 /api/exec 请求数量符合 30 秒轮询预期（约 2-3 次）
+      - 不出现请求数量随时间线性增长的情况
