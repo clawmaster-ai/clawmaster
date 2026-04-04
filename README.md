@@ -113,6 +113,16 @@ ClawMaster is built on top of outstanding open-source projects:
 | [Playwright](https://playwright.dev) | E2E testing and UI automation |
 | [Ollama](https://ollama.com) | Local LLM inference engine |
 
+## Versioning
+
+This project follows [Pride Versioning](https://pridever.org/) (`PROUD.DEFAULT.SHAME`):
+
+- **PROUD** -- bump when you are proud of the release
+- **DEFAULT** -- bump for normal, okay releases
+- **SHAME** -- bump when fixing things too embarrassing to admit
+
+When the PROUD version increments, DEFAULT and SHAME reset to zero.
+
 ## Contributing
 
 Contributions are welcome. Please:

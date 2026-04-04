@@ -113,6 +113,16 @@ ClawMaster は以下の優れたオープンソースプロジェクトを基盤
 | [Playwright](https://playwright.dev) | E2E テストと UI 自動化 |
 | [Ollama](https://ollama.com) | ローカル LLM 推論エンジン |
 
+## バージョニング
+
+このプロジェクトは [Pride Versioning](https://pridever.org/)（`PROUD.DEFAULT.SHAME`）に従います：
+
+- **PROUD** -- そのリリースを誇りに思える時にバンプ
+- **DEFAULT** -- 普通の、まあまあのリリースでバンプ
+- **SHAME** -- 認めたくないほど恥ずかしいバグ修正でバンプ
+
+PROUD バージョンが上がると、DEFAULT と SHAME はゼロにリセットされます。
+
 ## コントリビューション
 
 コントリビューションを歓迎します：
