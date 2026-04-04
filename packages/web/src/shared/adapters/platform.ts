@@ -64,7 +64,7 @@ async function execViaTauri(cmd: string, args: string[]): Promise<string> {
     case 'clawprobe':
       return inv('run_clawprobe_command', { args })
     default:
-      throw new Error(`Tauri: unsupported command "${cmd}". Use specialized adapters.`)
+      return inv('run_system_command', { cmd, args })
   }
 }
 

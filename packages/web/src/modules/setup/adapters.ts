@@ -183,6 +183,7 @@ export const realSetupAdapter: SetupAdapter = {
 
   async installCapabilities(ids, onProgress) {
     // 逐项安装
+    const failures: string[] = []
     for (const id of ids) {
       const cap = CAPABILITIES.find((c) => c.id === id)
       if (!cap) continue
@@ -205,12 +206,17 @@ export const realSetupAdapter: SetupAdapter = {
 
         onProgress({ id, status: 'done', progress: 100 })
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
         onProgress({
           id,
           status: 'error',
-          error: err instanceof Error ? err.message : String(err),
+          error: message,
         })
+        failures.push(`${id}: ${message}`)
       }
+    }
+    if (failures.length > 0) {
+      throw new Error(failures.join('\n'))
     }
   },
 }

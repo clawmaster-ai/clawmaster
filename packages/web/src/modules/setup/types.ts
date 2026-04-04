@@ -56,10 +56,9 @@ export const CAPABILITIES: CapabilityDef[] = [
     required: false,
     installSteps: [
       // 1. 创建目录 + 虚拟环境
-      { cmd: 'mkdir', args: ['-p', '~/.openclaw/powermem'] },
-      { cmd: 'python3', args: ['-m', 'venv', '~/.openclaw/powermem/.venv'] },
+      { cmd: 'bash', args: ['-lc', 'mkdir -p "$HOME/.openclaw/powermem" && python3 -m venv "$HOME/.openclaw/powermem/.venv"'] },
       // 2. 在虚拟环境中安装 PowerMem
-      { cmd: '~/.openclaw/powermem/.venv/bin/pip', args: ['install', 'powermem'] },
+      { cmd: 'bash', args: ['-lc', '"$HOME/.openclaw/powermem/.venv/bin/pip" install powermem'] },
       // 3. 安装 OpenClaw 插件
       { cmd: 'openclaw', args: ['plugins', 'install', 'memory-powermem'] },
       // 4. 通过 ClawHub Skill 自动完成配置 + 槽位切换

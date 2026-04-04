@@ -1,21 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::net::{SocketAddr, TcpStream};
 use std::io::Write;
+use std::net::{SocketAddr, TcpStream};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 const CMD_ERR_PREFIX: &str = "CLAWMASTER_ERR:";
 
 fn cmd_err(code: &'static str) -> String {
-    format!(
-        "{}{}",
-        CMD_ERR_PREFIX,
-        serde_json::json!({ "code": code })
-    )
+    format!("{}{}", CMD_ERR_PREFIX, serde_json::json!({ "code": code }))
 }
 
 fn cmd_err_p(code: &'static str, params: serde_json::Value) -> String {
@@ -110,14 +106,14 @@ pub struct BootstrapAfterInstallDto {
 
 static OPENCLAW_EXE: OnceLock<PathBuf> = OnceLock::new();
 static CLAWPROBE_EXE: OnceLock<PathBuf> = OnceLock::new();
+static SYSTEM_CMD_EXE: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
 
 /// GUI processes (especially when launched from Finder on macOS) often lack nvm/fnm global bins in PATH,
 /// so `openclaw` may differ from Terminal or be missing. Resolve via login shell `command -v openclaw`.
 fn openclaw_executable_path() -> PathBuf {
     OPENCLAW_EXE
         .get_or_init(|| {
-            try_resolve_openclaw_via_login_shell()
-                .unwrap_or_else(|| PathBuf::from("openclaw"))
+            try_resolve_openclaw_via_login_shell().unwrap_or_else(|| PathBuf::from("openclaw"))
         })
         .clone()
 }
@@ -131,8 +127,7 @@ fn openclaw_cmd() -> Command {
 fn clawprobe_executable_path() -> PathBuf {
     CLAWPROBE_EXE
         .get_or_init(|| {
-            try_resolve_clawprobe_via_login_shell()
-                .unwrap_or_else(|| PathBuf::from("clawprobe"))
+            try_resolve_clawprobe_via_login_shell().unwrap_or_else(|| PathBuf::from("clawprobe"))
         })
         .clone()
 }
@@ -176,7 +171,11 @@ fn try_resolve_clawprobe_via_login_shell() -> Option<PathBuf> {
             return None;
         }
         let p = PathBuf::from(line);
-        if p.exists() { Some(p) } else { None }
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
 }
 
@@ -215,8 +214,106 @@ fn try_resolve_openclaw_via_login_shell() -> Option<PathBuf> {
             return None;
         }
         let p = PathBuf::from(line);
-        if p.exists() { Some(p) } else { None }
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     }
+}
+
+fn normalize_login_shell_which_line(line: &str) -> Option<String> {
+    let s = line.trim().lines().next()?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let alias_prefix = "alias ";
+    let mut v = if let Some(rest) = s.strip_prefix(alias_prefix) {
+        let (_, rhs) = rest.split_once('=')?;
+        rhs.trim().to_string()
+    } else {
+        s.to_string()
+    };
+    if (v.starts_with('"') && v.ends_with('"')) || (v.starts_with('\'') && v.ends_with('\'')) {
+        v = v[1..v.len() - 1].to_string();
+    }
+    if v.is_empty() {
+        return None;
+    }
+    if v.contains(char::is_whitespace) && !Path::new(&v).is_absolute() {
+        return None;
+    }
+    Some(v)
+}
+
+fn try_resolve_system_command_via_login_shell(cmd: &str) -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let output = Command::new("cmd")
+            .args(["/C", &format!("where {cmd}")])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let out = String::from_utf8_lossy(&output.stdout);
+        let line = out.lines().next()?.trim();
+        if line.is_empty() {
+            return None;
+        }
+        let p = PathBuf::from(line);
+        return if p.exists() { Some(p) } else { None };
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let (shell, shell_args): (&str, Vec<String>) = if cfg!(target_os = "macos") {
+            (
+                "/bin/zsh",
+                vec!["-ilc".to_string(), format!("command -v {cmd}")],
+            )
+        } else {
+            (
+                "/bin/bash",
+                vec![
+                    "--login".to_string(),
+                    "-c".to_string(),
+                    format!("command -v {cmd}"),
+                ],
+            )
+        };
+        let output = Command::new(shell).args(&shell_args).output().ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let out = String::from_utf8_lossy(&output.stdout);
+        let normalized = normalize_login_shell_which_line(&out)?;
+        let p = PathBuf::from(normalized);
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
+    }
+}
+
+fn resolve_system_command_path(cmd: &str) -> PathBuf {
+    let cache = SYSTEM_CMD_EXE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(guard) = cache.lock() {
+        if let Some(p) = guard.get(cmd) {
+            return p.clone();
+        }
+    }
+
+    let resolved = if cmd == "bash" {
+        resolve_bash_command_path()
+    } else {
+        try_resolve_system_command_via_login_shell(cmd).unwrap_or_else(|| PathBuf::from(cmd))
+    };
+
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(cmd.to_string(), resolved.clone());
+    }
+    resolved
 }
 
 // OpenClaw config file path
@@ -236,15 +333,10 @@ fn get_config_path() -> PathBuf {
 
 // Run command with --version-style arg; return stdout if success
 fn check_command(cmd: &str, version_arg: &str) -> Option<String> {
-    let output = Command::new(cmd)
-        .arg(version_arg)
-        .output()
-        .ok()?;
-    
+    let output = Command::new(cmd).arg(version_arg).output().ok()?;
+
     if output.status.success() {
-        let version = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_string();
+        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Some(version)
     } else {
         None
@@ -278,7 +370,7 @@ fn detect_system() -> Result<SystemInfo, String> {
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
     let config_path = get_config_path();
-    
+
     let openclaw = OpenClawInfo {
         installed: openclaw_version.is_some() || config_path.exists(),
         version: openclaw_version
@@ -523,11 +615,11 @@ fn get_config() -> Result<OpenClawConfig, String> {
         });
     }
 
-    let content = fs::read_to_string(&config_path)
-        .map_err(|e| cmd_err_d("CONFIG_READ_FAILED", e))?;
+    let content =
+        fs::read_to_string(&config_path).map_err(|e| cmd_err_d("CONFIG_READ_FAILED", e))?;
 
-    let data: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| cmd_err_d("CONFIG_PARSE_FAILED", e))?;
+    let data: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| cmd_err_d("CONFIG_PARSE_FAILED", e))?;
 
     Ok(OpenClawConfig { data })
 }
@@ -536,18 +628,16 @@ fn get_config() -> Result<OpenClawConfig, String> {
 #[tauri::command]
 fn save_config(config: serde_json::Value) -> Result<(), String> {
     let config_path = get_config_path();
-    
+
     // Ensure parent directory exists
     if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| cmd_err_d("CONFIG_MKDIR_FAILED", e))?;
+        fs::create_dir_all(parent).map_err(|e| cmd_err_d("CONFIG_MKDIR_FAILED", e))?;
     }
 
     let content = serde_json::to_string_pretty(&config)
         .map_err(|e| cmd_err_d("CONFIG_SERIALIZE_FAILED", e))?;
 
-    fs::write(&config_path, content)
-        .map_err(|e| cmd_err_d("CONFIG_WRITE_FAILED", e))?;
+    fs::write(&config_path, content).map_err(|e| cmd_err_d("CONFIG_WRITE_FAILED", e))?;
 
     Ok(())
 }
@@ -610,12 +700,7 @@ fn npm_uninstall_global_robust(pkg: &str) -> (bool, i32, String, String) {
                 let code = output.status.code().unwrap_or(-1);
                 (output.status.success(), code, stdout, stderr)
             }
-            Err(e) => (
-                false,
-                -1,
-                String::new(),
-                format!("npm spawn failed: {}", e),
-            ),
+            Err(e) => (false, -1, String::new(), format!("npm spawn failed: {}", e)),
         }
     }
 
@@ -656,12 +741,7 @@ fn npm_uninstall_global_robust(pkg: &str) -> (bool, i32, String, String) {
     }
 
     if !pkg_dir.exists() {
-        return (
-            true,
-            0,
-            format!("{}\n(全局目录已不存在)", out),
-            err,
-        );
+        return (true, 0, format!("{}\n(全局目录已不存在)", out), err);
     }
 
     match fs::remove_dir_all(&pkg_dir) {
@@ -671,12 +751,7 @@ fn npm_uninstall_global_robust(pkg: &str) -> (bool, i32, String, String) {
             format!("{}\n已手动删除: {}", out, pkg_dir.display()),
             err,
         ),
-        Err(e) => (
-            false,
-            c1,
-            out,
-            format!("{}\n删除目录失败: {}", err, e),
-        ),
+        Err(e) => (false, c1, out, format!("{}\n删除目录失败: {}", err, e)),
     }
 }
 
@@ -714,7 +789,8 @@ fn validate_npm_openclaw_spec(s: &str) -> Result<(), String> {
     if t.len() > 128 {
         return Err(cmd_err("INVALID_OPENCLAW_VERSION_SPEC"));
     }
-    if !t.chars()
+    if !t
+        .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
     {
         return Err(cmd_err("INVALID_OPENCLAW_VERSION_SPEC"));
@@ -724,7 +800,13 @@ fn validate_npm_openclaw_spec(s: &str) -> Result<(), String> {
 
 fn cmp_openclaw_version_desc(a: &str, b: &str) -> std::cmp::Ordering {
     fn key(v: &str) -> [i64; 3] {
-        let core = v.split('-').next().unwrap_or("").split('+').next().unwrap_or("");
+        let core = v
+            .split('-')
+            .next()
+            .unwrap_or("")
+            .split('+')
+            .next()
+            .unwrap_or("");
         let mut parts = core
             .split('.')
             .map(|p| p.parse::<i64>().unwrap_or(0))
@@ -767,8 +849,8 @@ fn list_openclaw_npm_versions() -> Result<OpenclawNpmVersionsDto, String> {
     }
 
     let v_raw = npm_stdout(&["view", "openclaw", "versions", "--json"])?;
-    let parsed: serde_json::Value =
-        serde_json::from_str(v_raw.trim()).map_err(|e| cmd_err_d("NPM_VERSIONS_JSON_PARSE_FAILED", e))?;
+    let parsed: serde_json::Value = serde_json::from_str(v_raw.trim())
+        .map_err(|e| cmd_err_d("NPM_VERSIONS_JSON_PARSE_FAILED", e))?;
     let mut versions: Vec<String> = match parsed {
         serde_json::Value::Array(a) => a
             .into_iter()
@@ -1001,7 +1083,11 @@ fn reinstall_openclaw_global(version_spec: Option<String>) -> Result<ReinstallOp
         backup_path: None,
     });
 
-    let backup_ok = steps.iter().find(|s| s.id == "backup").map(|s| s.ok).unwrap_or(false);
+    let backup_ok = steps
+        .iter()
+        .find(|s| s.id == "backup")
+        .map(|s| s.ok)
+        .unwrap_or(false);
     let ok = backup_ok && install_ok;
     Ok(ReinstallOpenclawDto { ok, steps })
 }
@@ -1085,7 +1171,10 @@ fn get_backup_defaults() -> Result<BackupDefaultsDto, String> {
     } else {
         home.to_string_lossy().to_string()
     };
-    let snapshots_dir = home.join(".openclaw_snapshots").to_string_lossy().to_string();
+    let snapshots_dir = home
+        .join(".openclaw_snapshots")
+        .to_string_lossy()
+        .to_string();
     let data_dir = get_config_path()
         .parent()
         .ok_or_else(|| cmd_err("CONFIG_PARENT_INVALID"))?
@@ -1154,7 +1243,9 @@ fn create_openclaw_backup(
         return Err(cmd_err("TAR_PACK_FAILED"));
     }
     let _ = fs::remove_dir_all(&tmp);
-    let size = fs::metadata(&tar_path).map_err(|e| cmd_err_d("IO_ERROR", e))?.len();
+    let size = fs::metadata(&tar_path)
+        .map_err(|e| cmd_err_d("IO_ERROR", e))?
+        .len();
     Ok(CreateBackupDto {
         path: tar_path.to_string_lossy().to_string(),
         snapshot_id: snap_id,
@@ -1204,7 +1295,11 @@ fn restore_openclaw_backup(tar_path: String) -> Result<(), String> {
     let mut data_src: Option<PathBuf> = None;
     for entry in fs::read_dir(&tmp).map_err(|e| cmd_err_d("IO_ERROR", e))? {
         let entry = entry.map_err(|e| cmd_err_d("IO_ERROR", e))?;
-        if entry.file_type().map_err(|e| cmd_err_d("IO_ERROR", e))?.is_dir() {
+        if entry
+            .file_type()
+            .map_err(|e| cmd_err_d("IO_ERROR", e))?
+            .is_dir()
+        {
             let p = entry.path().join("openclaw_data");
             if p.is_dir() {
                 data_src = Some(p);
@@ -1294,8 +1389,7 @@ fn get_logs(lines: usize) -> Result<Vec<String>, String> {
         if !log_path.exists() {
             continue;
         }
-        let content = fs::read_to_string(&log_path)
-            .map_err(|e| cmd_err_d("LOG_READ_FAILED", e))?;
+        let content = fs::read_to_string(&log_path).map_err(|e| cmd_err_d("LOG_READ_FAILED", e))?;
         let non_empty: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
         if non_empty.is_empty() {
             continue;
@@ -1406,6 +1500,102 @@ fn run_clawprobe_command(args: Vec<String>) -> Result<String, String> {
     }
 }
 
+fn is_allowed_system_command(cmd: &str) -> bool {
+    matches!(
+        cmd,
+        "bash" | "clawhub" | "curl" | "mkdir" | "nohup" | "npm" | "ollama" | "pip" | "python3"
+    )
+}
+
+fn expand_exec_arg_home(arg: &str) -> String {
+    if arg.trim().starts_with("~/") {
+        expand_home_path(arg).to_string_lossy().to_string()
+    } else {
+        arg.to_string()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_bash_command_path() -> PathBuf {
+    let candidates = [
+        std::env::var_os("ProgramFiles")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Program Files"))
+            .join("Git")
+            .join("bin")
+            .join("bash.exe"),
+        std::env::var_os("ProgramFiles(x86)")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Program Files (x86)"))
+            .join("Git")
+            .join("bin")
+            .join("bash.exe"),
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_default()
+            .join("Programs")
+            .join("Git")
+            .join("bin")
+            .join("bash.exe"),
+    ];
+    for candidate in candidates {
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    PathBuf::from("bash")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn resolve_bash_command_path() -> PathBuf {
+    PathBuf::from("/bin/bash")
+}
+
+#[tauri::command]
+fn run_system_command(cmd: String, args: Vec<String>) -> Result<String, String> {
+    let trimmed = cmd.trim();
+    if trimmed.is_empty() {
+        return Err(cmd_err("SYSTEM_CMD_EMPTY"));
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        return Err(cmd_err_p(
+            "SYSTEM_CMD_PATH_NOT_ALLOWED",
+            serde_json::json!({ "cmd": trimmed }),
+        ));
+    }
+    if !is_allowed_system_command(trimmed) {
+        return Err(cmd_err_p(
+            "SYSTEM_CMD_NOT_ALLOWED",
+            serde_json::json!({ "cmd": trimmed }),
+        ));
+    }
+
+    let program = resolve_system_command_path(trimmed);
+    let normalized_args: Vec<String> = args.iter().map(|arg| expand_exec_arg_home(arg)).collect();
+
+    let output = Command::new(program)
+        .args(&normalized_args)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| cmd_err_d("SYSTEM_CMD_SPAWN_FAILED", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        let msg = if !stderr.trim().is_empty() {
+            stderr
+        } else if !stdout.trim().is_empty() {
+            stdout
+        } else {
+            format!("exit {:?}", output.status.code())
+        };
+        Err(cmd_err_d("SYSTEM_CMD_FAILED", msg.trim()))
+    }
+}
+
 fn expand_powermem_env_path(raw: &str) -> PathBuf {
     let t = raw.trim();
     if let Some(rest) = t.strip_prefix("~/") {
@@ -1510,12 +1700,10 @@ fn extract_powermem_dashscope_key(config: &serde_json::Value) -> Option<String> 
 }
 
 fn format_powermem_dotenv_value(value: &str) -> String {
-    let needs_quote = value.chars().any(|c| {
-        matches!(
-            c,
-            '\r' | '\n' | '#' | '\'' | '"' | '\\'
-        )
-    }) || value != value.trim();
+    let needs_quote = value
+        .chars()
+        .any(|c| matches!(c, '\r' | '\n' | '#' | '\'' | '"' | '\\'))
+        || value != value.trim();
     if needs_quote {
         let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
         format!("\"{escaped}\"")
@@ -1524,8 +1712,7 @@ fn format_powermem_dotenv_value(value: &str) -> String {
     }
 }
 
-const POWERMEM_ENV_TEMPLATE: &str =
-    include_str!("../../packages/backend/src/powermem.env.example");
+const POWERMEM_ENV_TEMPLATE: &str = include_str!("../../packages/backend/src/powermem.env.example");
 
 fn replace_powermem_dotenv_line(content: &str, name: &str, rhs: &str) -> String {
     let prefix = format!("{}=", name);
@@ -1853,6 +2040,7 @@ pub fn run() {
             run_openclaw_command_captured,
             run_openclaw_command_stdin,
             run_clawprobe_command,
+            run_system_command,
             run_pmem_command,
             read_powermem_env_file,
             write_powermem_env_file,

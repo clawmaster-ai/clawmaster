@@ -2,11 +2,24 @@ import type { Express } from 'express'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { existsSync } from 'fs'
-import { tmpdir, platform } from 'os'
+import { homedir, tmpdir, platform } from 'os'
 import path from 'path'
 
 const execFileAsync = promisify(execFile)
 const IS_WINDOWS = platform() === 'win32'
+const ALLOWED_COMMANDS = new Set([
+  'bash',
+  'clawhub',
+  'clawprobe',
+  'curl',
+  'mkdir',
+  'nohup',
+  'npm',
+  'ollama',
+  'openclaw',
+  'pip',
+  'python3',
+])
 
 function resolveShell(): string {
   if (!IS_WINDOWS) return 'bash'
@@ -22,6 +35,39 @@ function resolveShell(): string {
 }
 
 const RESOLVED_SHELL = resolveShell()
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function expandHomeToken(token: string): string {
+  if (token.startsWith('~/')) {
+    return path.join(homedir(), token.slice(2))
+  }
+  return token
+}
+
+function normalizeExecRequest(cmd: string, args: unknown): { cmd: string; args: string[] } {
+  const trimmedCmd = cmd.trim()
+  if (!trimmedCmd) {
+    throw new Error('Missing cmd parameter')
+  }
+  if (trimmedCmd.includes('/') || trimmedCmd.includes('\\')) {
+    throw new Error(`Command path is not allowed: ${trimmedCmd}`)
+  }
+  if (!ALLOWED_COMMANDS.has(trimmedCmd)) {
+    throw new Error(`Command is not allowed: ${trimmedCmd}`)
+  }
+  if (args !== undefined && !isStringArray(args)) {
+    throw new Error('Args must be an array of strings')
+  }
+  const normalizedArgs = (args ?? []).map((arg) => expandHomeToken(arg))
+  const normalizedCmd = trimmedCmd === 'bash' && IS_WINDOWS ? RESOLVED_SHELL : trimmedCmd
+  return {
+    cmd: normalizedCmd,
+    args: normalizedArgs,
+  }
+}
 
 /**
  * Generic exec endpoint — used as a fallback for CLI commands that don't yet
@@ -43,17 +89,23 @@ export function registerExecRoutes(app: Express): void {
   })
 
   app.post('/api/exec', async (req, res) => {
-    const { cmd, args } = req.body
+    const body = req.body ?? {}
+    const { cmd, args } = body
     if (!cmd || typeof cmd !== 'string') {
       res.status(400).json({ error: 'Missing cmd parameter' })
       return
     }
     try {
-      const resolvedCmd = (cmd === 'bash' && IS_WINDOWS) ? RESOLVED_SHELL : cmd
-      const { stdout, stderr } = await execFileAsync(resolvedCmd, args ?? [], { shell: false })
+      const normalized = normalizeExecRequest(cmd, args)
+      const { stdout, stderr } = await execFileAsync(normalized.cmd, normalized.args, { shell: false })
       res.json({ stdout: stdout.trim(), stderr: stderr.trim() })
     } catch (err: any) {
-      res.status(500).json({ error: err.message, stdout: '', stderr: err.stderr || '' })
+      const message = err instanceof Error ? err.message : String(err)
+      const status =
+        /Missing cmd parameter|Args must be an array of strings|Command (?:path is not allowed|is not allowed)/.test(message)
+          ? 400
+          : 500
+      res.status(status).json({ error: message, stdout: '', stderr: err?.stderr || '' })
     }
   })
 }
