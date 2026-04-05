@@ -123,11 +123,56 @@ jobs:
       - name: Build Tauri desktop bundles
         run: npx tauri build --target ${{ matrix.target }}
 
+      - name: Collect workflow bundle files
+        shell: bash
+        env:
+          BUNDLE_ROOT: src-tauri/target/${{ matrix.target }}/release/bundle
+          ARTIFACT_DIR: ci-artifacts/${{ matrix.artifact_name }}
+          RUNNER_OS: ${{ runner.os }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$ARTIFACT_DIR"
+
+          case "$RUNNER_OS" in
+            Linux)
+              find "$BUNDLE_ROOT" -type f \
+                \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.sig' -o -name '*.json' \) \
+                -exec cp '{}' "$ARTIFACT_DIR"/ \;
+              ;;
+            macOS)
+              find "$BUNDLE_ROOT" -type f \
+                \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.sig' -o -name '*.json' \) \
+                -exec cp '{}' "$ARTIFACT_DIR"/ \;
+              ;;
+            Windows)
+              find "$BUNDLE_ROOT" -type f \
+                \( -name '*.msi' -o -name '*.exe' -o -name '*.zip' -o -name '*.sig' -o -name '*.json' \) \
+                -exec cp '{}' "$ARTIFACT_DIR"/ \;
+              ;;
+            *)
+              echo "Unsupported runner OS: $RUNNER_OS" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ -z "$(find "$ARTIFACT_DIR" -maxdepth 1 -type f -print -quit)" ]; then
+            echo "No bundle files were collected for $RUNNER_OS" >&2
+            find "$BUNDLE_ROOT" -maxdepth 4 -type f | sort
+            exit 1
+          fi
+
+          {
+            echo "### ${{ matrix.label }}"
+            find "$ARTIFACT_DIR" -maxdepth 1 -type f -printf -- "- %f\n" | sort
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload workflow bundle artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle
+          path: ci-artifacts/${{ matrix.artifact_name }}
           if-no-files-found: error
           retention-days: 14
 
@@ -191,9 +236,9 @@ jobs:
           ClawMaster desktop installers built by CI.
 
           Downloads included in this release:
-          - Linux: AppImage, deb, rpm
-          - macOS: dmg
-          - Windows: msi, exe
+          - Linux: .AppImage, .deb, .rpm
+          - macOS: .dmg
+          - Windows: .msi, .exe
 
           Checksums are included in \`SHA256SUMS.txt\`.
           EOF
