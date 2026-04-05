@@ -139,20 +139,32 @@ function splitPipeRowPreservingCells(line: string): string[] {
   return line.split(TABLE_PIPE_SPLIT).map((c) => c.replace(BOX_CHARS, ' ').trim())
 }
 
-function findOpenclawPluginsTableHeader(lines: string[]): number {
+type OpenclawPluginsTableLayout = {
+  headerIdx: number
+  statusIndex: number
+  sourceIndex: number
+  versionIndex: number
+}
+
+function findOpenclawPluginsTableLayout(lines: string[]): OpenclawPluginsTableLayout | null {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (!lineHasTablePipe(line)) continue
     const cells = splitPipeRowPreservingCells(line)
-    if (cells.length < 5) continue
+    if (cells.length < 6) continue
     const c1 = (cells[1] ?? '').toLowerCase()
     const c2 = (cells[2] ?? '').toLowerCase()
     const c3 = (cells[3] ?? '').toLowerCase()
-    if (c1 === 'name' && c2 === 'id' && c3.startsWith('status')) {
-      return i
+    const c4 = (cells[4] ?? '').toLowerCase()
+    if (c1 !== 'name' || c2 !== 'id') continue
+    if (c3 === 'format' && c4.startsWith('status')) {
+      return { headerIdx: i, statusIndex: 4, sourceIndex: 5, versionIndex: 6 }
+    }
+    if (c3.startsWith('status')) {
+      return { headerIdx: i, statusIndex: 3, sourceIndex: 4, versionIndex: 5 }
     }
   }
-  return -1
+  return null
 }
 
 function rowIsTableSeparator(cells: string[]): boolean {
@@ -173,7 +185,10 @@ type TableAcc = {
 }
 
 /** Only non-empty Status starts a plugin; Version may continue on later lines. ID may come from Source when cells wrap. */
-function parseOpenclawPluginsTable(lines: string[], headerIdx: number): OpenClawPluginInfo[] {
+function parseOpenclawPluginsTable(
+  lines: string[],
+  layout: OpenclawPluginsTableLayout
+): OpenClawPluginInfo[] {
   const out: OpenClawPluginInfo[] = []
   const seen = new Set<string>()
   let cur: TableAcc | null = null
@@ -193,18 +208,18 @@ function parseOpenclawPluginsTable(lines: string[], headerIdx: number): OpenClaw
     cur = null
   }
 
-  for (let i = headerIdx + 1; i < lines.length; i++) {
+  for (let i = layout.headerIdx + 1; i < lines.length; i++) {
     const line = lines[i]
     if (!lineHasTablePipe(line)) continue
     const cells = splitPipeRowPreservingCells(line)
-    if (cells.length < 5) continue
+    if (cells.length <= layout.sourceIndex) continue
     if (rowIsTableSeparator(cells)) continue
 
     const name = (cells[1] ?? '').trim()
     const id = (cells[2] ?? '').trim()
-    const statusCell = (cells[3] ?? '').trim()
-    const source = (cells[4] ?? '').trim()
-    const versionCell = (cells[5] ?? '').trim()
+    const statusCell = (cells[layout.statusIndex] ?? '').trim()
+    const source = (cells[layout.sourceIndex] ?? '').trim()
+    const versionCell = (cells[layout.versionIndex] ?? '').trim()
 
     if (cur && !isPluginsTablePluginStartRow(statusCell)) {
       if (name) cur.name = mergeWrappedPluginName(cur.name, name)
@@ -276,9 +291,9 @@ export function parsePluginsPlainText(stdout: string): OpenClawPluginInfo[] {
     .map((l) => l.trim())
     .filter(Boolean)
 
-  const headerIdx = findOpenclawPluginsTableHeader(lines)
-  if (headerIdx >= 0) {
-    const tableRows = parseOpenclawPluginsTable(lines, headerIdx)
+  const tableLayout = findOpenclawPluginsTableLayout(lines)
+  if (tableLayout) {
+    const tableRows = parseOpenclawPluginsTable(lines, tableLayout)
     if (tableRows.length > 0) return tableRows
   }
 

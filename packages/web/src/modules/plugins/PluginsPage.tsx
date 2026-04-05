@@ -1,10 +1,27 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
+import type { LucideIcon } from 'lucide-react'
+import {
+  ArrowUpRight,
+  Boxes,
+  CircleOff,
+  Download,
+  Globe,
+  PlugZap,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Signal,
+  TerminalSquare,
+  ToggleLeft,
+  ToggleRight,
+  Trash2,
+} from 'lucide-react'
 import { platformResults } from '@/adapters'
 import type { OpenClawPluginInfo } from '@/lib/types'
-import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 import { LoadingState } from '@/shared/components/LoadingState'
+import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 
 /** Typical CLI values: enabled / loaded / disabled, etc. */
 function isPluginEnabled(status?: string): boolean {
@@ -22,6 +39,7 @@ function isPluginDisabledStatus(status?: string): boolean {
 }
 
 type StatusFilterMode = 'loaded' | 'all' | 'disabled'
+type PluginCategory = 'providers' | 'channels' | 'tools' | 'system'
 
 type PluginBusy =
   | { kind: 'enable'; id: string }
@@ -29,20 +47,153 @@ type PluginBusy =
   | { kind: 'install'; id: string }
   | { kind: 'uninstall'; id: string }
 
+type PluginCategoryMeta = {
+  key: PluginCategory
+  icon: LucideIcon
+  labelKey: string
+  accentClass: string
+}
+
+type PluginGroup = PluginCategoryMeta & {
+  plugins: OpenClawPluginInfo[]
+  loadedCount: number
+  disabledCount: number
+}
+
 const DESCRIPTION_COLLAPSE_CHARS = 96
+
+const CHANNEL_HINTS = [
+  'channel plugin',
+  'bluebubbles',
+  'discord',
+  'feishu',
+  'googlechat',
+  'imessage',
+  'qqbot',
+  'signal',
+  'slack',
+  'synology',
+  'telegram',
+  'tlon',
+  'twitch',
+  'whatsapp',
+  'zalo',
+]
+
+const PROVIDER_HINTS = [
+  'provider',
+  'amazon-bedrock',
+  'anthropic',
+  'byteplus',
+  'chutes',
+  'cloudflare-ai-gateway',
+  'copilot-proxy',
+  'deepseek',
+  'fal',
+  'github-copilot',
+  'huggingface',
+  'openrouter',
+  'opencode',
+  'qianfan',
+  'sglang',
+  'synthetic',
+  'together',
+  'venice',
+  'vercel-ai-gateway',
+  'vllm',
+  'volcengine',
+  'xai',
+  'xiaomi',
+  'zai',
+]
+
+const TOOL_HINTS = [
+  'browser tool',
+  'brave',
+  'browser',
+  'diff viewer',
+  'diffs',
+  'duckduckgo',
+  'exa',
+  'firecrawl',
+  'google plugin',
+  'searxng',
+  'tavily',
+]
+
+const PLUGIN_CATEGORY_META: PluginCategoryMeta[] = [
+  {
+    key: 'providers',
+    icon: PlugZap,
+    labelKey: 'plugins.categoryProviders',
+    accentClass: 'border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300',
+  },
+  {
+    key: 'channels',
+    icon: Globe,
+    labelKey: 'plugins.categoryChannels',
+    accentClass: 'border-sky-500/20 bg-sky-500/5 text-sky-700 dark:text-sky-300',
+  },
+  {
+    key: 'tools',
+    icon: TerminalSquare,
+    labelKey: 'plugins.categoryTools',
+    accentClass: 'border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300',
+  },
+  {
+    key: 'system',
+    icon: ShieldCheck,
+    labelKey: 'plugins.categorySystem',
+    accentClass: 'border-violet-500/20 bg-violet-500/5 text-violet-700 dark:text-violet-300',
+  },
+]
+
+function includesAny(haystack: string, hints: string[]): boolean {
+  return hints.some((hint) => haystack.includes(hint))
+}
+
+function classifyPlugin(plugin: OpenClawPluginInfo): PluginCategory {
+  const haystack = `${plugin.id} ${plugin.name} ${plugin.description ?? ''}`.toLowerCase()
+  if (includesAny(haystack, CHANNEL_HINTS)) return 'channels'
+  if (includesAny(haystack, PROVIDER_HINTS)) return 'providers'
+  if (includesAny(haystack, TOOL_HINTS)) return 'tools'
+  return 'system'
+}
+
+function pluginDisplayName(plugin: OpenClawPluginInfo): string {
+  return plugin.name?.trim() || plugin.id
+}
+
+function StatusBadge({ status }: { status?: string }) {
+  if (!status) {
+    return <span className="rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-xs text-muted-foreground">—</span>
+  }
+
+  const tone = isPluginEnabled(status)
+    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+    : isPluginDisabledStatus(status)
+      ? 'border-border/70 bg-background/70 text-muted-foreground'
+      : 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+
+  return (
+    <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${tone}`}>
+      {status}
+    </span>
+  )
+}
 
 function PluginDescriptionCell({ text }: { text: string | undefined }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const rawText = text?.trim() ?? ''
   if (!rawText) {
-    return <span className="text-muted-foreground">—</span>
+    return <span className="text-sm text-muted-foreground">—</span>
   }
   const collapsible = rawText.length > DESCRIPTION_COLLAPSE_CHARS
   return (
     <div className="min-w-0">
       <p
-        className={`text-muted-foreground break-words ${!open && collapsible ? 'line-clamp-2' : ''}`}
+        className={`text-sm text-muted-foreground break-words ${!open && collapsible ? 'line-clamp-2' : ''}`}
       >
         {rawText}
       </p>
@@ -59,10 +210,185 @@ function PluginDescriptionCell({ text }: { text: string | undefined }) {
   )
 }
 
+function MetricCard({
+  label,
+  value,
+  meta,
+}: {
+  label: string
+  value: number
+  meta: string
+}) {
+  return (
+    <div className="metric-card">
+      <p className="metric-label">{label}</p>
+      <p className="metric-value">{value}</p>
+      <p className="metric-meta">{meta}</p>
+    </div>
+  )
+}
+
+function CategorySpotlight({
+  group,
+  selected,
+  onSelect,
+}: {
+  group: PluginGroup
+  selected: boolean
+  onSelect: (key: PluginCategory) => void
+}) {
+  const { t } = useTranslation()
+  const Icon = group.icon
+  const availableCount = Math.max(group.plugins.length - group.loadedCount, 0)
+  const accentCard = selected ? 'border-primary/50 bg-primary/5 shadow-[0_18px_40px_rgba(233,98,36,0.12)]' : 'hover:border-primary/30'
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(group.key)}
+      className={`list-card flex h-full min-h-[14rem] flex-col text-left transition-colors ${accentCard}`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-3">
+          <span className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl border ${group.accentClass}`}>
+            <Icon className="h-4 w-4" />
+          </span>
+          <div>
+            <p className="text-base font-semibold text-foreground">{t(group.labelKey)}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t('plugins.loadedSummary', { loaded: group.loadedCount, total: group.plugins.length })}</p>
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{group.loadedCount}</p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-3 gap-2 text-left">
+        <div
+          className="rounded-2xl border border-border/70 bg-background/80 px-3 py-3"
+          aria-label={t('plugins.metricLoaded')}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <Signal className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+            <p className="text-lg font-semibold text-foreground">{group.loadedCount}</p>
+          </div>
+        </div>
+        <div
+          className="rounded-2xl border border-border/70 bg-background/80 px-3 py-3"
+          aria-label={t('plugins.metricAvailable')}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <CircleOff className="h-4 w-4 text-muted-foreground" />
+            <p className="text-lg font-semibold text-foreground">{availableCount}</p>
+          </div>
+        </div>
+        <div
+          className="rounded-2xl border border-border/70 bg-background/80 px-3 py-3"
+          aria-label={t('plugins.metricTotal')}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <Boxes className="h-4 w-4 text-muted-foreground" />
+            <p className="text-lg font-semibold text-foreground">{group.plugins.length}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-auto flex items-center justify-end pt-5">
+        <span
+          className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
+            selected
+              ? 'bg-foreground text-background'
+              : 'border border-border/70 bg-background/70 text-muted-foreground'
+          }`}
+        >
+          <ArrowUpRight className="h-3.5 w-3.5" />
+          {selected ? t('plugins.runtimeShowing') : t('plugins.runtimeOpen')}
+        </span>
+      </div>
+    </button>
+  )
+}
+
+function PluginCard({
+  plugin,
+  busy,
+  onEnable,
+  onDisable,
+  onUninstall,
+}: {
+  plugin: OpenClawPluginInfo
+  busy: PluginBusy | null
+  onEnable: (id: string) => void
+  onDisable: (id: string) => void
+  onUninstall: (plugin: OpenClawPluginInfo) => void
+}) {
+  const { t } = useTranslation()
+  const enabled = isPluginEnabled(plugin.status)
+  const disabled = isPluginDisabledStatus(plugin.status)
+  const displayName = pluginDisplayName(plugin)
+
+  return (
+    <article className="list-card flex h-full flex-col gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold text-foreground break-words">{displayName}</h3>
+            {plugin.version && (
+              <span className="rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-xs text-muted-foreground">
+                {plugin.version}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 font-mono text-xs text-muted-foreground break-all">{plugin.id}</p>
+        </div>
+        <StatusBadge status={plugin.status} />
+      </div>
+
+      <PluginDescriptionCell text={plugin.description} />
+
+      <div className="mt-auto flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busy !== null || enabled}
+          onClick={() => onEnable(plugin.id)}
+          className="button-secondary px-3 py-1.5 text-xs disabled:pointer-events-none disabled:opacity-50"
+          aria-label={t('plugins.enablePlugin', { name: displayName })}
+        >
+          <ToggleRight className="h-3.5 w-3.5" />
+          {busy?.kind === 'enable' && busy.id === plugin.id ? '…' : t('plugins.enable')}
+        </button>
+        <button
+          type="button"
+          disabled={busy !== null || disabled}
+          onClick={() => onDisable(plugin.id)}
+          className="button-secondary px-3 py-1.5 text-xs disabled:pointer-events-none disabled:opacity-50"
+          aria-label={t('plugins.disablePlugin', { name: displayName })}
+        >
+          <ToggleLeft className="h-3.5 w-3.5" />
+          {busy?.kind === 'disable' && busy.id === plugin.id ? '…' : t('plugins.disable')}
+        </button>
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => onUninstall(plugin)}
+          className="button-danger px-3 py-1.5 text-xs disabled:pointer-events-none disabled:opacity-50"
+          aria-label={t('plugins.uninstallPlugin', { name: displayName })}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          {busy?.kind === 'uninstall' && busy.id === plugin.id
+            ? t('plugins.uninstallBusy')
+            : t('plugins.uninstall')}
+        </button>
+      </div>
+    </article>
+  )
+}
+
 export default function PluginsPage() {
   const { t, i18n } = useTranslation()
   const [filter, setFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilterMode>('loaded')
+  const [categoryFilter, setCategoryFilter] = useState<PluginCategory | 'all'>('all')
   const [busy, setBusy] = useState<PluginBusy | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [installId, setInstallId] = useState('')
@@ -115,19 +441,22 @@ export default function PluginsPage() {
   }, [installId, refetch, t])
 
   const runUninstall = useCallback(
-    async (p: OpenClawPluginInfo) => {
+    async (plugin: OpenClawPluginInfo) => {
       if (
         !window.confirm(
-          t('plugins.uninstallConfirm', { id: p.id, name: p.name?.trim() || p.id })
+          t('plugins.uninstallConfirm', {
+            id: plugin.id,
+            name: pluginDisplayName(plugin),
+          })
         )
       ) {
         return
       }
       setActionError(null)
-      setBusy({ kind: 'uninstall', id: p.id })
-      const r = await platformResults.uninstallPlugin(p.id, {
+      setBusy({ kind: 'uninstall', id: plugin.id })
+      const r = await platformResults.uninstallPlugin(plugin.id, {
         keepFiles: uninstallKeepFiles,
-        disableLoadedFirst: isPluginEnabled(p.status),
+        disableLoadedFirst: isPluginEnabled(plugin.status),
       })
       setBusy(null)
       if (!r.success) {
@@ -144,33 +473,78 @@ export default function PluginsPage() {
 
   const sortLocale = i18n.language === 'zh' ? 'zh-Hans-CN' : i18n.language === 'ja' ? 'ja' : 'en'
 
-  const filtered = useMemo(() => {
+  const baseFiltered = useMemo(() => {
     const q = filter.trim().toLowerCase()
     let list =
       statusFilter === 'all'
         ? plugins
         : statusFilter === 'disabled'
-          ? plugins.filter((p) => isPluginDisabledStatus(p.status))
-          : plugins.filter((p) => !isPluginDisabledStatus(p.status))
+          ? plugins.filter((plugin) => isPluginDisabledStatus(plugin.status))
+          : plugins.filter((plugin) => isPluginEnabled(plugin.status))
 
     if (q) {
       list = list.filter(
-        (p) =>
-          p.id.toLowerCase().includes(q) ||
-          p.name.toLowerCase().includes(q) ||
-          (p.status && p.status.toLowerCase().includes(q)) ||
-          (p.description && p.description.toLowerCase().includes(q))
+        (plugin) =>
+          plugin.id.toLowerCase().includes(q) ||
+          plugin.name.toLowerCase().includes(q) ||
+          (plugin.status && plugin.status.toLowerCase().includes(q)) ||
+          (plugin.description && plugin.description.toLowerCase().includes(q))
       )
     }
 
-    list = [...list].sort((a, b) => {
-      const ae = isPluginEnabled(a.status)
-      const be = isPluginEnabled(b.status)
-      if (ae !== be) return ae ? -1 : 1
-      return (a.name || a.id).localeCompare(b.name || b.id, sortLocale)
+    return [...list].sort((left, right) => {
+      const leftEnabled = isPluginEnabled(left.status)
+      const rightEnabled = isPluginEnabled(right.status)
+      if (leftEnabled !== rightEnabled) return leftEnabled ? -1 : 1
+      return pluginDisplayName(left).localeCompare(pluginDisplayName(right), sortLocale)
     })
-    return list
-  }, [plugins, filter, statusFilter, sortLocale])
+  }, [plugins, filter, sortLocale, statusFilter])
+
+  const groupedPlugins = useMemo<PluginGroup[]>(() => {
+    return PLUGIN_CATEGORY_META.map((meta) => {
+      const pluginsInGroup = baseFiltered.filter((plugin) => classifyPlugin(plugin) === meta.key)
+      return {
+        ...meta,
+        plugins: pluginsInGroup,
+        loadedCount: pluginsInGroup.filter((plugin) => isPluginEnabled(plugin.status)).length,
+        disabledCount: pluginsInGroup.filter((plugin) => isPluginDisabledStatus(plugin.status)).length,
+      }
+    }).filter((group) => group.plugins.length > 0)
+  }, [baseFiltered])
+
+  const runtimeGroups = useMemo<PluginGroup[]>(() => {
+    return PLUGIN_CATEGORY_META.map((meta) => {
+      const pluginsInGroup = plugins.filter((plugin) => classifyPlugin(plugin) === meta.key)
+      return {
+        ...meta,
+        plugins: pluginsInGroup,
+        loadedCount: pluginsInGroup.filter((plugin) => isPluginEnabled(plugin.status)).length,
+        disabledCount: pluginsInGroup.filter((plugin) => isPluginDisabledStatus(plugin.status)).length,
+      }
+    }).filter((group) => group.loadedCount > 0)
+  }, [plugins])
+
+  const visibleGroups = useMemo(
+    () =>
+      categoryFilter === 'all'
+        ? groupedPlugins
+        : groupedPlugins.filter((group) => group.key === categoryFilter),
+    [categoryFilter, groupedPlugins]
+  )
+
+  const spotlightGroups = useMemo(
+    () =>
+      runtimeGroups
+        .sort((left, right) => {
+          if (left.loadedCount !== right.loadedCount) return right.loadedCount - left.loadedCount
+          return right.plugins.length - left.plugins.length
+        }),
+    [runtimeGroups]
+  )
+
+  const loadedCount = plugins.filter((plugin) => isPluginEnabled(plugin.status)).length
+  const notLoadedCount = Math.max(plugins.length - loadedCount, 0)
+  const channelCount = plugins.filter((plugin) => classifyPlugin(plugin) === 'channels').length
 
   if (error || !data) {
     if (loading && !data && !error) {
@@ -181,34 +555,16 @@ export default function PluginsPage() {
               <h1 className="page-title">{t('plugins.title')}</h1>
               <p className="page-subtitle">{t('plugins.intro')}</p>
             </div>
-            <button
-              type="button"
-              disabled
-              className="button-secondary shrink-0 opacity-60"
-            >
+            <button type="button" disabled className="button-secondary shrink-0 opacity-60">
+              <RefreshCw className="h-4 w-4" />
               {t('plugins.refresh')}
             </button>
           </div>
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <input
-              type="search"
-              placeholder={t('plugins.filterPlaceholder')}
-              disabled
-              className="w-full xl:flex-[1_1_18rem] px-3 py-2 rounded border border-border bg-background text-sm opacity-60"
-            />
-            <label className="flex flex-wrap items-center gap-2 text-sm shrink-0 opacity-60">
-              <span className="text-muted-foreground whitespace-nowrap">{t('plugins.statusLabel')}</span>
-              <select
-                disabled
-                className="w-full sm:w-auto px-3 py-2 rounded border border-border bg-background text-sm"
-              >
-                {statusFilterOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="metric-grid">
+            <MetricCard label={t('plugins.metricLoaded')} value={0} meta={t('plugins.loading')} />
+            <MetricCard label={t('plugins.metricAvailable')} value={0} meta={t('plugins.loading')} />
+            <MetricCard label={t('plugins.metricTotal')} value={0} meta={t('plugins.loading')} />
+            <MetricCard label={t('plugins.metricChannelPlugins')} value={0} meta={t('plugins.loading')} />
           </div>
           <div className="state-panel">
             <LoadingState message={t('plugins.loading')} fullPage={false} />
@@ -225,7 +581,7 @@ export default function PluginsPage() {
         <button
           type="button"
           onClick={() => void refetch()}
-          className="px-3 py-1.5 border border-border rounded text-sm"
+          className="button-secondary"
         >
           {t('common.retry')}
         </button>
@@ -238,63 +594,102 @@ export default function PluginsPage() {
       <div className="page-header">
         <div className="page-header-copy">
           <h1 className="page-title">{t('plugins.title')}</h1>
-          <p className="page-subtitle">
-            {t('plugins.intro')}
-          </p>
+          <p className="page-subtitle">{t('plugins.intro')}</p>
         </div>
         <button
           type="button"
           onClick={() => void refetch()}
           className="button-secondary shrink-0"
         >
+          <RefreshCw className="h-4 w-4" />
           {t('plugins.refresh')}
         </button>
       </div>
 
-      <div className="toolbar-card xl:items-start xl:justify-between">
-        <input
-          type="search"
-          placeholder={t('plugins.filterPlaceholder')}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="control-input w-full xl:flex-[1_1_18rem]"
+      <div className="metric-grid">
+        <MetricCard
+          label={t('plugins.metricLoaded')}
+          value={loadedCount}
+          meta={t('plugins.loadedSummary', { loaded: loadedCount, total: plugins.length })}
         />
-        <label className="flex flex-wrap items-center gap-2 text-sm shrink-0">
-          <span className="text-muted-foreground whitespace-nowrap">{t('plugins.statusLabel')}</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilterMode)}
-            className="control-select w-full sm:w-auto"
-            aria-label={t('plugins.statusFilterAria')}
-          >
-            {statusFilterOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center xl:flex-[1_1_24rem] xl:justify-end">
-          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-            <input
-              type="text"
-              value={installId}
-              onChange={(e) => setInstallId(e.target.value)}
-              placeholder={t('plugins.installPlaceholder')}
-              className="control-input w-full min-w-0"
-            />
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => void runInstall()}
-              className="button-secondary disabled:opacity-50"
-            >
-              {busy?.kind === 'install' && busy.id === installId.trim()
-                ? t('plugins.installBusy')
-                : t('plugins.install')}
-            </button>
+        <MetricCard
+          label={t('plugins.metricAvailable')}
+          value={notLoadedCount}
+          meta={t('plugins.availableSummary', { count: notLoadedCount })}
+        />
+        <MetricCard
+          label={t('plugins.metricTotal')}
+          value={plugins.length}
+          meta={t('plugins.totalSummary')}
+        />
+        <MetricCard
+          label={t('plugins.metricChannelPlugins')}
+          value={channelCount}
+          meta={t('plugins.channelSummary', { count: channelCount })}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(20rem,0.7fr)]">
+        <section className="surface-card">
+          <div className="dashboard-section-head">
+            <div className="dashboard-section-copy">
+              <p className="dashboard-section-meta">{t('plugins.liveInventoryTitle')}</p>
+              <h2 className="text-xl font-semibold text-foreground">{t('plugins.loadedNow')}</h2>
+              <p className="text-sm text-muted-foreground">{t('plugins.liveInventoryBody')}</p>
+            </div>
           </div>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+
+          {spotlightGroups.length > 0 ? (
+            <div className="grid gap-3 xl:grid-cols-3">
+              {spotlightGroups.map((group) => (
+                <CategorySpotlight
+                  key={group.key}
+                  group={group}
+                  selected={categoryFilter === group.key}
+                  onSelect={(key) => setCategoryFilter((current) => (current === key ? 'all' : key))}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="inline-note">{t('plugins.noMatch')}</div>
+          )}
+        </section>
+
+        <section className="surface-card space-y-4">
+          <div className="dashboard-section-copy">
+            <p className="dashboard-section-meta">{t('plugins.managePanelTitle')}</p>
+            <h2 className="text-xl font-semibold text-foreground">{t('plugins.install')}</h2>
+            <p className="text-sm text-muted-foreground">{t('plugins.managePanelBody')}</p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="control-label" htmlFor="plugin-install-id">
+              {t('plugins.installPlaceholder')}
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                id="plugin-install-id"
+                type="text"
+                value={installId}
+                onChange={(e) => setInstallId(e.target.value)}
+                placeholder={t('plugins.installPlaceholder')}
+                className="control-input min-w-0 flex-1"
+              />
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void runInstall()}
+                className="button-primary sm:shrink-0"
+              >
+                <Download className="h-4 w-4" />
+                {busy?.kind === 'install' && busy.id === installId.trim()
+                  ? t('plugins.installBusy')
+                  : t('plugins.install')}
+              </button>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
             <input
               type="checkbox"
               checked={uninstallKeepFiles}
@@ -303,8 +698,88 @@ export default function PluginsPage() {
             />
             {t('plugins.uninstallKeepFilesLabel')}
           </label>
-        </div>
+
+          <div className="inline-note text-sm">
+            {t('plugins.footerNote')}
+          </div>
+
+          <div className="flex flex-wrap gap-3 text-sm">
+            <a
+              href="https://docs.openclaw.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="button-secondary px-3 py-1.5 text-xs"
+            >
+              {t('plugins.docs')}
+            </a>
+            <Link to="/config" className="button-secondary px-3 py-1.5 text-xs">
+              {t('plugins.editConfig')}
+            </Link>
+            <Link to="/skills" className="button-secondary px-3 py-1.5 text-xs">
+              {t('plugins.gotoSkills')}
+            </Link>
+          </div>
+        </section>
       </div>
+
+      <section className="surface-card space-y-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+          <div className="toolbar-group">
+            <label className="flex-1 min-w-[14rem]">
+              <span className="control-label">{t('common.search')}</span>
+              <div className="relative mt-2">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  placeholder={t('plugins.filterPlaceholder')}
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="control-input pl-9"
+                />
+              </div>
+            </label>
+
+            <label className="w-full min-w-[12rem] sm:w-auto">
+              <span className="control-label">{t('plugins.statusLabel')}</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilterMode)}
+                className="control-select mt-2"
+                aria-label={t('plugins.statusFilterAria')}
+              >
+                {statusFilterOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <p className="control-label">{t('plugins.categoryLabel')}</p>
+          <div className="pill-group">
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('all')}
+              className={`pill-button ${categoryFilter === 'all' ? 'pill-button-active' : 'pill-button-inactive'}`}
+            >
+              {t('plugins.categoryAll')}
+            </button>
+            {groupedPlugins.map((group) => (
+              <button
+                key={group.key}
+                type="button"
+                onClick={() => setCategoryFilter(group.key)}
+                className={`pill-button ${categoryFilter === group.key ? 'pill-button-active' : 'pill-button-inactive'}`}
+              >
+                {t(group.labelKey)} ({group.plugins.length})
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {actionError && (
         <p className="text-sm text-red-500" role="alert">
@@ -312,82 +787,53 @@ export default function PluginsPage() {
         </p>
       )}
 
-      {plugins.length > 0 && (
-        <div className="table-frame overflow-x-auto">
-          <table className="min-w-full table-auto text-sm">
-            <thead className="bg-muted/50 text-left">
-              <tr>
-                <th className="px-4 py-2 font-medium">{t('plugins.thNameId')}</th>
-                <th className="px-4 py-2 font-medium">{t('plugins.thStatus')}</th>
-                <th className="px-4 py-2 font-medium whitespace-nowrap">{t('plugins.thVersion')}</th>
-                <th className="px-4 py-2 font-medium">{t('plugins.thDescription')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((p: OpenClawPluginInfo) => (
-                <tr key={p.id} className="border-t border-border hover:bg-muted/30 align-top">
-                  <td className="px-4 py-2 font-mono text-xs">
-                    <div className="font-semibold text-foreground break-words">{p.name}</div>
-                    <div className="text-muted-foreground break-all">{p.id}</div>
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex flex-col gap-2 min-w-0">
-                      {p.status ? (
-                        <span
-                          className={
-                            isPluginEnabled(p.status)
-                              ? 'text-emerald-600 dark:text-emerald-400 font-medium break-words'
-                              : 'text-muted-foreground break-words'
-                          }
-                        >
-                          {p.status}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                      <div className="flex flex-wrap gap-1">
-                        <button
-                          type="button"
-                          disabled={busy !== null || isPluginEnabled(p.status)}
-                          onClick={() => void runSetEnabled(p.id, true)}
-                          className="button-secondary px-2 py-0.5 text-xs disabled:pointer-events-none disabled:opacity-50"
-                        >
-                          {busy?.kind === 'enable' && busy.id === p.id ? '…' : t('plugins.enable')}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy !== null || isPluginDisabledStatus(p.status)}
-                          onClick={() => void runSetEnabled(p.id, false)}
-                          className="button-secondary px-2 py-0.5 text-xs disabled:pointer-events-none disabled:opacity-50"
-                        >
-                          {busy?.kind === 'disable' && busy.id === p.id ? '…' : t('plugins.disable')}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy !== null}
-                          onClick={() => void runUninstall(p)}
-                          className="button-danger px-2 py-0.5 text-xs disabled:pointer-events-none disabled:opacity-50"
-                        >
-                          {busy?.kind === 'uninstall' && busy.id === p.id
-                            ? t('plugins.uninstallBusy')
-                            : t('plugins.uninstall')}
-                        </button>
+      {plugins.length > 0 && visibleGroups.length === 0 && (
+        <div className="state-panel">
+          <p className="text-sm text-muted-foreground">{t('plugins.noMatch')}</p>
+        </div>
+      )}
+
+      {plugins.length > 0 && visibleGroups.length > 0 && (
+        <div className="space-y-4">
+          {visibleGroups.map((group) => {
+            const Icon = group.icon
+            return (
+              <section key={group.key} className="surface-card space-y-4">
+                <div className="dashboard-section-head">
+                  <div className="dashboard-section-copy">
+                    <div className="flex items-center gap-3">
+                      <span className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl border ${group.accentClass}`}>
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <p className="dashboard-section-meta">{t('plugins.inventoryTitle')}</p>
+                        <h2 className="text-xl font-semibold text-foreground">{t(group.labelKey)}</h2>
                       </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
-                    {p.version ?? '—'}
-                  </td>
-                  <td className="px-4 py-2">
-                    <PluginDescriptionCell text={p.description} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {filtered.length === 0 && (
-            <p className="px-4 py-6 text-center text-muted-foreground text-sm">{t('plugins.noMatch')}</p>
-          )}
+                  </div>
+
+                  <div className="channel-page-card-meta">
+                    <span>{t('plugins.metricLoaded')}: {group.loadedCount}</span>
+                    <span>{t('plugins.metricAvailable')}: {Math.max(group.plugins.length - group.loadedCount, 0)}</span>
+                    <span>{t('plugins.metricTotal')}: {group.plugins.length}</span>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 xl:grid-cols-2">
+                  {group.plugins.map((plugin) => (
+                    <PluginCard
+                      key={plugin.id}
+                      plugin={plugin}
+                      busy={busy}
+                      onEnable={(id) => void runSetEnabled(id, true)}
+                      onDisable={(id) => void runSetEnabled(id, false)}
+                      onUninstall={(item) => void runUninstall(item)}
+                    />
+                  ))}
+                </div>
+              </section>
+            )
+          })}
         </div>
       )}
 
@@ -403,24 +849,6 @@ export default function PluginsPage() {
       {plugins.length === 0 && !rawCliOutput && (
         <p className="text-sm text-muted-foreground">{t('plugins.emptyList')}</p>
       )}
-
-      <div className="flex flex-wrap gap-3 text-sm">
-        <p className="text-muted-foreground w-full">{t('plugins.footerNote')}</p>
-        <a
-          href="https://docs.openclaw.ai"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="px-px text-primary underline"
-        >
-          {t('plugins.docs')}
-        </a>
-        <Link to="/config" className="text-primary underline">
-          {t('plugins.editConfig')}
-        </Link>
-        <Link to="/skills" className="text-primary underline">
-          {t('plugins.gotoSkills')}
-        </Link>
-      </div>
     </div>
   )
 }
