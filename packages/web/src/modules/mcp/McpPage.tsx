@@ -1,39 +1,76 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import {
+  ArrowUpRight,
+  CheckCircle2,
+  CopyPlus,
+  Download,
+  Globe,
+  LibraryBig,
+  Network,
+  Package,
+  PlugZap,
+  RefreshCw,
+  ShieldCheck,
+  TerminalSquare,
+  ToggleLeft,
+  ToggleRight,
+  Trash2,
+} from 'lucide-react'
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary'
+import { InstallTask } from '@/shared/components/InstallTask'
+import { LoadingState } from '@/shared/components/LoadingState'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 import { useInstallTask } from '@/shared/hooks/useInstallTask'
-import { ErrorBoundary } from '@/shared/components/ErrorBoundary'
-import { LoadingState } from '@/shared/components/LoadingState'
-import { InstallTask } from '@/shared/components/InstallTask'
 import {
-  getMcpServers,
   addMcpServer,
+  getMcpServers,
+  importMcpServers,
+  listMcpImportCandidates,
   removeMcpServer,
   toggleMcpServer,
+  type McpRemoteServerConfig,
+  type McpServerConfig,
+  type McpTransport,
 } from '@/shared/adapters/mcp'
 import {
-  MCP_CATALOG,
-  CATEGORY_ORDER,
   CATEGORY_COLORS,
+  CATEGORY_ORDER,
+  FEATURED_MCP_SERVERS,
+  MCP_CATALOG,
   buildMcpServerConfig,
   type CatalogMcpServer,
   type McpCategory,
 } from './catalog'
-import {
-  Plug,
-  RefreshCw,
-  Download,
-  Trash2,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  Plus,
-  Eye,
-  EyeOff,
-  ToggleLeft,
-  ToggleRight,
-} from 'lucide-react'
+
+type ManualTransport = McpTransport
+
+type ImportResultState = {
+  path: string
+  importedIds: string[]
+} | null
+
+type ManualFormState = {
+  id: string
+  transport: ManualTransport
+  packageName: string
+  command: string
+  args: string
+  url: string
+  env: string
+  headers: string
+}
+
+const DEFAULT_MANUAL_FORM: ManualFormState = {
+  id: '',
+  transport: 'stdio',
+  packageName: '',
+  command: 'npx',
+  args: '',
+  url: '',
+  env: '',
+  headers: '',
+}
 
 export default function McpPage() {
   return (
@@ -45,377 +82,944 @@ export default function McpPage() {
 
 function McpContent() {
   const { t } = useTranslation()
-  const { data: servers, loading, refetch } = useAdapterCall(getMcpServers)
-  const [selectedCategory, setSelectedCategory] = useState<McpCategory | 'all'>('all')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [operating, setOperating] = useState<string | null>(null)
+  const fetchServers = useCallback(async () => getMcpServers(), [])
+  const fetchCandidates = useCallback(async () => listMcpImportCandidates(), [])
+  const {
+    data: servers,
+    loading: serversLoading,
+    error: serversError,
+    refetch: refetchServers,
+  } = useAdapterCall(fetchServers)
+  const {
+    data: importCandidates,
+    loading: candidatesLoading,
+    error: candidatesError,
+    refetch: refetchCandidates,
+  } = useAdapterCall(fetchCandidates)
 
-  const filteredCatalog = useMemo(
-    () => selectedCategory === 'all' ? MCP_CATALOG : MCP_CATALOG.filter((s) => s.category === selectedCategory),
-    [selectedCategory],
-  )
+  const [selectedCategory, setSelectedCategory] = useState<McpCategory | 'all'>('all')
+  const [selectedServerId, setSelectedServerId] = useState<string>(FEATURED_MCP_SERVERS[0]?.id ?? MCP_CATALOG[0]?.id ?? '')
+  const [catalogInputs, setCatalogInputs] = useState<Record<string, Record<string, string>>>({})
+  const [catalogExtraArgs, setCatalogExtraArgs] = useState<Record<string, string>>({})
+  const [busyServerId, setBusyServerId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [importPath, setImportPath] = useState('')
+  const [importResult, setImportResult] = useState<ImportResultState>(null)
+  const [manualForm, setManualForm] = useState<ManualFormState>(DEFAULT_MANUAL_FORM)
+
+  const setupTask = useInstallTask()
+  const importTask = useInstallTask()
+  const manualTask = useInstallTask()
 
   const installedMap = servers ?? {}
+  const installedEntries = useMemo(
+    () => Object.entries(installedMap).sort(([left], [right]) => left.localeCompare(right)),
+    [installedMap],
+  )
+  const catalogById = useMemo(
+    () => new Map(MCP_CATALOG.map((server) => [server.id, server])),
+    [],
+  )
+  const selectedCatalog = catalogById.get(selectedServerId) ?? FEATURED_MCP_SERVERS[0] ?? null
+  const nonFeaturedCatalog = useMemo(
+    () => MCP_CATALOG.filter((server) => !server.featured),
+    [],
+  )
+  const visibleCatalog = useMemo(
+    () =>
+      selectedCategory === 'all'
+        ? nonFeaturedCatalog
+        : nonFeaturedCatalog.filter((server) => server.category === selectedCategory),
+    [nonFeaturedCatalog, selectedCategory],
+  )
 
-  if (loading && !servers) {
-    return <LoadingState message={t('mcp.title')} />
+  const installedCount = installedEntries.length
+  const enabledCount = installedEntries.filter(([, config]) => config.enabled).length
+  const remoteCount = installedEntries.filter(([, config]) => isRemoteServer(config)).length
+  const detectedImportCount = (importCandidates ?? []).filter((candidate) => candidate.exists).length
+
+  const selectedInputs = selectedCatalog ? catalogInputs[selectedCatalog.id] ?? {} : {}
+  const selectedInstalled = selectedCatalog ? installedMap[selectedCatalog.id] : undefined
+
+  async function refreshAll() {
+    await Promise.all([refetchServers(), refetchCandidates()])
+  }
+
+  async function withBusyServer<T>(serverId: string, task: () => Promise<T>) {
+    setActionError(null)
+    setBusyServerId(serverId)
+    try {
+      return await task()
+    } finally {
+      setBusyServerId(null)
+    }
+  }
+
+  async function handleCatalogInstall(server: CatalogMcpServer) {
+    const extraArgs = parseLines(catalogExtraArgs[server.id] ?? '')
+    await withBusyServer(server.id, async () => {
+      await setupTask.run(async () => {
+        const config = buildMcpServerConfig(server, catalogInputs[server.id] ?? {}, extraArgs.length > 0 ? extraArgs : undefined)
+        const result = await addMcpServer(server.id, config, server.package)
+        if (!result.success) {
+          throw new Error(result.error ?? t('mcp.installFailed', { message: t('common.unknownError') }))
+        }
+        await refetchServers()
+      })
+    })
+  }
+
+  async function handleToggle(id: string, enabled: boolean) {
+    await withBusyServer(id, async () => {
+      const result = await toggleMcpServer(id, enabled)
+      if (!result.success) {
+        setActionError(result.error ?? t('common.requestFailed'))
+        return
+      }
+      await refetchServers()
+    })
+  }
+
+  async function handleRemove(id: string, config: McpServerConfig, name: string) {
+    if (!window.confirm(t('mcp.confirmRemove', { name }))) return
+    await withBusyServer(id, async () => {
+      const pkg = config.meta?.managedPackage ?? catalogById.get(id)?.package
+      const result = await removeMcpServer(id, pkg)
+      if (!result.success) {
+        setActionError(result.error ?? t('common.requestFailed'))
+        return
+      }
+      await refetchServers()
+    })
+  }
+
+  async function runImport(pathInput: string) {
+    const trimmed = pathInput.trim()
+    if (!trimmed) {
+      setActionError(t('mcp.import.pathRequired'))
+      return
+    }
+
+    setActionError(null)
+    setImportResult(null)
+    await importTask.run(async () => {
+      const result = await importMcpServers(trimmed)
+      if (!result.success || !result.data) {
+        throw new Error(result.error ?? t('common.requestFailed'))
+      }
+      setImportResult(result.data)
+      await refreshAll()
+    })
+  }
+
+  async function handleManualAdd() {
+    const serverId = manualForm.id.trim()
+    if (!serverId) {
+      setActionError(t('mcp.manual.idRequired'))
+      return
+    }
+
+    const env = parseKeyValueLines(manualForm.env)
+    const headers = parseKeyValueLines(manualForm.headers)
+    const packageName = manualForm.packageName.trim()
+
+    let config: McpServerConfig
+
+    if (manualForm.transport === 'stdio') {
+      const command = manualForm.command.trim() || (packageName ? 'npx' : '')
+      const args = parseShellArgs(manualForm.args)
+      const finalArgs = args.length > 0 ? args : packageName ? ['-y', packageName] : []
+      if (!command) {
+        setActionError(t('mcp.manual.commandRequired'))
+        return
+      }
+
+      config = {
+        transport: 'stdio',
+        command,
+        args: finalArgs,
+        env,
+        enabled: true,
+        meta: {
+          source: 'manual',
+          managedPackage: packageName || undefined,
+        },
+      }
+    } else {
+      const url = manualForm.url.trim()
+      if (!url) {
+        setActionError(t('mcp.manual.urlRequired'))
+        return
+      }
+
+      config = {
+        transport: manualForm.transport,
+        url,
+        headers,
+        env,
+        enabled: true,
+        meta: {
+          source: 'manual',
+        },
+      }
+    }
+
+    setActionError(null)
+    await manualTask.run(async () => {
+      const result = await addMcpServer(serverId, config, packageName || undefined)
+      if (!result.success) {
+        throw new Error(result.error ?? t('common.requestFailed'))
+      }
+      setManualForm(DEFAULT_MANUAL_FORM)
+      await refetchServers()
+    })
   }
 
   return (
-    <div className="page-shell page-shell-wide">
-      {/* Header */}
+    <div className="page-shell page-shell-bleed">
       <div className="page-header">
         <div className="page-header-copy">
+          <div className="page-header-meta">
+            <span>{t('mcp.header.kicker')}</span>
+            <span>{t('mcp.header.supportedTransports')}</span>
+            <span>{t('mcp.header.importSources')}</span>
+          </div>
           <h1 className="page-title">{t('mcp.title')}</h1>
-          <p className="page-subtitle max-w-2xl">{t('mcp.subtitle')}</p>
+          <p className="page-subtitle">{t('mcp.subtitle')}</p>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="button-secondary p-2"
-          title={t('common.refresh') ?? 'Refresh'}
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
-      </div>
-
-      <div className="pill-group">
-        <CategoryPill
-          active={selectedCategory === 'all'}
-          onClick={() => setSelectedCategory('all')}
-          label={t('mcp.allCategories')}
-        />
-        {CATEGORY_ORDER.map((cat) => (
-          <CategoryPill
-            key={cat}
-            active={selectedCategory === cat}
-            onClick={() => setSelectedCategory(cat)}
-            label={t(`mcp.category.${cat}`)}
-          />
-        ))}
-      </div>
-
-      {/* Catalog grid */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {filteredCatalog.map((catalog) => (
-          <McpCard
-            key={catalog.id}
-            catalog={catalog}
-            installed={installedMap[catalog.id]}
-            expanded={expandedId === catalog.id}
-            operating={operating === catalog.id}
-            onToggleExpand={() => setExpandedId(expandedId === catalog.id ? null : catalog.id)}
-            onInstall={async (env, extraArgs) => {
-              setOperating(catalog.id)
-              const config = buildMcpServerConfig(catalog, env, extraArgs)
-              const result = await addMcpServer(catalog.id, config, catalog.package)
-              if (!result.success) {
-                alert(t('mcp.installFailed', { message: result.error }))
-              }
-              await refetch()
-              setOperating(null)
-            }}
-            onRemove={async () => {
-              if (!confirm(t('mcp.confirmRemove', { name: catalog.name }))) return
-              setOperating(catalog.id)
-              await removeMcpServer(catalog.id, catalog.package)
-              await refetch()
-              setOperating(null)
-            }}
-            onToggle={async (enabled) => {
-              setOperating(catalog.id)
-              await toggleMcpServer(catalog.id, enabled)
-              await refetch()
-              setOperating(null)
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Custom server */}
-      <CustomServerForm
-        onAdd={async (id, pkg, env) => {
-          setOperating(id)
-          const config = { command: 'npx', args: ['-y', pkg], env, enabled: true }
-          const result = await addMcpServer(id, config, pkg)
-          if (!result.success) {
-            alert(t('mcp.installFailed', { message: result.error }))
-          }
-          await refetch()
-          setOperating(null)
-        }}
-        operating={!!operating}
-      />
-    </div>
-  )
-}
-
-// ─── Sub-components ───
-
-function CategoryPill({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`pill-button ${
-        active ? 'pill-button-active' : 'pill-button-inactive'
-      }`}
-    >
-      {label}
-    </button>
-  )
-}
-
-function McpCard({
-  catalog,
-  installed,
-  expanded,
-  operating,
-  onToggleExpand,
-  onInstall,
-  onRemove,
-  onToggle,
-}: {
-  catalog: CatalogMcpServer
-  installed?: { command: string; args: string[]; env: Record<string, string>; enabled: boolean }
-  expanded: boolean
-  operating: boolean
-  onToggleExpand: () => void
-  onInstall: (env: Record<string, string>, extraArgs?: string[]) => void
-  onRemove: () => void
-  onToggle: (enabled: boolean) => void
-}) {
-  const { t } = useTranslation()
-  const installTask = useInstallTask()
-  const [envInputs, setEnvInputs] = useState<Record<string, string>>(() => installed?.env ?? {})
-  const [fsPath, setFsPath] = useState(
-    () => installed?.args?.slice(2).join(', ') ?? catalog.defaultArgs?.join(', ') ?? '',
-  )
-
-  const isInstalled = !!installed
-
-  return (
-    <div className={`surface-card transition-colors ${
-      expanded ? 'border-primary/40' : 'border-border hover:border-primary/30'
-    }`}>
-      {/* Card header */}
-      <div className="p-4 cursor-pointer" onClick={onToggleExpand}>
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2">
-            <Plug className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-            <span className="font-medium">{catalog.name}</span>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {isInstalled && (
-              <span className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${
-                installed.enabled
-                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-              }`}>
-                <CheckCircle2 className="w-3 h-3" />
-                {installed.enabled ? t('mcp.enabled') : t('mcp.disabled')}
-              </span>
-            )}
-            <span className={`px-2 py-0.5 text-xs rounded-full ${CATEGORY_COLORS[catalog.category]}`}>
-              {t(`mcp.category.${catalog.category}`)}
-            </span>
-            {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void refreshAll()}
+            className="button-secondary"
+          >
+            <RefreshCw className="h-4 w-4" />
+            {t('common.refresh')}
+          </button>
         </div>
-        <p className="text-sm text-muted-foreground">{t(catalog.descriptionKey)}</p>
-        <p className="text-xs text-muted-foreground font-mono mt-1">{catalog.package}</p>
       </div>
 
-      {/* Expanded section */}
-      {expanded && (
-        <div className="border-t border-border px-4 py-4 space-y-3">
-          {/* Env vars */}
-          {catalog.envVars.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">{t('mcp.envVars')}</p>
-              {catalog.envVars.map((ev) => (
-                <EnvVarInput
-                  key={ev.key}
-                  label={t(ev.labelKey)}
-                  value={envInputs[ev.key] ?? ''}
-                  sensitive={ev.sensitive}
-                  onChange={(v) => setEnvInputs((prev) => ({ ...prev, [ev.key]: v }))}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">{t('mcp.noEnvRequired')}</p>
-          )}
-
-          {/* Filesystem path args */}
-          {catalog.id === 'filesystem' && (
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">{t('mcp.fsPathLabel')}</label>
-              <input
-                type="text"
-                value={fsPath}
-                onChange={(e) => setFsPath(e.target.value)}
-                placeholder={t('mcp.fsPathPlaceholder')}
-                className="w-full mt-1 px-3 py-2 bg-background border border-border rounded text-sm font-mono"
-              />
-            </div>
-          )}
-
-          {/* Docs link */}
-          {catalog.docsUrl && (
-            <a
-              href={catalog.docsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              <ExternalLink className="w-3 h-3" />
-              {catalog.docsUrl}
-            </a>
-          )}
-
-          {/* Install progress */}
-          {installTask.status !== 'idle' && (
-            <InstallTask
-              label={catalog.name}
-              description={catalog.package}
-              status={installTask.status}
-              error={installTask.error}
-              onRetry={installTask.reset}
-            />
-          )}
-
-          {/* Actions */}
-        {installTask.status === 'idle' && (
-          <div className="flex items-center gap-2 pt-1">
-            {isInstalled ? (
-              <>
-                <button
-                  onClick={() => onToggle(!installed.enabled)}
-                  disabled={operating}
-                  className="button-secondary disabled:opacity-50"
-                >
-                  {installed.enabled
-                    ? <><ToggleRight className="w-4 h-4 text-green-500" />{t('mcp.disable')}</>
-                      : <><ToggleLeft className="w-4 h-4 text-muted-foreground" />{t('mcp.enable')}</>
-                    }
-                  </button>
-                <button
-                  onClick={onRemove}
-                  disabled={operating}
-                  className="button-danger disabled:opacity-50"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  {operating ? t('mcp.removing') : t('mcp.remove')}
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => {
-                    const extraArgs = catalog.id === 'filesystem' && fsPath.trim()
-                      ? fsPath.split(',').map((p) => p.trim()).filter(Boolean)
-                      : undefined
-                    installTask.run(async () => {
-                      await onInstall(envInputs, extraArgs)
-                    })
-                  }}
-                  disabled={operating || catalog.envVars.some((ev) => ev.required && !envInputs[ev.key]?.trim())}
-                  className="button-primary disabled:opacity-50"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  {t('mcp.install')}
-                </button>
-              )}
-            </div>
-          )}
+      {(serversError || candidatesError || actionError) && (
+        <div role="alert" className="surface-card border-red-500/30 bg-red-500/5 text-red-600 dark:text-red-300">
+          {serversError ?? candidatesError ?? actionError}
         </div>
       )}
+
+      <div className="metric-grid">
+        <MetricCard
+          icon={PlugZap}
+          label={t('mcp.metrics.connected')}
+          value={String(installedCount)}
+          meta={t('mcp.metrics.connectedMeta')}
+        />
+        <MetricCard
+          icon={ShieldCheck}
+          label={t('mcp.metrics.enabled')}
+          value={String(enabledCount)}
+          meta={t('mcp.metrics.enabledMeta')}
+        />
+        <MetricCard
+          icon={Globe}
+          label={t('mcp.metrics.remote')}
+          value={String(remoteCount)}
+          meta={t('mcp.metrics.remoteMeta')}
+        />
+        <MetricCard
+          icon={LibraryBig}
+          label={t('mcp.metrics.imports')}
+          value={String(detectedImportCount)}
+          meta={t('mcp.metrics.importsMeta')}
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(21rem,0.95fr)]">
+        <div className="space-y-5">
+          <section className="surface-card">
+            <div className="section-heading">
+              <div>
+                <p className="section-subtitle">{t('mcp.installedLead')}</p>
+                <h2 className="section-title">{t('mcp.installedTitle')}</h2>
+              </div>
+            </div>
+            {serversLoading ? (
+              <LoadingState message={t('mcp.loadingInstalled')} fullPage={false} />
+            ) : installedEntries.length === 0 ? (
+              <div className="inline-note">{t('mcp.noInstalled')}</div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {installedEntries.map(([id, config]) => {
+                  const catalog = catalogById.get(id)
+                  const name = catalog?.name ?? id
+                  const busy = busyServerId === id
+                  return (
+                    <article key={id} className="section-subcard space-y-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-base font-semibold">{name}</span>
+                            <StatusBadge enabled={config.enabled} />
+                            <TransportBadge transport={getTransport(config)} />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                          {catalog ? t(catalog.descriptionKey) : t('mcp.manual.sourceLabel')}
+                          </p>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${CATEGORY_COLORS[catalog?.category ?? 'utilities']}`}>
+                          {catalog ? t(`mcp.category.${catalog.category}`) : t(`mcp.source.${config.meta?.source ?? 'manual'}`)}
+                        </span>
+                      </div>
+                      <div className="inline-note space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          {isRemoteServer(config) ? <Globe className="h-4 w-4" /> : <TerminalSquare className="h-4 w-4" />}
+                          <span className="break-all font-mono text-xs">
+                            {isRemoteServer(config) ? config.url : [config.command, ...config.args].join(' ')}
+                          </span>
+                        </div>
+                          {config.meta?.importPath && (
+                          <div className="text-xs text-muted-foreground">
+                            {t('mcp.import.importedFrom')}: {config.meta.importPath}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {catalog && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedServerId(catalog.id)}
+                            className="button-secondary px-3 py-1.5 text-sm"
+                          >
+                            {t('mcp.openSetup')}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handleToggle(id, !config.enabled)}
+                          disabled={busy}
+                          className="button-secondary px-3 py-1.5 text-sm"
+                        >
+                          {config.enabled ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4" />}
+                          {config.enabled ? t('mcp.disable') : t('mcp.enable')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleRemove(id, config, name)}
+                          disabled={busy}
+                          className="button-danger px-3 py-1.5 text-sm"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {t('mcp.remove')}
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="surface-card">
+            <div className="section-heading">
+              <div>
+                <p className="section-subtitle">{t('mcp.featuredLead')}</p>
+                <h2 className="section-title">{t('mcp.featuredTitle')}</h2>
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {FEATURED_MCP_SERVERS.map((server) => {
+                const active = selectedServerId === server.id
+                const installed = Boolean(installedMap[server.id])
+                return (
+                  <button
+                    key={server.id}
+                    type="button"
+                    onClick={() => setSelectedServerId(server.id)}
+                    className={`section-subcard text-left transition ${
+                      active ? 'border-primary/50 bg-primary/5' : 'hover:border-primary/30'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-base font-semibold">{server.name}</span>
+                          {installed && <StatusBadge enabled={installedMap[server.id]?.enabled ?? false} />}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{t(server.descriptionKey)}</p>
+                      </div>
+                      <TransportBadge transport={server.transport} />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${CATEGORY_COLORS[server.category]}`}>
+                        {t(`mcp.category.${server.category}`)}
+                      </span>
+                      {server.package ? (
+                        <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                          npx
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                          {t('mcp.remoteReady')}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
+          <section className="surface-card">
+            <div className="section-heading">
+              <div>
+                <p className="section-subtitle">{t('mcp.catalogLead')}</p>
+                <h2 className="section-title">{t('mcp.catalogTitle')}</h2>
+              </div>
+              <div className="pill-group">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('all')}
+                  className={`pill-button ${selectedCategory === 'all' ? 'pill-button-active' : 'pill-button-inactive'}`}
+                >
+                  {t('mcp.allCategories')}
+                </button>
+                {CATEGORY_ORDER.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setSelectedCategory(category)}
+                    className={`pill-button ${selectedCategory === category ? 'pill-button-active' : 'pill-button-inactive'}`}
+                  >
+                    {t(`mcp.category.${category}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+              {visibleCatalog.map((server) => (
+                <button
+                  key={server.id}
+                  type="button"
+                  onClick={() => setSelectedServerId(server.id)}
+                  className={`section-subcard text-left transition ${
+                    selectedServerId === server.id ? 'border-primary/50 bg-primary/5' : 'hover:border-primary/30'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{server.name}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">{t(server.descriptionKey)}</p>
+                    </div>
+                    <TransportBadge transport={server.transport} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${CATEGORY_COLORS[server.category]}`}>
+                      {t(`mcp.category.${server.category}`)}
+                    </span>
+                    {installedMap[server.id] && <StatusBadge enabled={installedMap[server.id].enabled} />}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="space-y-5 xl:sticky xl:top-4 xl:self-start">
+          {selectedCatalog && (
+            <section className="surface-card">
+              <div className="section-heading">
+                <div>
+                  <p className="section-subtitle">{t('mcp.setupLead')}</p>
+                  <h2 className="section-title">{selectedCatalog.name}</h2>
+                </div>
+                <TransportBadge transport={selectedCatalog.transport} />
+              </div>
+              <div className="space-y-4">
+                <p className="text-sm leading-6 text-muted-foreground">{t(selectedCatalog.descriptionKey)}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="section-subcard">
+                    <p className="control-label">{t('mcp.transport')}</p>
+                    <p className="mt-2 flex items-center gap-2 text-sm font-medium">
+                      {selectedCatalog.transport === 'stdio' ? <TerminalSquare className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
+                      {t(`mcp.transport.${selectedCatalog.transport}`)}
+                    </p>
+                  </div>
+                  <div className="section-subcard">
+                    <p className="control-label">{t('mcp.packageOrEndpoint')}</p>
+                    <p className="mt-2 break-all font-mono text-xs text-muted-foreground">
+                      {selectedCatalog.package ?? selectedCatalog.url}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedCatalog.fields.length > 0 ? (
+                  <div className="grid gap-3">
+                    {selectedCatalog.fields.map((field) => (
+                      <label key={field.key} className="grid gap-2">
+                        <span className="control-label">{t(field.labelKey)}</span>
+                        <input
+                          type={field.sensitive ? 'password' : 'text'}
+                          value={readCatalogInputValue(selectedInputs, field.key, getExistingFieldValue(selectedInstalled, field))}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            setCatalogInputs((current) => ({
+                              ...current,
+                              [selectedCatalog.id]: {
+                                ...(current[selectedCatalog.id] ?? {}),
+                                [field.key]: value,
+                              },
+                            }))
+                          }}
+                          className="control-input"
+                          placeholder={field.key}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="inline-note">{t('mcp.noEnvRequired')}</div>
+                )}
+
+                {selectedCatalog.transport === 'stdio' && (
+                  <label className="grid gap-2">
+                    <span className="control-label">{t('mcp.extraArgs')}</span>
+                    <textarea
+                      rows={selectedCatalog.id === 'filesystem' ? 4 : 3}
+                      value={readCatalogInputValue(catalogExtraArgs, selectedCatalog.id, defaultExtraArgsValue(selectedCatalog, selectedInstalled))}
+                      onChange={(event) => {
+                        const value = event.target.value
+                        setCatalogExtraArgs((current) => ({ ...current, [selectedCatalog.id]: value }))
+                      }}
+                      className="control-textarea"
+                      placeholder={selectedCatalog.id === 'filesystem' ? t('mcp.fsPathPlaceholder') : t('mcp.extraArgsPlaceholder')}
+                    />
+                  </label>
+                )}
+
+                {selectedCatalog.docsUrl && (
+                  <a
+                    href={selectedCatalog.docsUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="button-secondary w-full justify-between"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ArrowUpRight className="h-4 w-4" />
+                      {t('mcp.openDocs')}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">{selectedCatalog.docsUrl}</span>
+                  </a>
+                )}
+
+                <InstallTask
+                  label={selectedCatalog.name}
+                  description={selectedCatalog.package ?? selectedCatalog.url}
+                  status={setupTask.status}
+                  progress={setupTask.progress}
+                  log={setupTask.log}
+                  error={setupTask.error}
+                  onRetry={setupTask.reset}
+                />
+
+                {selectedInstalled ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleToggle(selectedCatalog.id, !selectedInstalled.enabled)}
+                      disabled={busyServerId === selectedCatalog.id}
+                      className="button-secondary"
+                    >
+                      {selectedInstalled.enabled ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4" />}
+                      {selectedInstalled.enabled ? t('mcp.disable') : t('mcp.enable')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleRemove(selectedCatalog.id, selectedInstalled, selectedCatalog.name)}
+                      disabled={busyServerId === selectedCatalog.id}
+                      className="button-danger"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {t('mcp.remove')}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleCatalogInstall(selectedCatalog)}
+                    disabled={busyServerId === selectedCatalog.id || hasMissingRequiredFields(selectedCatalog, selectedInputs)}
+                    className="button-primary w-full"
+                  >
+                    {selectedCatalog.transport === 'stdio' ? <Package className="h-4 w-4" /> : <Network className="h-4 w-4" />}
+                    {t(selectedCatalog.transport === 'stdio' ? 'mcp.setupInstallAction' : 'mcp.setupConnectAction')}
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
+
+          <section className="surface-card">
+            <div className="section-heading">
+              <div>
+                <p className="section-subtitle">{t('mcp.importLead')}</p>
+                <h2 className="section-title">{t('mcp.importTitle')}</h2>
+              </div>
+            </div>
+            <div className="space-y-4">
+              {candidatesLoading ? (
+                <LoadingState message={t('mcp.loadingImports')} fullPage={false} />
+              ) : (
+                <div className="grid gap-2">
+                  {(importCandidates ?? []).map((candidate) => (
+                    <div key={candidate.id} className="section-subcard flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium">{t(`mcp.import.source.${candidate.id}`)}</p>
+                        <p className="mt-1 break-all text-xs text-muted-foreground">{candidate.path}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void runImport(candidate.path)}
+                        disabled={!candidate.exists || importTask.status === 'running'}
+                        className="button-secondary px-3 py-1.5 text-sm"
+                      >
+                        <Download className="h-4 w-4" />
+                        {candidate.exists ? t('mcp.importAction') : t('mcp.importMissing')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <label className="grid gap-2">
+                <span className="control-label">{t('mcp.import.pathLabel')}</span>
+                <input
+                  type="text"
+                  value={importPath}
+                  onChange={(event) => setImportPath(event.target.value)}
+                  className="control-input"
+                  placeholder={t('mcp.import.pathPlaceholder')}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void runImport(importPath)}
+                disabled={importTask.status === 'running'}
+                className="button-primary w-full"
+              >
+                <Download className="h-4 w-4" />
+                {t('mcp.importAction')}
+              </button>
+
+              <InstallTask
+                label={t('mcp.importTitle')}
+                description={importPath || importResult?.path}
+                status={importTask.status}
+                progress={importTask.progress}
+                log={importTask.log}
+                error={importTask.error}
+                onRetry={importTask.reset}
+              />
+
+              {importResult && (
+                <div className="inline-note space-y-2">
+                  <p className="font-medium">{t('mcp.import.resultTitle')}</p>
+                  <p className="text-xs text-muted-foreground">{importResult.path}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {importResult.importedIds.length > 0 ? (
+                      importResult.importedIds.map((id) => (
+                        <span key={id} className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-xs">
+                          {id}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">{t('mcp.import.emptyResult')}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="surface-card">
+            <div className="section-heading">
+              <div>
+                <p className="section-subtitle">{t('mcp.manualLead')}</p>
+                <h2 className="section-title">{t('mcp.manualTitle')}</h2>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="control-label">{t('mcp.manual.idLabel')}</span>
+                  <input
+                    type="text"
+                    value={manualForm.id}
+                    onChange={(event) => setManualForm((current) => ({ ...current, id: event.target.value }))}
+                    className="control-input"
+                    placeholder={t('mcp.customIdPlaceholder')}
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="control-label">{t('mcp.transport')}</span>
+                  <select
+                    value={manualForm.transport}
+                    onChange={(event) =>
+                      setManualForm((current) => ({
+                        ...current,
+                        transport: event.target.value as ManualTransport,
+                      }))
+                    }
+                    className="control-select"
+                  >
+                    <option value="stdio">{t('mcp.transport.stdio')}</option>
+                    <option value="http">{t('mcp.transport.http')}</option>
+                    <option value="sse">{t('mcp.transport.sse')}</option>
+                  </select>
+                </label>
+              </div>
+
+              {manualForm.transport === 'stdio' ? (
+                <div className="grid gap-3">
+                  <label className="grid gap-2">
+                    <span className="control-label">{t('mcp.manual.packageLabel')}</span>
+                    <input
+                      type="text"
+                      value={manualForm.packageName}
+                      onChange={(event) => setManualForm((current) => ({ ...current, packageName: event.target.value }))}
+                      className="control-input"
+                      placeholder={t('mcp.customPackagePlaceholder')}
+                    />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-2">
+                      <span className="control-label">{t('mcp.manual.commandLabel')}</span>
+                      <input
+                        type="text"
+                        value={manualForm.command}
+                        onChange={(event) => setManualForm((current) => ({ ...current, command: event.target.value }))}
+                        className="control-input"
+                        placeholder="npx"
+                      />
+                    </label>
+                    <label className="grid gap-2">
+                      <span className="control-label">{t('mcp.manual.argsLabel')}</span>
+                      <input
+                        type="text"
+                        value={manualForm.args}
+                        onChange={(event) => setManualForm((current) => ({ ...current, args: event.target.value }))}
+                        className="control-input"
+                        placeholder="-y @scope/mcp-server"
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <label className="grid gap-2">
+                  <span className="control-label">{t('mcp.manual.urlLabel')}</span>
+                  <input
+                    type="url"
+                    value={manualForm.url}
+                    onChange={(event) => setManualForm((current) => ({ ...current, url: event.target.value }))}
+                    className="control-input"
+                    placeholder="https://example.com/mcp"
+                  />
+                </label>
+              )}
+
+              <label className="grid gap-2">
+                <span className="control-label">{t('mcp.manual.envLabel')}</span>
+                <textarea
+                  rows={4}
+                  value={manualForm.env}
+                  onChange={(event) => setManualForm((current) => ({ ...current, env: event.target.value }))}
+                  className="control-textarea"
+                  placeholder={t('mcp.manual.keyValuePlaceholder')}
+                />
+              </label>
+
+              {manualForm.transport !== 'stdio' && (
+                <label className="grid gap-2">
+                  <span className="control-label">{t('mcp.manual.headersLabel')}</span>
+                  <textarea
+                    rows={4}
+                    value={manualForm.headers}
+                    onChange={(event) => setManualForm((current) => ({ ...current, headers: event.target.value }))}
+                    className="control-textarea"
+                    placeholder={t('mcp.manual.keyValuePlaceholder')}
+                  />
+                </label>
+              )}
+
+              <InstallTask
+                label={t('mcp.manualTitle')}
+                description={manualForm.id || undefined}
+                status={manualTask.status}
+                progress={manualTask.progress}
+                log={manualTask.log}
+                error={manualTask.error}
+                onRetry={manualTask.reset}
+              />
+
+              <button
+                type="button"
+                onClick={() => void handleManualAdd()}
+                disabled={manualTask.status === 'running'}
+                className="button-primary w-full"
+              >
+                <CopyPlus className="h-4 w-4" />
+                {t('mcp.manual.addAction')}
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   )
 }
 
-function EnvVarInput({
+function MetricCard({
+  icon: Icon,
   label,
   value,
-  sensitive,
-  onChange,
+  meta,
 }: {
+  icon: typeof PlugZap
   label: string
   value: string
-  sensitive: boolean
-  onChange: (v: string) => void
+  meta: string
 }) {
-  const [visible, setVisible] = useState(false)
-
   return (
-    <div>
-      <label className="text-xs text-muted-foreground">{label}</label>
-      <div className="flex items-center gap-1 mt-0.5">
-        <input
-          type={sensitive && !visible ? 'password' : 'text'}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="control-input flex-1 font-mono"
-        />
-        {sensitive && (
-          <button
-            onClick={() => setVisible(!visible)}
-            className="button-secondary p-1.5"
-          >
-            {visible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-          </button>
-        )}
+    <div className="metric-card">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <Icon className="h-4 w-4" />
+        <p className="metric-label">{label}</p>
       </div>
+      <p className="metric-value">{value}</p>
+      <p className="metric-meta">{meta}</p>
     </div>
   )
 }
 
-function CustomServerForm({
-  onAdd,
-  operating,
-}: {
-  onAdd: (id: string, pkg: string, env: Record<string, string>) => void
-  operating: boolean
-}) {
+function StatusBadge({ enabled }: { enabled: boolean }) {
   const { t } = useTranslation()
-  const [id, setId] = useState('')
-  const [pkg, setPkg] = useState('')
-
-  const handleAdd = useCallback(() => {
-    if (!id.trim() || !pkg.trim()) return
-    onAdd(id.trim(), pkg.trim(), {})
-    setId('')
-    setPkg('')
-  }, [id, pkg, onAdd])
-
   return (
-    <div className="surface-card">
-      <div className="flex items-center gap-2 mb-3">
-        <Plus className="w-4 h-4 text-muted-foreground" />
-        <span className="font-medium">{t('mcp.customServer')}</span>
-      </div>
-      <p className="text-sm text-muted-foreground mb-3">{t('mcp.customServerDesc')}</p>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <input
-          type="text"
-          value={id}
-          onChange={(e) => setId(e.target.value)}
-          placeholder={t('mcp.customIdPlaceholder')}
-          className="control-input w-full sm:flex-1"
-        />
-        <input
-          type="text"
-          value={pkg}
-          onChange={(e) => setPkg(e.target.value)}
-          placeholder={t('mcp.customPackagePlaceholder')}
-          className="control-input w-full font-mono sm:flex-[2_1_0%]"
-        />
-        <button
-          onClick={handleAdd}
-          disabled={!id.trim() || !pkg.trim() || operating}
-          className="button-primary text-sm disabled:opacity-50"
-        >
-          {t('mcp.addCustom')}
-        </button>
-      </div>
-    </div>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+      enabled
+        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100'
+        : 'bg-muted text-muted-foreground'
+    }`}>
+      <CheckCircle2 className="h-3.5 w-3.5" />
+      {enabled ? t('mcp.enabled') : t('mcp.disabled')}
+    </span>
   )
+}
+
+function TransportBadge({ transport }: { transport: McpTransport }) {
+  const icon = transport === 'stdio' ? <TerminalSquare className="h-3.5 w-3.5" /> : <Globe className="h-3.5 w-3.5" />
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      {icon}
+      {transport}
+    </span>
+  )
+}
+
+function getTransport(config: McpServerConfig): McpTransport {
+  return isRemoteServer(config) ? config.transport : 'stdio'
+}
+
+function isRemoteServer(config: McpServerConfig): config is McpRemoteServerConfig {
+  return config.transport === 'http' || config.transport === 'sse'
+}
+
+function parseLines(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+function parseKeyValueLines(value: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const line of parseLines(value)) {
+    const index = line.indexOf('=')
+    if (index === -1) continue
+    const key = line.slice(0, index).trim()
+    const entry = line.slice(index + 1).trim()
+    if (!key) continue
+    result[key] = entry
+  }
+  return result
+}
+
+function parseShellArgs(value: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let quote: '"' | '\'' | null = null
+  let escaped = false
+
+  for (const char of value.trim()) {
+    if (escaped) {
+      current += char
+      escaped = false
+      continue
+    }
+    if (char === '\\') {
+      escaped = true
+      continue
+    }
+    if (quote) {
+      if (char === quote) {
+        quote = null
+      } else {
+        current += char
+      }
+      continue
+    }
+    if (char === '"' || char === '\'') {
+      quote = char
+      continue
+    }
+    if (/\s/.test(char)) {
+      if (current) {
+        result.push(current)
+        current = ''
+      }
+      continue
+    }
+    current += char
+  }
+
+  if (current) {
+    result.push(current)
+  }
+
+  return result
+}
+
+function readCatalogInputValue(
+  values: Record<string, string>,
+  key: string,
+  fallback: string,
+): string {
+  return Object.prototype.hasOwnProperty.call(values, key) ? values[key] ?? '' : fallback
+}
+
+function hasMissingRequiredFields(server: CatalogMcpServer, inputs: Record<string, string>): boolean {
+  return server.fields.some((field) => field.required && !(inputs[field.key] ?? '').trim())
+}
+
+function getExistingFieldValue(
+  installed: McpServerConfig | undefined,
+  field: CatalogMcpServer['fields'][number],
+): string {
+  if (!installed) return ''
+  if (field.target === 'header' && field.headerName && isRemoteServer(installed)) {
+    return installed.headers?.[field.headerName] ?? ''
+  }
+  return installed.env[field.key] ?? ''
+}
+
+function defaultExtraArgsValue(server: CatalogMcpServer, installed: McpServerConfig | undefined): string {
+  if (installed && !isRemoteServer(installed)) {
+    return installed.args.slice(2).join('\n')
+  }
+  return (server.defaultArgs ?? []).join('\n')
 }

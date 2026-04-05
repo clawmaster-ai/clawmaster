@@ -15,6 +15,7 @@ const ALLOWED_COMMANDS = new Set([
   'curl',
   'mkdir',
   'nohup',
+  'node',
   'npm',
   'ollama',
   'openclaw',

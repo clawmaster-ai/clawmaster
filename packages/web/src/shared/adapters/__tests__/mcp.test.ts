@@ -1,143 +1,257 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getMcpServers, addMcpServer, removeMcpServer, toggleMcpServer, installMcpPackage, checkMcpPackage } from '../mcp'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  addMcpServer,
+  checkMcpPackage,
+  getMcpServers,
+  importMcpServers,
+  listMcpImportCandidates,
+  removeMcpServer,
+  toggleMcpServer,
+} from '../mcp'
 
 vi.mock('../platform', () => ({
   execCommand: vi.fn(),
 }))
 
 describe('mcp adapter', () => {
-  async function mockExec(output: string) {
+  async function execMock() {
     const { execCommand } = await import('../platform')
-    vi.mocked(execCommand).mockResolvedValue(output)
+    return vi.mocked(execCommand)
   }
 
-  async function mockExecFail(msg: string) {
-    const { execCommand } = await import('../platform')
-    vi.mocked(execCommand).mockRejectedValue(new Error(msg))
-  }
-
-  async function mockExecSequence(...outputs: Array<string | Error>) {
-    const { execCommand } = await import('../platform')
-    const fn = vi.mocked(execCommand)
-    fn.mockReset()
-    for (const out of outputs) {
-      if (out instanceof Error) {
-        fn.mockRejectedValueOnce(out)
-      } else {
-        fn.mockResolvedValueOnce(out)
-      }
-    }
-  }
-
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    ;(await execMock()).mockReset()
   })
 
-  describe('getMcpServers', () => {
-    it('parses config file with servers', async () => {
-      const config = {
-        mcpServers: {
-          context7: { command: 'npx', args: ['-y', '@upstash/context7-mcp'], env: {}, enabled: true },
-          github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_test' }, enabled: false },
+  it('parses stdio and remote configs from disk', async () => {
+    const mock = await execMock()
+    mock.mockResolvedValueOnce(JSON.stringify({
+      mcpServers: {
+        github: {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-github'],
+          env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_test' },
+          enabled: false,
         },
-      }
-      await mockExec(JSON.stringify(config))
-      const result = await getMcpServers()
-      expect(result.success).toBe(true)
-      expect(Object.keys(result.data!)).toHaveLength(2)
-      expect(result.data!.context7.enabled).toBe(true)
-      expect(result.data!.github.enabled).toBe(false)
-      expect(result.data!.github.env.GITHUB_PERSONAL_ACCESS_TOKEN).toBe('ghp_test')
-    })
+      },
+    }))
+    mock.mockResolvedValueOnce(JSON.stringify({
+      mcp: {
+        servers: {
+          context7: {
+            transport: 'streamable-http',
+            url: 'https://mcp.context7.com/mcp',
+            headers: { Authorization: 'Bearer sk-test' },
+          },
+        },
+      },
+    }))
 
-    it('returns empty when file not found', async () => {
-      await mockExecFail('No such file')
-      const result = await getMcpServers()
-      expect(result.success).toBe(true)
-      expect(result.data).toEqual({})
+    const result = await getMcpServers()
+
+    expect(result.success).toBe(true)
+    expect(result.data?.context7.transport).toBe('http')
+    expect(result.data?.github.transport).toBe('stdio')
+    if (result.data?.github.transport !== 'stdio') {
+      throw new Error('expected stdio transport')
+    }
+    expect(result.data.github.env.GITHUB_PERSONAL_ACCESS_TOKEN).toBe('ghp_test')
+    expect(result.data.github.enabled).toBe(false)
+  })
+
+  it('lists import candidates from the local environment', async () => {
+    const mock = await execMock()
+    mock.mockResolvedValueOnce(JSON.stringify([
+      { id: 'project-mcp', format: 'json', path: '/repo/.mcp.json', exists: true },
+      { id: 'codex-user', format: 'toml', path: '/Users/test/.codex/config.toml', exists: false },
+    ]))
+
+    const result = await listMcpImportCandidates()
+
+    expect(result.success).toBe(true)
+    expect(result.data).toEqual([
+      { id: 'project-mcp', format: 'json', path: '/repo/.mcp.json', exists: true },
+      { id: 'codex-user', format: 'toml', path: '/Users/test/.codex/config.toml', exists: false },
+    ])
+  })
+
+  it('imports servers and renames collisions', async () => {
+    const mock = await execMock()
+    mock
+      .mockResolvedValueOnce(JSON.stringify({
+        path: '/repo/.mcp.json',
+        content: JSON.stringify({
+          mcpServers: {
+            context7: { transport: 'http', url: 'https://remote/context7' },
+          },
+        }),
+      }))
+      .mockResolvedValueOnce(JSON.stringify({
+        mcpServers: {
+          context7: {
+            transport: 'http',
+            url: 'https://existing/context7',
+            enabled: true,
+          },
+        },
+      }))
+      .mockResolvedValueOnce(JSON.stringify({ mcp: { servers: {} } }))
+      .mockResolvedValueOnce('ok')
+      .mockResolvedValueOnce('ok')
+      .mockResolvedValueOnce('synced')
+
+    const result = await importMcpServers('/repo/.mcp.json')
+
+    expect(result.success).toBe(true)
+    expect(result.data).toEqual({
+      path: '/repo/.mcp.json',
+      importedIds: ['context7-2'],
     })
   })
 
-  describe('addMcpServer', () => {
-    it('installs package and writes config', async () => {
-      const config = { command: 'npx', args: ['-y', '@upstash/context7-mcp'], env: {}, enabled: true }
-      // npm install, cat config (fails = empty), write config
-      await mockExecSequence(
-        'added 1 package',
-        new Error('No such file'),
-        'ok',
-      )
-      const result = await addMcpServer('context7', config, '@upstash/context7-mcp')
-      expect(result.success).toBe(true)
-      expect(result.data).toBe('installed')
-    })
+  it('adds stdio servers and optionally installs the package', async () => {
+    const mock = await execMock()
+    mock
+      .mockResolvedValueOnce('added 1 package')
+      .mockRejectedValueOnce(new Error('missing config'))
+      .mockRejectedValueOnce(new Error('missing runtime config'))
+      .mockResolvedValueOnce('ok')
+      .mockResolvedValueOnce('ok')
+      .mockResolvedValueOnce('synced')
 
-    it('returns error when npm install fails', async () => {
-      const config = { command: 'npx', args: ['-y', 'bad-pkg'], env: {}, enabled: true }
-      await mockExecFail('npm ERR! 404')
-      const result = await addMcpServer('bad', config, 'bad-pkg')
-      expect(result.success).toBe(false)
-    })
+    const result = await addMcpServer(
+      'github',
+      {
+        transport: 'stdio',
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-github'],
+        env: {},
+        enabled: true,
+      },
+      '@modelcontextprotocol/server-github',
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.data).toBe('installed')
   })
 
-  describe('removeMcpServer', () => {
-    it('removes server from config', async () => {
-      const existing = JSON.stringify({
-        mcpServers: { context7: { command: 'npx', args: [], env: {}, enabled: true } },
-      })
-      await mockExecSequence(existing, 'ok')
-      const result = await removeMcpServer('context7')
-      expect(result.success).toBe(true)
-      expect(result.data).toBe('removed')
-    })
+  it('removes servers and best-effort uninstalls managed packages', async () => {
+    const mock = await execMock()
+    mock
+      .mockResolvedValueOnce(JSON.stringify({
+        mcpServers: {
+          github: {
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-github'],
+            env: {},
+            enabled: true,
+          },
+        },
+      }))
+      .mockResolvedValueOnce(JSON.stringify({
+        mcp: {
+          servers: {
+            github: {
+              command: 'npx',
+              args: ['-y', '@modelcontextprotocol/server-github'],
+              env: {},
+            },
+          },
+        },
+      }))
+      .mockResolvedValueOnce('ok')
+      .mockResolvedValueOnce('ok')
+      .mockResolvedValueOnce('synced')
+      .mockResolvedValueOnce('removed')
+
+    const result = await removeMcpServer('github', '@modelcontextprotocol/server-github')
+
+    expect(result.success).toBe(true)
+    expect(result.data).toBe('removed')
   })
 
-  describe('toggleMcpServer', () => {
-    it('toggles enabled flag', async () => {
-      const existing = JSON.stringify({
-        mcpServers: { github: { command: 'npx', args: [], env: {}, enabled: true } },
-      })
-      await mockExecSequence(existing, 'ok')
-      const result = await toggleMcpServer('github', false)
-      expect(result.success).toBe(true)
-      expect(result.data).toBe('disabled')
-    })
+  it('toggles enabled state and handles missing ids', async () => {
+    const mock = await execMock()
+    mock
+      .mockResolvedValueOnce(JSON.stringify({
+        mcpServers: {
+          github: {
+            command: 'npx',
+            args: [],
+            env: {},
+            enabled: true,
+          },
+        },
+      }))
+      .mockResolvedValueOnce(JSON.stringify({
+        mcp: {
+          servers: {
+            github: {
+              command: 'npx',
+              args: [],
+              env: {},
+            },
+          },
+        },
+      }))
+      .mockResolvedValueOnce('ok')
+      .mockResolvedValueOnce('ok')
+      .mockResolvedValueOnce('synced')
 
-    it('returns not found for missing server', async () => {
-      await mockExecSequence(JSON.stringify({ mcpServers: {} }))
-      const result = await toggleMcpServer('nonexistent', true)
-      expect(result.success).toBe(true)
-      expect(result.data).toBe('not found')
-    })
+    const enabledResult = await toggleMcpServer('github', false)
+    expect(enabledResult.success).toBe(true)
+    expect(enabledResult.data).toBe('disabled')
+
+    mock.mockReset()
+    mock
+      .mockResolvedValueOnce(JSON.stringify({ mcpServers: {} }))
+      .mockResolvedValueOnce(JSON.stringify({ mcp: { servers: {} } }))
+
+    const missingResult = await toggleMcpServer('missing', true)
+    expect(missingResult.success).toBe(true)
+    expect(missingResult.data).toBe('not found')
   })
 
-  describe('installMcpPackage', () => {
-    it('installs npm package', async () => {
-      await mockExec('added 5 packages')
-      const result = await installMcpPackage('@upstash/context7-mcp')
-      expect(result.success).toBe(true)
+  it('writes only enabled servers into openclaw config and maps http to streamable-http', async () => {
+    const mock = await execMock()
+    mock
+      .mockRejectedValueOnce(new Error('missing config'))
+      .mockRejectedValueOnce(new Error('missing runtime config'))
+      .mockResolvedValueOnce('ok')
+      .mockResolvedValueOnce('ok')
+      .mockResolvedValueOnce('synced')
+
+    const result = await addMcpServer('context7', {
+      transport: 'http',
+      url: 'https://mcp.context7.com/mcp',
+      headers: {},
+      env: {},
+      enabled: true,
     })
 
-    it('returns error on failure', async () => {
-      await mockExecFail('npm ERR! 404')
-      const result = await installMcpPackage('nonexistent-pkg')
-      expect(result.success).toBe(false)
-    })
+    expect(result.success).toBe(true)
+    const nodeWriteCall = mock.mock.calls.find(([command, args]) => (
+      command === 'node'
+      && Array.isArray(args)
+      && args[2] === '~/.openclaw/openclaw.json'
+    ))
+    expect(nodeWriteCall?.[1]?.[3]).toContain('"transport":"streamable-http"')
   })
 
-  describe('checkMcpPackage', () => {
-    it('returns true when installed', async () => {
-      await mockExec('{"dependencies":{}}')
-      const result = await checkMcpPackage('@upstash/context7-mcp')
-      expect(result.success).toBe(true)
-      expect(result.data).toBe(true)
-    })
+  it('checks whether a package is globally installed', async () => {
+    const mock = await execMock()
+    mock.mockResolvedValueOnce('{}')
 
-    it('returns false when not installed', async () => {
-      await mockExecFail('not found')
-      const result = await checkMcpPackage('nonexistent')
-      expect(result.success).toBe(true)
-      expect(result.data).toBe(false)
-    })
+    const installed = await checkMcpPackage('@modelcontextprotocol/server-github')
+    expect(installed.success).toBe(true)
+    expect(installed.data).toBe(true)
+
+    mock.mockReset()
+    mock.mockRejectedValueOnce(new Error('not found'))
+
+    const missing = await checkMcpPackage('missing-package')
+    expect(missing.success).toBe(true)
+    expect(missing.data).toBe(false)
   })
 })

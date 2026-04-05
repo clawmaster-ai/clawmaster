@@ -1,147 +1,106 @@
 suite: mcp-servers
-name: MCP 服务器管理
+name: MCP 服务工作流
 description: |
-  验证 MCP 服务器管理页面的完整功能：
-  目录浏览、分类过滤、展开/折叠、环境变量、安装/卸载、启用/禁用、自定义服务器
+  验证 MCP 页面新的主流程：
+  已接入服务总览、推荐服务选择、导入现有配置、手动添加服务。
 
 preconditions:
   - dev server 已启动（{BASE_URL} 可访问）
   - 已进入主界面
 
-viewport: { width: 1280, height: 800 }
+viewport: { width: 1440, height: 960 }
 
 cases:
   - id: mcp-01
-    name: 目录网格渲染
+    name: 页面首屏结构
     steps:
       - action: navigate
         url: "{BASE_URL}/mcp"
       - action: wait
-        duration: 2000ms
+        duration: 1500ms
       - action: screenshot
-        name: mcp-catalog
+        name: mcp-overview
     assertions:
-      - 页面标题"MCP 服务器"
-      - 页面副标题描述 MCP 功能
-      - 显示刷新按钮
-      - 显示分类 pill 过滤器（"全部"默认选中 + 各分类按钮）
-      - 显示 3 列卡片网格
-      - 每张卡片包含：Plug 图标 + 名称 + 描述 + 包名（mono 字体）+ 分类标签
-      - 可见服务器至少包含 Context7、DeepWiki、GitHub
+      - 页面标题为“MCP 服务 / MCP Servers”
+      - 页首展示三个信息标签：传输方式、导入来源、OpenClaw 提示
+      - 显示四个指标卡：已接入、已启用、远程端点、检测到的导入源
+      - 主内容为左右两列：左侧服务浏览，右侧操作面板
+      - 不使用分隔 hr 线切断卡片内容，间距清晰
 
   - id: mcp-02
-    name: 分类过滤功能
+    name: 已接入服务区
     steps:
-      - action: click
-        target: text("开发工具")
+      - action: navigate
+        url: "{BASE_URL}/mcp"
       - action: wait
-        duration: 500ms
+        duration: 1000ms
       - action: screenshot
-        name: mcp-filter-developer
+        name: mcp-installed
     assertions:
-      - "开发工具"pill 按钮高亮（bg-card shadow-sm）
-      - 网格中仅显示开发工具类服务器（Context7、DeepWiki、GitHub）
-      - 其他分类的服务器不可见
-      - 点击"全部"恢复全部显示
+      - 顶部先展示“已接入服务”
+      - 每个服务卡片显示：名称、启用状态、传输方式、命令或 URL
+      - 已从文件导入的服务可看到来源路径
+      - 已知目录服务可直接点击“打开配置”
+      - 所有操作按钮使用图标 + 文案，无 emoji
 
   - id: mcp-03
-    name: 卡片展开/折叠
-    steps:
-      - action: click
-        target: text("Context7")
-      - action: wait
-        duration: 500ms
-      - action: screenshot
-        name: mcp-expand-context7
-    assertions:
-      - Context7 卡片展开（border-primary/40 高亮）
-      - 展开区域显示"无需环境变量"提示
-      - 展开区域显示文档链接（github.com/upstash/context7）
-      - 展开区域显示"安装"按钮（蓝色主色调）
-      - 其他卡片保持折叠状态
-      - 再次点击 Context7 可折叠
-
-  - id: mcp-04
-    name: 环境变量输入（密码遮罩）
+    name: 推荐服务切换到配置面板
     steps:
       - action: click
         target: text("GitHub")
       - action: wait
         duration: 500ms
       - action: screenshot
-        name: mcp-github-envvars
+        name: mcp-setup-github
     assertions:
-      - GitHub 卡片展开
-      - 显示"环境变量"标签
-      - 显示 GITHUB_PERSONAL_ACCESS_TOKEN 输入框
-      - 输入框类型为 password（遮罩模式）
-      - 输入框旁有眼睛图标按钮（可切换可见性）
-      - "安装"按钮因必填字段为空而 disabled
+      - 右侧配置面板标题切换为“GitHub”
+      - 显示传输方式与包名/端点信息
+      - 显示必填令牌输入框
+      - 若服务未安装，主按钮为“安装并启用 / Connect and enable”类型动作
+      - 面板底部无多余分隔线，依赖留白分组
+
+  - id: mcp-04
+    name: 浏览更多服务与分类过滤
+    steps:
+      - action: click
+        target: text("效率工具")
+      - action: wait
+        duration: 500ms
+      - action: screenshot
+        name: mcp-filter-productivity
+    assertions:
+      - “更多服务”区域支持分类 pill 切换
+      - 当前分类按钮高亮
+      - 列表只保留对应分类服务
+      - 点击卡片后右侧配置面板随之更新
 
   - id: mcp-05
-    name: 安装流程
-    steps:
-      - action: click
-        target: text("Context7")
-      - action: wait
-        duration: 500ms
-      - action: click
-        target: text("安装")
-      - action: observe
-        duration: 10000ms
-        reason: npm 安装可能需要数秒
-    assertions:
-      - 点击后显示 InstallTask 进度组件
-      - 进度组件显示安装状态（进行中/成功/失败）
-      - 安装进度与真实异步操作一致（onInstall 已被 await，不提前 done）
-      - 安装成功后卡片显示"已启用"绿色标签
-      - 安装成功后操作按钮变为"启用/禁用"和"移除"
-
-  - id: mcp-06
-    name: 启用/禁用切换
-    preconditions:
-      - 已安装至少一个 MCP 服务器
-    steps:
-      - action: click
-        target: 已安装的服务器卡片
-      - action: wait
-        duration: 500ms
-      - action: click
-        target: text("禁用")
-      - action: wait
-        duration: 2000ms
-    assertions:
-      - 点击"禁用"后状态标签变为"已禁用"（灰色）
-      - ToggleLeft 图标替代 ToggleRight
-      - 按钮文字变为"启用"
-      - 再次点击可恢复"已启用"状态
-
-  - id: mcp-07
-    name: 移除服务器
-    preconditions:
-      - 已安装至少一个 MCP 服务器
-    steps:
-      - action: click
-        target: text("移除")
-      - action: observe
-        duration: 1000ms
-    assertions:
-      - 弹出确认对话框"确定要移除 XXX 吗？"
-      - 确认后服务器从已安装列表中移除
-      - 卡片恢复为未安装状态（显示"安装"按钮）
-      - 取消则保持原状态
-
-  - id: mcp-08
-    name: 自定义服务器表单
+    name: 导入现有 MCP 配置
     steps:
       - action: scroll_to
-        target: 自定义服务器区域
+        target: text("导入现有配置")
+      - action: wait
+        duration: 500ms
       - action: screenshot
-        name: mcp-custom-form
+        name: mcp-import-panel
     assertions:
-      - 显示 Plus 图标 + "自定义服务器"标题
-      - 显示描述文字
-      - 显示 ID 输入框（placeholder 含"my-server"）
-      - 显示包名输入框（placeholder 含"@scope/package"）
-      - 显示"添加"按钮
-      - ID 和包名均为空时"添加"按钮 disabled
+      - 导入面板列出常见来源：.mcp.json、Cursor、VS Code、Claude、Codex、Copilot
+      - 已存在路径显示可导入按钮，不存在显示“未发现 / Not found”
+      - 支持输入自定义路径导入
+      - 导入完成后展示导入结果摘要和服务 ID 标签
+
+  - id: mcp-06
+    name: 手动添加服务
+    steps:
+      - action: scroll_to
+        target: text("手动添加服务")
+      - action: wait
+        duration: 500ms
+      - action: screenshot
+        name: mcp-manual-panel
+    assertions:
+      - 手动面板支持 stdio、HTTP、SSE 三种传输方式
+      - stdio 模式显示包名、命令、参数、环境变量
+      - HTTP/SSE 模式显示 URL、请求头、环境变量
+      - 表单布局使用 grid/flex，移动端会自然堆叠
+      - 主按钮文案明确为“添加服务 / Add server”
