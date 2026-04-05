@@ -62,10 +62,18 @@ pub struct NpmInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenClawInfo {
     pub installed: bool,
     pub version: String,
     pub config_path: String,
+    pub data_dir: String,
+    pub path_source: String,
+    pub profile_mode: String,
+    pub profile_name: Option<String>,
+    pub override_active: bool,
+    pub config_path_candidates: Vec<String>,
+    pub existing_config_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,6 +116,32 @@ static OPENCLAW_EXE: OnceLock<PathBuf> = OnceLock::new();
 static CLAWPROBE_EXE: OnceLock<PathBuf> = OnceLock::new();
 static SYSTEM_CMD_EXE: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct OpenclawProfileSelection {
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ClawmasterSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    openclaw_profile: Option<OpenclawProfileSelection>,
+}
+
+#[derive(Debug, Clone)]
+struct OpenclawConfigResolution {
+    config_path: PathBuf,
+    data_dir: PathBuf,
+    source: String,
+    profile_selection: OpenclawProfileSelection,
+    override_active: bool,
+    config_path_candidates: Vec<PathBuf>,
+    existing_config_paths: Vec<PathBuf>,
+}
+
 /// GUI processes (especially when launched from Finder on macOS) often lack nvm/fnm global bins in PATH,
 /// so `openclaw` may differ from Terminal or be missing. Resolve via login shell `command -v openclaw`.
 fn openclaw_executable_path() -> PathBuf {
@@ -118,9 +152,223 @@ fn openclaw_executable_path() -> PathBuf {
         .clone()
 }
 
+fn clawmaster_settings_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".clawmaster")
+        .join("settings.json")
+}
+
+fn read_clawmaster_settings() -> ClawmasterSettings {
+    let path = clawmaster_settings_path();
+    let Ok(raw) = fs::read_to_string(path) else {
+        return ClawmasterSettings::default();
+    };
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
+fn write_clawmaster_settings(settings: &ClawmasterSettings) -> Result<(), String> {
+    let path = clawmaster_settings_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| cmd_err_d("CLAWMASTER_SETTINGS_MKDIR_FAILED", e))?;
+    }
+    let raw = serde_json::to_string_pretty(settings)
+        .map_err(|e| cmd_err_d("CLAWMASTER_SETTINGS_SERIALIZE_FAILED", e))?;
+    fs::write(path, format!("{raw}\n"))
+        .map_err(|e| cmd_err_d("CLAWMASTER_SETTINGS_WRITE_FAILED", e))?;
+    Ok(())
+}
+
+fn sanitize_profile_name(input: &str) -> Result<String, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("Profile name is required".to_string());
+    }
+    if trimmed == "default" {
+        return Err("Use the default profile option instead of the reserved name \"default\"".to_string());
+    }
+    if !trimmed
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '.' || ch == '_' || ch == '-')
+    {
+        return Err(
+            "Profile name may only contain letters, numbers, dot, underscore, and hyphen"
+                .to_string(),
+        );
+    }
+    Ok(trimmed.to_string())
+}
+
+fn normalize_openclaw_profile_selection(
+    kind: Option<String>,
+    name: Option<String>,
+) -> Result<OpenclawProfileSelection, String> {
+    match kind.as_deref() {
+        None | Some("default") => Ok(OpenclawProfileSelection {
+            kind: "default".to_string(),
+            name: None,
+        }),
+        Some("dev") => Ok(OpenclawProfileSelection {
+            kind: "dev".to_string(),
+            name: None,
+        }),
+        Some("named") => Ok(OpenclawProfileSelection {
+            kind: "named".to_string(),
+            name: Some(sanitize_profile_name(name.as_deref().unwrap_or_default())?),
+        }),
+        _ => Err("Unsupported OpenClaw profile kind".to_string()),
+    }
+}
+
+fn get_openclaw_profile_selection() -> OpenclawProfileSelection {
+    let settings = read_clawmaster_settings();
+    normalize_openclaw_profile_selection(
+        settings.openclaw_profile.as_ref().map(|item| item.kind.clone()),
+        settings.openclaw_profile.as_ref().and_then(|item| item.name.clone()),
+    )
+    .unwrap_or(OpenclawProfileSelection {
+        kind: "default".to_string(),
+        name: None,
+    })
+}
+
+fn set_openclaw_profile_selection(
+    kind: Option<String>,
+    name: Option<String>,
+) -> Result<OpenclawProfileSelection, String> {
+    let normalized = normalize_openclaw_profile_selection(kind, name)?;
+    let mut settings = read_clawmaster_settings();
+    if normalized.kind == "default" {
+        settings.openclaw_profile = None;
+    } else {
+        settings.openclaw_profile = Some(normalized.clone());
+    }
+    write_clawmaster_settings(&settings)?;
+    Ok(normalized)
+}
+
+fn clear_openclaw_profile_selection() -> Result<(), String> {
+    let mut settings = read_clawmaster_settings();
+    settings.openclaw_profile = None;
+    write_clawmaster_settings(&settings)
+}
+
+fn get_openclaw_profile_args(selection: &OpenclawProfileSelection) -> Vec<String> {
+    match selection.kind.as_str() {
+        "dev" => vec!["--dev".to_string()],
+        "named" => selection
+            .name
+            .as_ref()
+            .map(|name| vec!["--profile".to_string(), name.clone()])
+            .unwrap_or_default(),
+        _ => vec![],
+    }
+}
+
+fn get_openclaw_profile_data_dir(
+    selection: &OpenclawProfileSelection,
+    home_dir: &Path,
+) -> Option<PathBuf> {
+    match selection.kind.as_str() {
+        "dev" => Some(home_dir.join(".openclaw-dev")),
+        "named" => selection
+            .name
+            .as_ref()
+            .map(|name| home_dir.join(format!(".openclaw-{name}"))),
+        _ => None,
+    }
+}
+
+fn normalize_openclaw_profile_seed(
+    mode: Option<String>,
+    source_path: Option<String>,
+) -> Result<(String, Option<String>), String> {
+    match mode.as_deref() {
+        None | Some("empty") => Ok(("empty".to_string(), None)),
+        Some("clone-current") => Ok(("clone-current".to_string(), None)),
+        Some("import-config") => Ok((
+            "import-config".to_string(),
+            Some(source_path.unwrap_or_default().trim().to_string()),
+        )),
+        _ => Err("Unsupported OpenClaw profile seed mode".to_string()),
+    }
+}
+
+fn resolve_openclaw_profile_seed_source_path(
+    seed_mode: &str,
+    seed_path: Option<&str>,
+) -> Result<Option<PathBuf>, String> {
+    match seed_mode {
+        "empty" => Ok(None),
+        "clone-current" => {
+            let source_path = get_config_path();
+            if !source_path.exists() {
+                return Err(
+                    "Current OpenClaw config does not exist, so there is nothing to clone yet"
+                        .to_string(),
+                );
+            }
+            Ok(Some(source_path))
+        }
+        "import-config" => {
+            let source = seed_path.unwrap_or_default().trim();
+            if source.is_empty() {
+                return Err("Enter an OpenClaw config path before importing".to_string());
+            }
+            let source_path = expand_home_path(source);
+            if !source_path.exists() {
+                return Err("Imported OpenClaw config path does not exist".to_string());
+            }
+            if !source_path.is_file() {
+                return Err("Imported OpenClaw config path must point to a file".to_string());
+            }
+            Ok(Some(source_path))
+        }
+        _ => Err("Unsupported OpenClaw profile seed mode".to_string()),
+    }
+}
+
+fn seed_named_openclaw_profile_config(
+    selection: &OpenclawProfileSelection,
+    seed_mode: &str,
+    seed_path: Option<&str>,
+) -> Result<(), String> {
+    if selection.kind != "named" || seed_mode == "empty" {
+        return Ok(());
+    }
+
+    let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    let target_dir = get_openclaw_profile_data_dir(selection, &home_dir)
+        .ok_or_else(|| "Named OpenClaw profile target could not be resolved".to_string())?;
+    let target_config_path = target_dir.join("openclaw.json");
+    if target_config_path.exists() {
+        return Err(
+            "Target named profile already has an OpenClaw config. Choose a new profile name or switch directly."
+                .to_string(),
+        );
+    }
+
+    let source_path = resolve_openclaw_profile_seed_source_path(seed_mode, seed_path)?
+        .ok_or_else(|| "OpenClaw profile seed source was not resolved".to_string())?;
+    let raw = fs::read_to_string(&source_path)
+        .map_err(|e| cmd_err_d("PROFILE_SEED_READ_FAILED", e))?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|_| "Imported OpenClaw config must be valid JSON".to_string())?;
+
+    fs::create_dir_all(&target_dir).map_err(|e| cmd_err_d("PROFILE_SEED_MKDIR_FAILED", e))?;
+    let content = serde_json::to_string_pretty(&parsed)
+        .map_err(|e| cmd_err_d("PROFILE_SEED_SERIALIZE_FAILED", e))?;
+    fs::write(&target_config_path, format!("{content}\n"))
+        .map_err(|e| cmd_err_d("PROFILE_SEED_WRITE_FAILED", e))?;
+    Ok(())
+}
+
 fn openclaw_cmd() -> Command {
     let mut c = Command::new(openclaw_executable_path());
     c.stdin(Stdio::null());
+    for arg in get_openclaw_profile_args(&get_openclaw_profile_selection()) {
+        c.arg(arg);
+    }
     c
 }
 
@@ -317,17 +565,197 @@ fn resolve_system_command_path(cmd: &str) -> PathBuf {
 }
 
 // OpenClaw config file path
-fn get_config_path() -> PathBuf {
-    if cfg!(target_os = "windows") {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("openclaw")
-            .join("openclaw.json")
+fn get_config_path_candidates_for(
+    is_windows: bool,
+    home_dir: PathBuf,
+    config_dir: PathBuf,
+) -> Vec<PathBuf> {
+    if is_windows {
+        let home_path = home_dir.join(".openclaw").join("openclaw.json");
+        let roaming_path = config_dir.join("openclaw").join("openclaw.json");
+
+        if home_path == roaming_path {
+            vec![home_path]
+        } else {
+            vec![home_path, roaming_path]
+        }
     } else {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".openclaw")
-            .join("openclaw.json")
+        vec![home_dir.join(".openclaw").join("openclaw.json")]
+    }
+}
+
+fn resolve_config_path_from_candidates(candidates: &[PathBuf]) -> PathBuf {
+    for candidate in candidates {
+        if candidate.exists() {
+            return candidate.clone();
+        }
+    }
+    candidates
+        .first()
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from("openclaw.json"))
+}
+
+fn get_config_resolution() -> OpenclawConfigResolution {
+    let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    let profile_selection = get_openclaw_profile_selection();
+    let default_candidates =
+        get_config_path_candidates_for(cfg!(target_os = "windows"), home_dir.clone(), config_dir);
+    let existing_config_paths = default_candidates
+        .iter()
+        .filter(|candidate| candidate.exists())
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if let Some(data_dir) = get_openclaw_profile_data_dir(&profile_selection, &home_dir) {
+        return OpenclawConfigResolution {
+            config_path: data_dir.join("openclaw.json"),
+            data_dir,
+            source: if profile_selection.kind == "dev" {
+                "profile-dev".to_string()
+            } else {
+                "profile-named".to_string()
+            },
+            profile_selection,
+            override_active: true,
+            config_path_candidates: default_candidates,
+            existing_config_paths,
+        };
+    }
+
+    let config_path = resolve_config_path_from_candidates(&default_candidates);
+    let source = if default_candidates.get(1) == Some(&config_path) {
+        "existing-default-roaming".to_string()
+    } else if config_path.exists() {
+        "existing-default-home".to_string()
+    } else {
+        "default-home".to_string()
+    };
+
+    OpenclawConfigResolution {
+        data_dir: config_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from(".")),
+        config_path,
+        source,
+        profile_selection,
+        override_active: false,
+        config_path_candidates: default_candidates,
+        existing_config_paths,
+    }
+}
+
+fn get_config_path() -> PathBuf {
+    get_config_resolution().config_path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        get_config_path_candidates_for, get_openclaw_profile_args, get_openclaw_profile_data_dir,
+        resolve_config_path_from_candidates, OpenclawProfileSelection,
+    };
+    use std::fs;
+    use std::path::Path;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_dir(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "clawmaster-config-path-{label}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn windows_candidates_prefer_home_before_roaming() {
+        let home_dir = PathBuf::from(r"C:\Users\alice");
+        let config_dir = PathBuf::from(r"C:\Users\alice\AppData\Roaming");
+
+        let candidates = get_config_path_candidates_for(true, home_dir.clone(), config_dir.clone());
+
+        assert_eq!(
+            candidates,
+            vec![
+                home_dir.join(".openclaw").join("openclaw.json"),
+                config_dir.join("openclaw").join("openclaw.json"),
+            ]
+        );
+    }
+
+    #[test]
+    fn windows_resolver_uses_roaming_when_home_config_is_missing() {
+        let root = unique_test_dir("roaming-fallback");
+        let home_candidate = root.join("home").join(".openclaw").join("openclaw.json");
+        let roaming_candidate = root
+            .join("roaming")
+            .join("openclaw")
+            .join("openclaw.json");
+
+        fs::create_dir_all(roaming_candidate.parent().expect("roaming parent should exist"))
+            .expect("should create roaming dir");
+        fs::write(&roaming_candidate, b"{}").expect("should create roaming config");
+
+        let resolved = resolve_config_path_from_candidates(&[
+            home_candidate.clone(),
+            roaming_candidate.clone(),
+        ]);
+
+        assert_eq!(resolved, roaming_candidate);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn windows_resolver_defaults_to_home_when_nothing_exists() {
+        let candidates = get_config_path_candidates_for(
+            true,
+            PathBuf::from(r"C:\Users\alice"),
+            PathBuf::from(r"C:\Users\alice\AppData\Roaming"),
+        );
+
+        let resolved = resolve_config_path_from_candidates(&candidates);
+
+        assert_eq!(resolved, candidates[0]);
+    }
+
+    #[test]
+    fn dev_profile_uses_dev_flag_and_dev_directory() {
+        let selection = OpenclawProfileSelection {
+            kind: "dev".to_string(),
+            name: None,
+        };
+
+        assert_eq!(get_openclaw_profile_args(&selection), vec!["--dev".to_string()]);
+        assert_eq!(
+            get_openclaw_profile_data_dir(&selection, Path::new("/Users/alice"))
+                .expect("dev dir should resolve"),
+            PathBuf::from("/Users/alice/.openclaw-dev")
+        );
+    }
+
+    #[test]
+    fn named_profile_uses_profile_flag_and_named_directory() {
+        let selection = OpenclawProfileSelection {
+            kind: "named".to_string(),
+            name: Some("team-a".to_string()),
+        };
+
+        assert_eq!(
+            get_openclaw_profile_args(&selection),
+            vec!["--profile".to_string(), "team-a".to_string()]
+        );
+        assert_eq!(
+            get_openclaw_profile_data_dir(&selection, Path::new("/home/alice"))
+                .expect("named dir should resolve"),
+            PathBuf::from("/home/alice/.openclaw-team-a")
+        );
     }
 }
 
@@ -369,7 +797,8 @@ fn detect_system() -> Result<SystemInfo, String> {
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
-    let config_path = get_config_path();
+    let resolution = get_config_resolution();
+    let config_path = resolution.config_path.clone();
 
     let openclaw = OpenClawInfo {
         installed: openclaw_version.is_some() || config_path.exists(),
@@ -377,6 +806,21 @@ fn detect_system() -> Result<SystemInfo, String> {
             .map(|v| v.trim().replace("openclaw ", "").replace("v", ""))
             .unwrap_or_default(),
         config_path: config_path.to_string_lossy().to_string(),
+        data_dir: resolution.data_dir.to_string_lossy().to_string(),
+        path_source: resolution.source,
+        profile_mode: resolution.profile_selection.kind,
+        profile_name: resolution.profile_selection.name,
+        override_active: resolution.override_active,
+        config_path_candidates: resolution
+            .config_path_candidates
+            .into_iter()
+            .map(|item| item.to_string_lossy().to_string())
+            .collect(),
+        existing_config_paths: resolution
+            .existing_config_paths
+            .into_iter()
+            .map(|item| item.to_string_lossy().to_string())
+            .collect(),
     };
 
     Ok(SystemInfo {
@@ -661,6 +1105,29 @@ fn reset_openclaw_config() -> Result<(), String> {
         .map_err(|e| cmd_err_d("RESET_SERIALIZE_FAILED", e))?;
     fs::write(&config_path, content).map_err(|e| cmd_err_d("RESET_WRITE_FAILED", e))?;
     Ok(())
+}
+
+#[tauri::command]
+fn save_openclaw_profile(
+    kind: Option<String>,
+    name: Option<String>,
+    seed_mode: Option<String>,
+    seed_path: Option<String>,
+) -> Result<(), String> {
+    let normalized = normalize_openclaw_profile_selection(kind, name)?;
+    let (normalized_seed_mode, normalized_seed_path) =
+        normalize_openclaw_profile_seed(seed_mode, seed_path)?;
+    seed_named_openclaw_profile_config(
+        &normalized,
+        &normalized_seed_mode,
+        normalized_seed_path.as_deref(),
+    )?;
+    set_openclaw_profile_selection(Some(normalized.kind), normalized.name).map(|_| ())
+}
+
+#[tauri::command]
+fn clear_openclaw_profile() -> Result<(), String> {
+    clear_openclaw_profile_selection()
 }
 
 fn npm_root_g() -> Result<String, String> {
@@ -1453,7 +1920,8 @@ struct RunOpenclawStdinPayload {
 /// Pipe stdin (e.g. `y\\n` for `plugins uninstall` when `--yes` is not a valid flag).
 #[tauri::command]
 fn run_openclaw_command_stdin(payload: RunOpenclawStdinPayload) -> Result<String, String> {
-    let mut child = Command::new(openclaw_executable_path())
+    let mut command = openclaw_cmd();
+    let mut child = command
         .args(&payload.args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -2023,6 +2491,8 @@ pub fn run() {
             get_config,
             save_config,
             reset_openclaw_config,
+            save_openclaw_profile,
+            clear_openclaw_profile,
             uninstall_openclaw_cli,
             list_openclaw_npm_versions,
             npm_install_openclaw_global,

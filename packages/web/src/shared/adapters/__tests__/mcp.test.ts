@@ -13,6 +13,23 @@ vi.mock('../platform', () => ({
   execCommand: vi.fn(),
 }))
 
+vi.mock('../system', () => ({
+  detectSystemResult: vi.fn().mockResolvedValue({
+    success: true,
+    data: {
+      nodejs: { installed: true, version: '20.0.0' },
+      npm: { installed: true, version: '10.0.0' },
+      openclaw: {
+        installed: true,
+        version: '2026.4.2',
+        configPath: '~/.openclaw/openclaw.json',
+        dataDir: '~/.openclaw',
+      },
+    },
+    error: null,
+  }),
+}))
+
 describe('mcp adapter', () => {
   async function execMock() {
     const { execCommand } = await import('../platform')

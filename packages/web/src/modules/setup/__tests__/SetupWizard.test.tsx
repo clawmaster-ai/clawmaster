@@ -5,6 +5,9 @@ import SetupWizard from '../SetupWizard'
 
 const mockDetectCapabilities = vi.fn()
 const mockInstallCapabilities = vi.fn()
+const mockDetectSystem = vi.fn()
+const mockSaveProfile = vi.fn()
+const mockClearProfile = vi.fn()
 const mockSetupAdapter = {
   detectCapabilities: (...args: any[]) => mockDetectCapabilities(...args),
   installCapabilities: (...args: any[]) => mockInstallCapabilities(...args),
@@ -25,6 +28,14 @@ vi.mock('../adapters', () => ({
   getSetupAdapter: () => mockSetupAdapter,
 }))
 
+vi.mock('@/shared/adapters/platformResults', () => ({
+  platformResults: {
+    detectSystem: (...args: any[]) => mockDetectSystem(...args),
+    saveOpenclawProfile: (...args: any[]) => mockSaveProfile(...args),
+    clearOpenclawProfile: (...args: any[]) => mockClearProfile(...args),
+  },
+}))
+
 vi.mock('@/shared/adapters/ollama', () => ({
   getOllamaStatus: vi.fn(),
   installOllama: vi.fn(),
@@ -37,6 +48,27 @@ describe('SetupWizard', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await changeLanguage('en')
+    mockDetectSystem.mockResolvedValue({
+      success: true,
+      data: {
+        nodejs: { installed: true, version: '20.0.0' },
+        npm: { installed: true, version: '10.0.0' },
+        openclaw: {
+          installed: false,
+          version: '',
+          configPath: '/home/.openclaw/openclaw.json',
+          dataDir: '/home/.openclaw',
+          profileMode: 'default',
+          profileName: null,
+          overrideActive: false,
+          configPathCandidates: ['/home/.openclaw/openclaw.json'],
+          existingConfigPaths: [],
+        },
+      },
+      error: null,
+    })
+    mockSaveProfile.mockResolvedValue({ success: true, data: undefined, error: null })
+    mockClearProfile.mockResolvedValue({ success: true, data: undefined, error: null })
     mockDetectCapabilities.mockImplementation(async (onUpdate: (status: any) => void) => {
       const results = [
         { id: 'engine', name: 'capability.engine', status: 'installed', version: '2026.4.0' },
@@ -93,5 +125,50 @@ describe('SetupWizard', () => {
     expect(await screen.findByRole('button', { name: 'Start Configuration' })).toBeInTheDocument()
 
     releaseOptionalChecks?.()
+  })
+
+  it('shows the profile fallback card and saves a named profile', async () => {
+    render(<SetupWizard onComplete={() => {}} />)
+
+    expect(await screen.findByText('OpenClaw profile')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Named' }))
+    fireEvent.change(screen.getByPlaceholderText('team-a'), { target: { value: 'workspace-a' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply profile' }))
+
+    await waitFor(() => {
+      expect(mockSaveProfile).toHaveBeenCalledWith(
+        {
+          kind: 'named',
+          name: 'workspace-a',
+        },
+        {
+          mode: 'empty',
+          sourcePath: undefined,
+        },
+      )
+    })
+  })
+
+  it('can seed a named profile from the current config in the wizard', async () => {
+    render(<SetupWizard onComplete={() => {}} />)
+
+    expect(await screen.findByText('OpenClaw profile')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Named' }))
+    fireEvent.change(screen.getByPlaceholderText('team-a'), { target: { value: 'workspace-seeded' } })
+    fireEvent.click(screen.getByRole('button', { name: /Clone current config/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply profile' }))
+
+    await waitFor(() => {
+      expect(mockSaveProfile).toHaveBeenCalledWith(
+        {
+          kind: 'named',
+          name: 'workspace-seeded',
+        },
+        {
+          mode: 'clone-current',
+          sourcePath: undefined,
+        },
+      )
+    })
   })
 })

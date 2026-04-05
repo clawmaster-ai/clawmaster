@@ -33,8 +33,45 @@ vi.mock('react-i18next', () => ({
         'settings.changelog': 'Release Notes',
         'settings.currentLabel': 'current',
         'settings.acknowledgments': 'Acknowledgments',
+        'settings.profileTitle': 'OpenClaw profile',
+        'settings.profileDesc': 'Choose which OpenClaw runtime ClawMaster should read, configure, and launch.',
+        'settings.profileDefault': 'Default',
+        'settings.profileDefaultDesc': 'Auto-detect the main local install and keep the standard profile path.',
+        'settings.profileDev': 'Dev',
+        'settings.profileDevDesc': 'Use the isolated dev runtime with shifted ports and its own state directory.',
+        'settings.profileNamed': 'Named',
+        'settings.profileNamedDesc': 'Target a named OpenClaw profile for a separate workspace or environment.',
+        'settings.profileName': 'Profile name',
+        'settings.profileNamePlaceholder': 'team-a',
+        'settings.profileNameHint': 'Allowed characters: letters, numbers, dot, underscore, and hyphen.',
+        'settings.profileNameRequired': 'Enter a profile name before saving.',
+        'settings.profileSeedTitle': 'Seed named profile',
+        'settings.profileSeedDesc': 'Optionally start the named profile from the current resolved config or import another openclaw.json.',
+        'settings.profileSeedEmpty': 'Start empty',
+        'settings.profileSeedEmptyDesc': 'Create the named profile without copying any config first.',
+        'settings.profileSeedClone': 'Clone current config',
+        'settings.profileSeedCloneDesc': 'Copy the currently resolved OpenClaw config into the new named profile.',
+        'settings.profileSeedImport': 'Import config path',
+        'settings.profileSeedImportDesc': 'Use an existing openclaw.json from another location as the starting point.',
+        'settings.profileSeedCloneSource': 'Current source config',
+        'settings.profileSeedPath': 'Config file path',
+        'settings.profileSeedPathPlaceholder': '~/existing/openclaw.json',
+        'settings.profileSeedPathHint': 'Provide the full path to an existing openclaw.json file.',
+        'settings.profileSeedPathRequired': 'Enter an OpenClaw config path before importing.',
+        'settings.profileSeedCopiesConfigOnly': 'This seeds only openclaw.json. Skills, plugins, logs, and other runtime state stay isolated per profile.',
+        'settings.profileSaved': 'OpenClaw profile updated.',
+        'settings.profileResolved': 'Resolved target',
+        'settings.profileCurrent': 'Current target',
+        'settings.profileDataDir': 'Data directory',
+        'settings.profileAutoDetect': 'Default profile detection',
+        'settings.profileCandidateIdle': 'Not present',
+        'settings.profileApply': 'Apply profile',
         'common.notInstalled': 'Not installed',
         'common.unknownError': 'Unknown error',
+        'common.save': 'Save',
+        'common.saving': 'Saving...',
+        'common.refresh': 'Refresh',
+        'common.installed': 'Installed',
         'install.running': 'Installing...',
         'install.done': 'Done',
         'install.failed': 'Failed',
@@ -50,9 +87,13 @@ const mockListVersions = vi.fn()
 const mockReinstall = vi.fn()
 const mockInstall = vi.fn()
 const mockBootstrap = vi.fn()
+const mockSaveProfile = vi.fn()
+const mockClearProfile = vi.fn()
 
 vi.mock('@/shared/adapters/platformResults', () => ({
   platformResults: {
+    saveOpenclawProfile: (...args: any[]) => mockSaveProfile(...args),
+    clearOpenclawProfile: (...args: any[]) => mockClearProfile(...args),
     listOpenclawNpmVersions: (...args: any[]) => mockListVersions(...args),
     reinstallOpenclawGlobal: (...args: any[]) => mockReinstall(...args),
     installOpenclawGlobal: (...args: any[]) => mockInstall(...args),
@@ -65,7 +106,17 @@ vi.mock('@/adapters', () => ({
     detectSystem: vi.fn().mockResolvedValue({
       nodejs: { installed: true, version: '20.0.0' },
       npm: { installed: true, version: '10.0.0' },
-      openclaw: { installed: true, version: '2026.3.28', configPath: '/home/.openclaw/openclaw.json' },
+      openclaw: {
+        installed: true,
+        version: '2026.3.28',
+        configPath: '/home/.openclaw/openclaw.json',
+        dataDir: '/home/.openclaw',
+        profileMode: 'default',
+        profileName: null,
+        overrideActive: false,
+        configPathCandidates: ['/home/.openclaw/openclaw.json'],
+        existingConfigPaths: ['/home/.openclaw/openclaw.json'],
+      },
     }),
   },
 }))
@@ -81,6 +132,8 @@ describe('UpdateSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockBootstrap.mockResolvedValue({ success: true })
+    mockSaveProfile.mockResolvedValue({ success: true, data: undefined, error: null })
+    mockClearProfile.mockResolvedValue({ success: true, data: undefined, error: null })
     // Mock fetch to prevent real GitHub API calls in fetchReleaseNotes()
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify([]), { status: 200 }),
@@ -177,7 +230,7 @@ describe('UpdateSection', () => {
     })
     expect(screen.getByText('Stable')).toBeInTheDocument()
     expect(screen.getByText('Beta')).toBeInTheDocument()
-    expect(screen.getByText('Dev')).toBeInTheDocument()
+    expect(screen.getAllByText('Dev').length).toBeGreaterThan(0)
   })
 
   it('handles version fetch error', async () => {
@@ -253,6 +306,64 @@ describe('UpdateSection', () => {
     await waitFor(() => {
       expect(screen.getByText('latest')).toBeInTheDocument()
       expect(screen.getByText('2026.4.1')).toBeInTheDocument()
+    })
+  })
+
+  it('saves a named OpenClaw profile from settings', async () => {
+    render(<Settings />)
+
+    await waitFor(() => {
+      expect(screen.getByText('OpenClaw profile')).toBeInTheDocument()
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Named Target a named OpenClaw profile for a separate workspace or environment.',
+      }),
+    )
+    fireEvent.change(screen.getByPlaceholderText('team-a'), { target: { value: 'workspace-a' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(mockSaveProfile).toHaveBeenCalledWith(
+        {
+          kind: 'named',
+          name: 'workspace-a',
+        },
+        {
+          mode: 'empty',
+          sourcePath: undefined,
+        },
+      )
+    })
+  })
+
+  it('imports a named OpenClaw profile from a config path in settings', async () => {
+    render(<Settings />)
+
+    await waitFor(() => {
+      expect(screen.getByText('OpenClaw profile')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Named/ }))
+    fireEvent.change(screen.getByPlaceholderText('team-a'), { target: { value: 'workspace-b' } })
+    fireEvent.click(screen.getByRole('button', { name: /Import config path/ }))
+    fireEvent.change(screen.getByPlaceholderText('~/existing/openclaw.json'), {
+      target: { value: '/tmp/shared/openclaw.json' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(mockSaveProfile).toHaveBeenCalledWith(
+        {
+          kind: 'named',
+          name: 'workspace-b',
+        },
+        {
+          mode: 'import-config',
+          sourcePath: '/tmp/shared/openclaw.json',
+        },
+      )
     })
   })
 })

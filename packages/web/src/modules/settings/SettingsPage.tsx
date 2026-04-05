@@ -6,11 +6,14 @@ import { isTauri } from '@/shared/adapters/platform'
 import { changeLanguage } from '@/i18n'
 import { useInstallTask } from '@/shared/hooks/useInstallTask'
 import { InstallTask } from '@/shared/components/InstallTask'
-import { CheckCircle2, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, FileText } from 'lucide-react'
+import { CheckCircle2, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, FileText, Copy, FolderInput, Sparkles } from 'lucide-react'
 import type { SystemInfo } from '@/lib/types'
 import type { OpenclawNpmVersions } from '@/shared/adapters/npmOpenclaw'
+import type { OpenclawProfileInput, OpenclawProfileSeedInput } from '@/shared/adapters/system'
 
 type ThemeMode = 'system' | 'light' | 'dark'
+type ProfileMode = OpenclawProfileInput['kind']
+type ProfileSeedMode = OpenclawProfileSeedInput['mode']
 
 function getStoredTheme(): ThemeMode {
   return (localStorage.getItem('clawmaster-theme') as ThemeMode) || 'system'
@@ -33,6 +36,13 @@ export default function Settings() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme)
+  const [profileMode, setProfileMode] = useState<ProfileMode>('default')
+  const [profileName, setProfileName] = useState('')
+  const [profileSeedMode, setProfileSeedMode] = useState<ProfileSeedMode>('empty')
+  const [profileSeedPath, setProfileSeedPath] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileMessage, setProfileMessage] = useState<string | null>(null)
 
   useEffect(() => {
     loadSystemInfo()
@@ -44,12 +54,72 @@ export default function Settings() {
       setLoading(true)
       const info = await platform.detectSystem()
       setSystemInfo(info)
+      setProfileMode(info.openclaw.profileMode ?? 'default')
+      setProfileName(info.openclaw.profileName ?? '')
+      setProfileSeedMode('empty')
+      setProfileSeedPath('')
+      setProfileError(null)
     } catch (err) {
       console.error('Failed to load system info:', err)
     } finally {
       setLoading(false)
     }
   }
+
+  async function saveProfile() {
+    setProfileError(null)
+    setProfileMessage(null)
+    if (profileMode === 'named' && !profileName.trim()) {
+      setProfileError(t('settings.profileNameRequired'))
+      return
+    }
+    if (profileMode === 'named' && profileSeedMode === 'import-config' && !profileSeedPath.trim()) {
+      setProfileError(t('settings.profileSeedPathRequired'))
+      return
+    }
+
+    setProfileSaving(true)
+    const result =
+      profileMode === 'default'
+        ? await platformResults.clearOpenclawProfile()
+        : await platformResults.saveOpenclawProfile({
+            kind: profileMode,
+            name: profileMode === 'named' ? profileName.trim() : undefined,
+          }, profileMode === 'named'
+            ? {
+                mode: profileSeedMode,
+                sourcePath: profileSeedMode === 'import-config' ? profileSeedPath.trim() : undefined,
+              }
+            : undefined)
+    setProfileSaving(false)
+
+    if (!result.success) {
+      setProfileError(result.error ?? t('common.unknownError'))
+      return
+    }
+
+    setProfileMessage(t('settings.profileSaved'))
+    await loadSystemInfo()
+  }
+
+  function resetProfileDraft() {
+    setProfileMode(systemInfo?.openclaw.profileMode ?? 'default')
+    setProfileName(systemInfo?.openclaw.profileName ?? '')
+    setProfileSeedMode('empty')
+    setProfileSeedPath('')
+    setProfileError(null)
+    setProfileMessage(null)
+  }
+
+  const resolvedProfileMode = systemInfo?.openclaw.profileMode ?? 'default'
+  const resolvedProfileName = systemInfo?.openclaw.profileName ?? ''
+  const resolvedDataDir = systemInfo?.openclaw.dataDir ?? ''
+  const defaultCandidates = systemInfo?.openclaw.configPathCandidates ?? []
+  const existingConfigPaths = systemInfo?.openclaw.existingConfigPaths ?? []
+  const profileDirty =
+    profileMode !== resolvedProfileMode ||
+    (profileMode === 'named' && profileName.trim() !== resolvedProfileName) ||
+    (profileMode === 'named' && (profileSeedMode !== 'empty' || profileSeedPath.trim().length > 0))
 
   if (loading) {
     return <div className="state-panel text-muted-foreground">{t('common.loading')}</div>
@@ -152,6 +222,225 @@ export default function Settings() {
           <p className="text-xs text-muted-foreground mt-2">{t('common.comingSoon')}</p>
         </section>
       )}
+
+      <section className="surface-card">
+        <div className="section-heading">
+          <div>
+            <h3 className="section-title">{t('settings.profileTitle')}</h3>
+            <p className="text-sm text-muted-foreground">{t('settings.profileDesc')}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)]">
+          <div className="space-y-4">
+            <div className="grid gap-2 sm:grid-cols-3">
+              {([
+                { id: 'default' as const, label: t('settings.profileDefault'), desc: t('settings.profileDefaultDesc') },
+                { id: 'dev' as const, label: t('settings.profileDev'), desc: t('settings.profileDevDesc') },
+                { id: 'named' as const, label: t('settings.profileNamed'), desc: t('settings.profileNamedDesc') },
+              ]).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => {
+                    setProfileMode(option.id)
+                    setProfileError(null)
+                    setProfileMessage(null)
+                  }}
+                  className={`rounded-2xl border px-4 py-3 text-left transition ${
+                    profileMode === option.id
+                      ? 'border-foreground bg-foreground text-background'
+                      : 'border-border bg-background hover:bg-accent'
+                  }`}
+                >
+                  <p className="text-sm font-medium">{option.label}</p>
+                  <p className={`mt-1 text-xs ${profileMode === option.id ? 'text-background/80' : 'text-muted-foreground'}`}>
+                    {option.desc}
+                  </p>
+                </button>
+              ))}
+            </div>
+
+            {profileMode === 'named' && (
+              <div className="space-y-4">
+                <div className="grid gap-2">
+                  <label className="text-sm text-muted-foreground">{t('settings.profileName')}</label>
+                  <input
+                    value={profileName}
+                    onChange={(e) => {
+                      setProfileName(e.target.value)
+                      setProfileError(null)
+                      setProfileMessage(null)
+                    }}
+                    placeholder={t('settings.profileNamePlaceholder')}
+                    className="control-input"
+                  />
+                  <p className="text-xs text-muted-foreground">{t('settings.profileNameHint')}</p>
+                </div>
+
+                <div className="rounded-[1.5rem] border border-border/80 bg-muted/35 p-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{t('settings.profileSeedTitle')}</p>
+                    <p className="text-xs text-muted-foreground">{t('settings.profileSeedDesc')}</p>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 md:grid-cols-3">
+                    {([
+                      { id: 'empty' as const, icon: Sparkles, label: t('settings.profileSeedEmpty'), desc: t('settings.profileSeedEmptyDesc') },
+                      { id: 'clone-current' as const, icon: Copy, label: t('settings.profileSeedClone'), desc: t('settings.profileSeedCloneDesc') },
+                      { id: 'import-config' as const, icon: FolderInput, label: t('settings.profileSeedImport'), desc: t('settings.profileSeedImportDesc') },
+                    ]).map((option) => {
+                      const Icon = option.icon
+                      const active = profileSeedMode === option.id
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => {
+                            setProfileSeedMode(option.id)
+                            if (option.id !== 'import-config') {
+                              setProfileSeedPath('')
+                            }
+                            setProfileError(null)
+                            setProfileMessage(null)
+                          }}
+                          className={`rounded-2xl border px-4 py-3 text-left transition ${
+                            active
+                              ? 'border-foreground bg-background shadow-sm'
+                              : 'border-border bg-background/70 hover:bg-background'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <Icon className="h-4 w-4" />
+                            <span>{option.label}</span>
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">{option.desc}</p>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {profileSeedMode === 'clone-current' && (
+                    <div className="mt-4 rounded-2xl bg-background/80 px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                        {t('settings.profileSeedCloneSource')}
+                      </p>
+                      <p className="mt-2 break-all font-mono text-xs text-foreground/80">
+                        {systemInfo?.openclaw.configPath}
+                      </p>
+                    </div>
+                  )}
+
+                  {profileSeedMode === 'import-config' && (
+                    <div className="mt-4 grid gap-2">
+                      <label className="text-sm text-muted-foreground">{t('settings.profileSeedPath')}</label>
+                      <input
+                        value={profileSeedPath}
+                        onChange={(e) => {
+                          setProfileSeedPath(e.target.value)
+                          setProfileError(null)
+                          setProfileMessage(null)
+                        }}
+                        placeholder={t('settings.profileSeedPathPlaceholder')}
+                        className="control-input"
+                      />
+                      <p className="text-xs text-muted-foreground">{t('settings.profileSeedPathHint')}</p>
+                    </div>
+                  )}
+
+                  <p className="mt-4 text-xs text-muted-foreground">{t('settings.profileSeedCopiesConfigOnly')}</p>
+                </div>
+              </div>
+            )}
+
+            {profileError && (
+              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-300">
+                {profileError}
+              </div>
+            )}
+
+            {profileMessage && !profileError && (
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+                {profileMessage}
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void saveProfile()}
+                disabled={profileSaving || !profileDirty}
+                className="button-primary"
+              >
+                {profileSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                {profileSaving ? t('common.saving') : t('common.save')}
+              </button>
+              <button
+                type="button"
+                onClick={resetProfileDraft}
+                disabled={profileSaving || !profileDirty}
+                className="button-secondary"
+              >
+                {t('common.refresh')}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-[1.75rem] border border-border/80 bg-muted/40 p-5">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              {t('settings.profileResolved')}
+            </p>
+            <div className="mt-4 space-y-3 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-muted-foreground">{t('settings.profileCurrent')}</span>
+                <span className="text-right font-medium">
+                  {resolvedProfileMode === 'named'
+                    ? `${t('settings.profileNamed')} · ${resolvedProfileName}`
+                    : resolvedProfileMode === 'dev'
+                      ? t('settings.profileDev')
+                      : t('settings.profileDefault')}
+                </span>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-muted-foreground">{t('settings.profileDataDir')}</span>
+                <span className="max-w-[18rem] break-all text-right font-mono text-xs">{resolvedDataDir || t('common.notSet')}</span>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-muted-foreground">{t('settings.configPath')}</span>
+                <span className="max-w-[18rem] break-all text-right font-mono text-xs">{systemInfo?.openclaw.configPath}</span>
+              </div>
+            </div>
+
+            {resolvedProfileMode === 'default' && defaultCandidates.length > 0 && (
+              <div className="mt-5 rounded-2xl bg-background/80 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  {t('settings.profileAutoDetect')}
+                </p>
+                <div className="mt-3 space-y-2">
+                  {defaultCandidates.map((candidate) => {
+                    const exists = existingConfigPaths.includes(candidate)
+                    return (
+                      <div
+                        key={candidate}
+                        className={`rounded-xl border px-3 py-2 text-xs ${
+                          exists
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            : 'border-border bg-muted/50 text-muted-foreground'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-mono break-all">{candidate}</span>
+                          <span className="shrink-0">{exists ? t('common.installed') : t('settings.profileCandidateIdle')}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* 花费预算 */}
       <section className="surface-card">

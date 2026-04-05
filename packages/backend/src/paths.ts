@@ -1,20 +1,134 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import {
+  getOpenclawDataDirForProfile,
+  getOpenclawProfileSelection,
+  type OpenclawProfileSelection,
+} from './openclawProfile.js'
+
+type OpenclawConfigPathOptions = {
+  platform?: string
+  homeDir?: string
+  appDataBase?: string
+  profileSelection?: OpenclawProfileSelection
+}
+
+export type OpenclawConfigResolutionSource =
+  | 'profile-dev'
+  | 'profile-named'
+  | 'existing-default-home'
+  | 'existing-default-roaming'
+  | 'default-home'
+
+export interface OpenclawConfigResolution {
+  configPath: string
+  dataDir: string
+  source: OpenclawConfigResolutionSource
+  profileSelection: OpenclawProfileSelection
+  overrideActive: boolean
+  configPathCandidates: string[]
+  existingConfigPaths: string[]
+}
+
+function getWindowsOpenclawConfigPathCandidates(
+  homeDir: string,
+  appDataBase: string
+): string[] {
+  const homePath = path.join(homeDir, '.openclaw', 'openclaw.json')
+  const roamingPath = path.join(appDataBase, 'openclaw', 'openclaw.json')
+
+  return homePath === roamingPath ? [homePath] : [homePath, roamingPath]
+}
 
 /** Same path as src-tauri/src/lib.rs get_config_path */
-export function getOpenclawConfigPath(): string {
-  if (process.platform === 'win32') {
-    const base =
-      process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
-    return path.join(base, 'openclaw', 'openclaw.json')
+export function getOpenclawConfigPathCandidatesFor({
+  platform = process.platform,
+  homeDir = os.homedir(),
+  appDataBase = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
+}: OpenclawConfigPathOptions = {}): string[] {
+  if (platform === 'win32') {
+    return getWindowsOpenclawConfigPathCandidates(homeDir, appDataBase)
   }
-  return path.join(os.homedir(), '.openclaw', 'openclaw.json')
+  return [path.join(homeDir, '.openclaw', 'openclaw.json')]
+}
+
+/** Same path as src-tauri/src/lib.rs get_config_path */
+export function getOpenclawConfigPathCandidates(): string[] {
+  return getOpenclawConfigPathCandidatesFor()
+}
+
+export function resolveOpenclawConfigPath(
+  candidates: string[],
+  existsSync: (candidate: string) => boolean = fs.existsSync
+): string {
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate
+    }
+  }
+  return candidates[0]!
+}
+
+function getDefaultResolutionSource(
+  candidates: string[],
+  resolved: string
+): OpenclawConfigResolutionSource {
+  if (resolved === candidates[1]) {
+    return 'existing-default-roaming'
+  }
+  if (fs.existsSync(resolved)) {
+    return 'existing-default-home'
+  }
+  return 'default-home'
+}
+
+export function getOpenclawConfigResolution({
+  platform = process.platform,
+  homeDir = os.homedir(),
+  appDataBase = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
+  profileSelection = getOpenclawProfileSelection(),
+}: OpenclawConfigPathOptions = {}): OpenclawConfigResolution {
+  const defaultCandidates = getOpenclawConfigPathCandidatesFor({
+    platform,
+    homeDir,
+    appDataBase,
+  })
+  const existingConfigPaths = defaultCandidates.filter((candidate) => fs.existsSync(candidate))
+
+  const overrideDir = getOpenclawDataDirForProfile(profileSelection, homeDir)
+  if (overrideDir) {
+    return {
+      configPath: path.join(overrideDir, 'openclaw.json'),
+      dataDir: overrideDir,
+      source: profileSelection.kind === 'dev' ? 'profile-dev' : 'profile-named',
+      profileSelection,
+      overrideActive: true,
+      configPathCandidates: defaultCandidates,
+      existingConfigPaths,
+    }
+  }
+
+  const configPath = resolveOpenclawConfigPath(defaultCandidates)
+  return {
+    configPath,
+    dataDir: path.dirname(configPath),
+    source: getDefaultResolutionSource(defaultCandidates, configPath),
+    profileSelection,
+    overrideActive: false,
+    configPathCandidates: defaultCandidates,
+    existingConfigPaths,
+  }
+}
+
+/** Resolve the active OpenClaw config path; prefer the path that already exists. */
+export function getOpenclawConfigPath(): string {
+  return getOpenclawConfigResolution().configPath
 }
 
 /** OpenClaw data root (openclaw.json, logs, skills, etc.) */
 export function getOpenclawDataDir(): string {
-  return path.dirname(getOpenclawConfigPath())
+  return getOpenclawConfigResolution().dataDir
 }
 
 /**

@@ -1,5 +1,15 @@
 import type express from 'express'
-import { backupOpenclaw, getBackupDefaults, listOpenclawBackups, removeOpenclawData, resetConfig, restoreOpenclawBackup, uninstallOpenclaw } from '../services/settingsService.js'
+import {
+  backupOpenclaw,
+  getBackupDefaults,
+  listOpenclawBackups,
+  removeOpenclawData,
+  resetConfig,
+  resetOpenclawProfile,
+  restoreOpenclawBackup,
+  saveOpenclawProfile,
+  uninstallOpenclaw,
+} from '../services/settingsService.js'
 
 export function registerSettingsRoutes(app: express.Express): void {
   app.get('/api/settings/backup-defaults', (_req, res) => {
@@ -55,6 +65,36 @@ export function registerSettingsRoutes(app: express.Express): void {
   app.post('/api/settings/reset-config', (_req, res) => {
     try {
       resetConfig()
+      res.status(204).end()
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error)
+      res.status(500).type('text').send(msg)
+    }
+  })
+
+  app.post('/api/settings/openclaw-profile', (req, res) => {
+    try {
+      const body = req.body as {
+        kind?: string
+        name?: string
+        seedMode?: 'empty' | 'clone-current' | 'import-config'
+        seedPath?: string
+      }
+      res.json(
+        saveOpenclawProfile(
+          { kind: body.kind as any, name: body.name },
+          { mode: body.seedMode, sourcePath: body.seedPath }
+        )
+      )
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error)
+      res.status(400).type('text').send(msg)
+    }
+  })
+
+  app.delete('/api/settings/openclaw-profile', (_req, res) => {
+    try {
+      resetOpenclawProfile()
       res.status(204).end()
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)

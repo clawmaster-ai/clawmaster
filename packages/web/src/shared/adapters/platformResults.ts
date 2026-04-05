@@ -46,7 +46,11 @@ import {
   restoreOpenclawBackupResult,
   uninstallOpenclawCliResult,
 } from '@/shared/adapters/dangerSettings'
-import { detectSystemResult } from '@/shared/adapters/system'
+import {
+  clearOpenclawProfileResult,
+  detectSystemResult,
+  saveOpenclawProfileResult,
+} from '@/shared/adapters/system'
 import {
   installOpenclawFromLocalFileResult,
   installOpenclawGlobalResult,
@@ -82,6 +86,8 @@ import {
 
 export const platformResults = {
   detectSystem: detectSystemResult,
+  saveOpenclawProfile: saveOpenclawProfileResult,
+  clearOpenclawProfile: clearOpenclawProfileResult,
   resetOpenclawConfig: resetOpenclawConfigResult,
   uninstallOpenclawCli: uninstallOpenclawCliResult,
   getBackupDefaults: getBackupDefaultsResult,

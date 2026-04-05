@@ -1,7 +1,7 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import fs from 'fs'
-import { getOpenclawConfigPath } from '../paths.js'
+import { getOpenclawConfigResolution } from '../paths.js'
 
 const execAsync = promisify(exec)
 
@@ -26,7 +26,8 @@ export async function detectSystemInfo() {
   const npv = await checkCmd('npm', '--version')
   if (npv) npm = { installed: true, version: npv.split('\n')[0]?.trim() || npv }
 
-  const configPath = getOpenclawConfigPath()
+  const resolution = getOpenclawConfigResolution()
+  const configPath = resolution.configPath
   const configExists = fs.existsSync(configPath)
   const ocRaw = await checkCmd('openclaw', '--version')
 
@@ -34,13 +35,20 @@ export async function detectSystemInfo() {
     installed: false,
     version: '',
     configPath,
+    dataDir: resolution.dataDir,
+    pathSource: resolution.source,
+    profileMode: resolution.profileSelection.kind,
+    profileName: resolution.profileSelection.name ?? null,
+    overrideActive: resolution.overrideActive,
+    configPathCandidates: resolution.configPathCandidates,
+    existingConfigPaths: resolution.existingConfigPaths,
   }
   if (ocRaw || configExists) {
     let version = ''
     if (ocRaw) {
       version = ocRaw.replace(/^openclaw\s+/i, '').replace(/^v/, '').trim()
     }
-    openclaw = { installed: true, version, configPath }
+    openclaw = { ...openclaw, installed: true, version }
   }
   return { nodejs, npm, openclaw }
 }

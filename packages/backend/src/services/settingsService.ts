@@ -1,7 +1,27 @@
-import { expandUserPath, getDefaultDesktopExportDir, getOpenclawDataDir, getOpenclawSnapshotsDir } from '../paths.js'
+import fs from 'node:fs'
+import path from 'node:path'
+import {
+  expandUserPath,
+  getDefaultDesktopExportDir,
+  getOpenclawConfigResolution,
+  getOpenclawDataDir,
+  getOpenclawSnapshotsDir,
+} from '../paths.js'
 import { createOpenclawBackupTar, listSnapshotTarballs, removeOpenclawDataDirectory, restoreOpenclawFromTarGz } from '../openclawBackup.js'
 import { writeConfigJson } from '../configJson.js'
 import { npmUninstallGlobalRobust } from '../npmUninstallGlobalRobust.js'
+import {
+  clearOpenclawProfileSelection,
+  getOpenclawDataDirForProfile,
+  normalizeOpenclawProfileSelection,
+  setOpenclawProfileSelection,
+  type OpenclawProfileSelection,
+} from '../openclawProfile.js'
+
+export interface OpenclawProfileSeedInput {
+  mode?: 'empty' | 'clone-current' | 'import-config'
+  sourcePath?: string
+}
 
 export function getBackupDefaults() {
   const snapshotsDir = getOpenclawSnapshotsDir()
@@ -41,6 +61,99 @@ export function removeOpenclawData(confirm?: string) {
 
 export function resetConfig() {
   writeConfigJson({})
+}
+
+function normalizeOpenclawProfileSeedInput(
+  seed?: OpenclawProfileSeedInput | null
+): Required<OpenclawProfileSeedInput> {
+  switch (seed?.mode) {
+    case undefined:
+    case null:
+    case 'empty':
+      return { mode: 'empty', sourcePath: '' }
+    case 'clone-current':
+      return { mode: 'clone-current', sourcePath: '' }
+    case 'import-config':
+      return { mode: 'import-config', sourcePath: seed.sourcePath?.trim() ?? '' }
+    default:
+      throw new Error('Unsupported OpenClaw profile seed mode')
+  }
+}
+
+function resolveProfileSeedSourcePath(
+  seed: Required<OpenclawProfileSeedInput>
+): string | null {
+  if (seed.mode === 'empty') {
+    return null
+  }
+
+  if (seed.mode === 'clone-current') {
+    const sourcePath = getOpenclawConfigResolution().configPath
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error('Current OpenClaw config does not exist, so there is nothing to clone yet')
+    }
+    return sourcePath
+  }
+
+  if (!seed.sourcePath) {
+    throw new Error('Enter an OpenClaw config path before importing')
+  }
+
+  const sourcePath = expandUserPath(seed.sourcePath)
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error('Imported OpenClaw config path does not exist')
+  }
+  if (!fs.statSync(sourcePath).isFile()) {
+    throw new Error('Imported OpenClaw config path must point to a file')
+  }
+  return sourcePath
+}
+
+function seedNamedProfileConfig(
+  selection: OpenclawProfileSelection,
+  seed: Required<OpenclawProfileSeedInput>
+): void {
+  if (selection.kind !== 'named' || seed.mode === 'empty') {
+    return
+  }
+
+  const targetDataDir = getOpenclawDataDirForProfile(selection)
+  if (!targetDataDir) {
+    throw new Error('Named OpenClaw profile target could not be resolved')
+  }
+  const targetConfigPath = path.join(targetDataDir, 'openclaw.json')
+  if (fs.existsSync(targetConfigPath)) {
+    throw new Error('Target named profile already has an OpenClaw config. Choose a new profile name or switch directly.')
+  }
+
+  const sourcePath = resolveProfileSeedSourcePath(seed)
+  if (!sourcePath) {
+    return
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(fs.readFileSync(sourcePath, 'utf8'))
+  } catch {
+    throw new Error('Imported OpenClaw config must be valid JSON')
+  }
+
+  fs.mkdirSync(targetDataDir, { recursive: true })
+  fs.writeFileSync(targetConfigPath, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8')
+}
+
+export function saveOpenclawProfile(
+  selection?: Partial<OpenclawProfileSelection> | null,
+  seed?: OpenclawProfileSeedInput | null
+) {
+  const normalizedSelection = normalizeOpenclawProfileSelection(selection)
+  const normalizedSeed = normalizeOpenclawProfileSeedInput(seed)
+  seedNamedProfileConfig(normalizedSelection, normalizedSeed)
+  return setOpenclawProfileSelection(normalizedSelection)
+}
+
+export function resetOpenclawProfile() {
+  clearOpenclawProfileSelection()
 }
 
 export async function uninstallOpenclaw() {

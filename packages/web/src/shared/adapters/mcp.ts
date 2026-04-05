@@ -9,6 +9,7 @@
  */
 
 import { execCommand } from './platform'
+import { detectSystemResult } from './system'
 import { wrapAsync, type AdapterResult } from './types'
 import { parseImportedMcpServers, type McpImportCandidate, type McpImportFormat } from './mcpImport'
 
@@ -47,8 +48,6 @@ export interface McpImportSummary {
   importedIds: string[]
 }
 
-const MCP_REGISTRY_PATH = '~/.openclaw/mcp.json'
-const OPENCLAW_CONFIG_PATH = '~/.openclaw/openclaw.json'
 const TEMP = '${TMPDIR:-/tmp}'
 
 const MCP_IMPORT_SOURCE_DEFINITIONS: Array<{
@@ -167,12 +166,12 @@ async function readJsonFile(path: string): Promise<unknown | null> {
 }
 
 async function readManagedMcpRegistry(): Promise<McpServersMap> {
-  const data = await readJsonFile(MCP_REGISTRY_PATH)
+  const data = await readJsonFile((await getOpenclawRuntimePaths()).registryPath)
   return normalizeMcpServerMap(data)
 }
 
 async function readOpenClawMcpServers(): Promise<McpServersMap> {
-  const data = await readJsonFile(OPENCLAW_CONFIG_PATH)
+  const data = await readJsonFile((await getOpenclawRuntimePaths()).configPath)
   return normalizeMcpServerMap(data)
 }
 
@@ -202,11 +201,27 @@ async function readCurrentMcpConfig(): Promise<McpServersMap> {
   return mergeManagedAndRuntimeServers(managed, runtime)
 }
 
-function writeManagedMcpRegistry(servers: McpServersMap): Promise<void> {
+async function getOpenclawRuntimePaths(): Promise<{ configPath: string; registryPath: string }> {
+  const result = await detectSystemResult()
+  const configPath = result.success && result.data?.openclaw.configPath
+    ? result.data.openclaw.configPath
+    : '~/.openclaw/openclaw.json'
+  const dataDir = result.success && result.data?.openclaw.dataDir
+    ? result.data.openclaw.dataDir
+    : configPath.replace(/[/\\]openclaw\.json$/, '')
+
+  return {
+    configPath,
+    registryPath: `${dataDir.replace(/[\\/]+$/, '')}/mcp.json`,
+  }
+}
+
+async function writeManagedMcpRegistry(servers: McpServersMap): Promise<void> {
+  const { registryPath } = await getOpenclawRuntimePaths()
   const json = JSON.stringify({ mcpServers: servers }, null, 2)
   return execCommand('bash', [
     '-c',
-    `cat > ${MCP_REGISTRY_PATH} << 'MCPEOF'\n${json}\nMCPEOF`,
+    `cat > ${registryPath} << 'MCPEOF'\n${json}\nMCPEOF`,
   ]).then(() => {})
 }
 
@@ -235,7 +250,8 @@ function serializeEnabledServersForOpenClaw(servers: McpServersMap): Record<stri
   return runtimeServers
 }
 
-function writeOpenClawConfig(servers: McpServersMap): Promise<void> {
+async function writeOpenClawConfig(servers: McpServersMap): Promise<void> {
+  const { configPath } = await getOpenclawRuntimePaths()
   const runtimeServers = serializeEnabledServersForOpenClaw(servers)
   const script = `
 const fs = require('node:fs')
@@ -281,7 +297,7 @@ fs.mkdirSync(path.dirname(target), { recursive: true })
 fs.writeFileSync(target, JSON.stringify(config, null, 2) + '\\n')
   `.trim()
 
-  return execCommand('node', ['-e', script, OPENCLAW_CONFIG_PATH, JSON.stringify(runtimeServers)]).then(() => {})
+  return execCommand('node', ['-e', script, configPath, JSON.stringify(runtimeServers)]).then(() => {})
 }
 
 async function persistMcpConfig(servers: McpServersMap): Promise<void> {

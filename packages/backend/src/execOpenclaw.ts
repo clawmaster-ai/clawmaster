@@ -11,6 +11,7 @@ import {
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { getOpenclawProfileArgs } from './openclawProfile.js'
 
 /** Node supports `stdio` on `execFile`; `@types/node` only lists it on spawn options */
 type ExecOpenclawFileOpts = ExecFileOptions & { stdio?: StdioOptions }
@@ -142,7 +143,7 @@ function resolveOpenclawCommand(): ResolvedOpenclawCommand {
     if (nodeBin) {
       return {
         bin: nodeBin,
-        argsPrefix: [openclawBin],
+        argsPrefix: [openclawBin, ...getOpenclawProfileArgs()],
         env: {
           ...process.env,
           PATH: [path.dirname(nodeBin), process.env.PATH].filter(Boolean).join(':'),
@@ -152,7 +153,7 @@ function resolveOpenclawCommand(): ResolvedOpenclawCommand {
   }
   return {
     bin: openclawBin,
-    argsPrefix: [],
+    argsPrefix: getOpenclawProfileArgs(),
     env: process.env,
   }
 }

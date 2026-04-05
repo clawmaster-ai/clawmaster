@@ -4,6 +4,7 @@ import { promisify } from 'util'
 import { existsSync } from 'fs'
 import { homedir, tmpdir, platform } from 'os'
 import path from 'path'
+import { execOpenclaw } from '../execOpenclaw.js'
 
 const execFileAsync = promisify(execFile)
 const IS_WINDOWS = platform() === 'win32'
@@ -99,6 +100,17 @@ export function registerExecRoutes(app: Express): void {
     }
     try {
       const normalized = normalizeExecRequest(cmd, args)
+      if (normalized.cmd === 'openclaw') {
+        const result = await execOpenclaw(normalized.args)
+        res.json({
+          ok: result.code === 0,
+          stdout: result.stdout.trim(),
+          stderr: result.stderr.trim(),
+          exitCode: result.code,
+          ...(result.code === 0 ? {} : { error: result.stderr.trim() || result.stdout.trim() }),
+        })
+        return
+      }
       const { stdout, stderr } = await execFileAsync(normalized.cmd, normalized.args, { shell: false })
       res.json({ ok: true, stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0 })
     } catch (err: any) {

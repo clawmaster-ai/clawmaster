@@ -28,7 +28,18 @@ export interface PlatformAdapter {
 export interface SystemInfo {
   nodejs: { installed: boolean; version: string }
   npm: { installed: boolean; version: string }
-  openclaw: { installed: boolean; version: string; configPath: string }
+  openclaw: {
+    installed: boolean
+    version: string
+    configPath: string
+    dataDir?: string
+    pathSource?: string
+    profileMode?: 'default' | 'dev' | 'named'
+    profileName?: string | null
+    overrideActive?: boolean
+    configPathCandidates?: string[]
+    existingConfigPaths?: string[]
+  }
 }
 
 export interface GatewayStatus {
