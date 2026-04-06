@@ -126,7 +126,8 @@ jobs:
       - name: Collect workflow bundle files
         shell: bash
         env:
-          BUNDLE_ROOT: src-tauri/target/${{ matrix.target }}/release/bundle
+          TARGET_BUNDLE_ROOT: src-tauri/target/${{ matrix.target }}/release/bundle
+          DEFAULT_BUNDLE_ROOT: src-tauri/target/release/bundle
           ARTIFACT_DIR: ci-artifacts/${{ matrix.artifact_name }}
           RUNNER_OS: ${{ runner.os }}
         run: |
@@ -134,21 +135,43 @@ jobs:
 
           mkdir -p "$ARTIFACT_DIR"
 
+          BUNDLE_ROOTS=()
+          if [ -d "$TARGET_BUNDLE_ROOT" ]; then
+            BUNDLE_ROOTS+=("$TARGET_BUNDLE_ROOT")
+          fi
+          if [ -d "$DEFAULT_BUNDLE_ROOT" ] && [ "$DEFAULT_BUNDLE_ROOT" != "$TARGET_BUNDLE_ROOT" ]; then
+            BUNDLE_ROOTS+=("$DEFAULT_BUNDLE_ROOT")
+          fi
+
+          if [ "${#BUNDLE_ROOTS[@]}" -eq 0 ]; then
+            echo "No bundle directory found" >&2
+            echo "Checked:" >&2
+            echo "  - $TARGET_BUNDLE_ROOT" >&2
+            echo "  - $DEFAULT_BUNDLE_ROOT" >&2
+            exit 1
+          fi
+
           case "$RUNNER_OS" in
             Linux)
-              find "$BUNDLE_ROOT" -type f \
-                \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.sig' -o -name '*.json' \) \
-                -exec cp '{}' "$ARTIFACT_DIR"/ \;
+              for root in "${BUNDLE_ROOTS[@]}"; do
+                find "$root" -type f \
+                  \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.sig' -o -name '*.json' \) \
+                  -exec cp '{}' "$ARTIFACT_DIR"/ \;
+              done
               ;;
             macOS)
-              find "$BUNDLE_ROOT" -type f \
-                \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.sig' -o -name '*.json' \) \
-                -exec cp '{}' "$ARTIFACT_DIR"/ \;
+              for root in "${BUNDLE_ROOTS[@]}"; do
+                find "$root" -type f \
+                  \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.sig' -o -name '*.json' \) \
+                  -exec cp '{}' "$ARTIFACT_DIR"/ \;
+              done
               ;;
             Windows)
-              find "$BUNDLE_ROOT" -type f \
-                \( -name '*.msi' -o -name '*.exe' -o -name '*.zip' -o -name '*.sig' -o -name '*.json' \) \
-                -exec cp '{}' "$ARTIFACT_DIR"/ \;
+              for root in "${BUNDLE_ROOTS[@]}"; do
+                find "$root" -type f \
+                  \( -name '*.msi' -o -name '*.exe' -o -name '*.zip' -o -name '*.sig' -o -name '*.json' \) \
+                  -exec cp '{}' "$ARTIFACT_DIR"/ \;
+              done
               ;;
             *)
               echo "Unsupported runner OS: $RUNNER_OS" >&2
@@ -158,13 +181,18 @@ jobs:
 
           if [ -z "$(find "$ARTIFACT_DIR" -maxdepth 1 -type f -print -quit)" ]; then
             echo "No bundle files were collected for $RUNNER_OS" >&2
-            find "$BUNDLE_ROOT" -maxdepth 4 -type f | sort
+            for root in "${BUNDLE_ROOTS[@]}"; do
+              echo "--- $root ---" >&2
+              find "$root" -maxdepth 4 -type f | sort >&2
+            done
             exit 1
           fi
 
           {
             echo "### ${{ matrix.label }}"
-            find "$ARTIFACT_DIR" -maxdepth 1 -type f -printf -- "- %f\n" | sort
+            while IFS= read -r file; do
+              echo "- $(basename "$file")"
+            done < <(find "$ARTIFACT_DIR" -maxdepth 1 -type f | sort)
             echo
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -290,5 +318,7 @@ jobs:
             echo "GitHub Release: https://github.com/$REPOSITORY/releases/tag/$TAG"
             echo
             echo "Artifacts in this release:"
-            find release-assets -maxdepth 1 -type f -printf -- "- %f\n" | sort
+            while IFS= read -r file; do
+              echo "- $(basename "$file")"
+            done < <(find release-assets -maxdepth 1 -type f | sort)
           } >> "$GITHUB_STEP_SUMMARY"
