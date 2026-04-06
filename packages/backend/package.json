@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test \"src/*.test.ts\" \"src/**/*.test.ts\"",
     "build": "tsc",
     "start": "node dist/index.js"
   },

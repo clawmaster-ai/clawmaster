@@ -5,6 +5,7 @@ import { existsSync } from 'fs'
 import { homedir, tmpdir, platform } from 'os'
 import path from 'path'
 import { execOpenclaw } from '../execOpenclaw.js'
+import { runClawprobeCommand } from '../execClawprobe.js'
 
 const execFileAsync = promisify(execFile)
 const IS_WINDOWS = platform() === 'win32'
@@ -108,6 +109,17 @@ export function registerExecRoutes(app: Express): void {
           stderr: result.stderr.trim(),
           exitCode: result.code,
           ...(result.code === 0 ? {} : { error: result.stderr.trim() || result.stdout.trim() }),
+        })
+        return
+      }
+      if (normalized.cmd === 'clawprobe') {
+        const result = await runClawprobeCommand(normalized.args)
+        res.json({
+          ok: result.ok,
+          stdout: result.stdout.trim(),
+          stderr: result.stderr.trim(),
+          exitCode: result.code,
+          ...(result.ok ? {} : { error: result.stderr.trim() || result.stdout.trim() }),
         })
         return
       }

@@ -1,10 +1,17 @@
 import path from 'node:path'
 import { readConfigJsonOrEmpty } from '../configJson.js'
-import { ClawprobeUnavailableError, runClawprobeCommand, runClawprobeJson } from '../execClawprobe.js'
+import {
+  ClawprobeUnavailableError,
+  type ClawprobeUnavailableReason,
+  runClawprobeCommand,
+  runClawprobeJson,
+} from '../execClawprobe.js'
 import { getOpenclawDataDir } from '../paths.js'
 
 const CLAWPROBE_INSTALL_MESSAGE =
   'ClawProbe is not installed. Install it from setup or run: npm i -g clawprobe'
+const CLAWPROBE_VISIBILITY_MESSAGE =
+  'ClawProbe appears to be installed, but the backend cannot resolve it. Restart ClawMaster or make the global npm bin directory visible to the backend process.'
 const FALLBACK_BOOTSTRAP_MAX_CHARS = 12_000
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -28,6 +35,16 @@ function isClawprobeUnavailable(error: unknown): boolean {
   }
   const message = error instanceof Error ? error.message : String(error)
   return /clawprobe is not installed|not available in path|command not found|cannot find module/i.test(message)
+}
+
+function getClawprobeUnavailableReason(error: unknown): ClawprobeUnavailableReason {
+  if (error instanceof ClawprobeUnavailableError) {
+    return error.reason
+  }
+  const message = error instanceof Error ? error.message : String(error)
+  return /not available in path|cannot resolve|command not found/i.test(message)
+    ? 'not-visible'
+    : 'not-installed'
 }
 
 function formatDate(date: Date): string {
@@ -108,10 +125,11 @@ function buildFallbackConfig() {
   }
 }
 
-function buildInstallRequiredError() {
-  return Object.assign(new Error(CLAWPROBE_INSTALL_MESSAGE), {
+function buildInstallRequiredError(reason: ClawprobeUnavailableReason = 'not-installed') {
+  const message = reason === 'not-visible' ? CLAWPROBE_VISIBILITY_MESSAGE : CLAWPROBE_INSTALL_MESSAGE
+  return Object.assign(new Error(message), {
     stdout: '',
-    stderr: CLAWPROBE_INSTALL_MESSAGE,
+    stderr: message,
   })
 }
 
@@ -170,7 +188,7 @@ export async function clawprobeBootstrap() {
     before = await runClawprobeJson(['status', '--json'])
   } catch (error) {
     if (isClawprobeUnavailable(error)) {
-      throw buildInstallRequiredError()
+      throw buildInstallRequiredError(getClawprobeUnavailableReason(error))
     }
     throw error
   }
@@ -189,14 +207,16 @@ export async function clawprobeBootstrap() {
 
   const start = await runClawprobeCommand(['start'])
   if (!start.ok && start.code === 127) {
-    throw buildInstallRequiredError()
+    throw buildInstallRequiredError(
+      /cannot resolve/i.test(start.stderr) ? 'not-visible' : 'not-installed'
+    )
   }
   let after: unknown
   try {
     after = await runClawprobeJson(['status', '--json'])
   } catch (error) {
     if (isClawprobeUnavailable(error)) {
-      throw buildInstallRequiredError()
+      throw buildInstallRequiredError(getClawprobeUnavailableReason(error))
     }
     throw error
   }
