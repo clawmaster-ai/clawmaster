@@ -1,6 +1,6 @@
-# 龙虾管理大师 (ClawMaster)
+# ClawMaster / 龙虾管理大师
 
-**OpenClaw 生态的图形化管理工具 -- 在一个界面中管理供应商、频道和智能体。**
+**OpenClaw 的统一控制台。在一个界面里管理运行时、频道、技能、插件、MCP 与可观测性。**
 
 [English](./README.md) | [日本語](./README_JP.md)
 
@@ -9,132 +9,159 @@
 ![Build](https://img.shields.io/github/actions/workflow/status/clawmaster-ai/clawmaster/build.yml?branch=main)
 ![Languages](https://img.shields.io/badge/i18n-中文%20%7C%20English%20%7C%20日本語-green.svg)
 
-龙虾管理大师将 OpenClaw CLI 封装为桌面应用（Tauri 2）或 Web 界面（Express + Vite），提供安装向导、16 个 LLM 供应商集成、6 种频道类型、可观测仪表盘和记忆管理功能。纯配置驱动，无需数据库。
+ClawMaster 将 OpenClaw 生态封装为桌面应用（Tauri）和 Web 控制台（Express + Vite）。它面向希望更轻松安装、配置、观察、运维 OpenClaw 的用户，不必为每次变更都手工编辑配置文件。
 
-## 核心功能
+## 为什么使用 ClawMaster
 
-- **安装向导** -- 检测、安装、引导配置 OpenClaw（API Key、模型、网关、频道一步到位）
-- **17 个 LLM 供应商** -- OpenAI、Anthropic、Google Gemini、xAI、Mistral、Groq、DeepSeek、MiniMax、Kimi、SiliconFlow、OpenRouter、Amazon Bedrock、Google Vertex、Azure OpenAI、Cerebras、Ollama（本地推理），以及自定义 OpenAI 兼容端点
-- **Ollama 支持** -- 从 GUI 自动安装、启动服务、拉取模型
-- **API Key 验证** -- 保存前通过真实 HTTP 请求验证密钥有效性
-- **6 种频道类型** -- Discord、Slack、Telegram、飞书、微信（扫码登录）、WhatsApp（扫码登录）
-- **频道配置指南** -- 分步导航，飞书权限模板（26 个 scope 一键复制）
-- **可观测仪表盘** -- 通过 ClawProbe 集成展示费用、Token 用量和上下文健康度
-- **会话管理** -- 对话历史查看器，支持逐轮回放
-- **技能市场** -- 通过 ClawHub 搜索、安装、卸载技能
-- **记忆管理** -- PowerMem 集成，管理记忆生命周期
-- **国际化** -- 中文、英文、日文（386 个翻译键）；顶栏和安装向导均可切换语言
-- **深色模式** 和颜色主题（龙虾橙、海洋蓝）
-- **响应式布局**，移动端汉堡菜单
-- **桌面端构建** -- Linux（deb、rpm、AppImage）、macOS（dmg）、Windows（msi）
-- **CI/CD** -- 测试门禁（tsc + vitest）后执行多平台 Tauri 构建和发布
+- **更快启动**：通过向导完成 OpenClaw、供应商、模型、网关和频道的初始化。
+- **统一管理**：模型、智能体、会话、记忆、插件、技能、MCP、设置都在同一个界面内。
+- **运行可见**：基于 ClawProbe 展示状态、Token 用量、上下文健康度和费用信息。
+- **双运行模式**：既可以作为本地桌面应用使用，也可以用浏览器访问 Web 控制台。
+- **配置优先**：围绕 OpenClaw 的文件配置工作，不额外引入数据库层。
+
+## 可以完成什么
+
+- **安装与 Profile 管理**
+  检测 OpenClaw、安装缺失组件、创建或切换 Profile，并快速引导到可用状态。
+
+- **模型与供应商配置**
+  配置 OpenAI 兼容或各家专有端点，校验 API Key，并设置默认模型。
+
+- **网关与频道**
+  启动网关，配置常见频道，并跟随飞书、微信、Discord、Slack、Telegram、WhatsApp 等平台的向导完成接入。
+
+- **插件、技能与 MCP**
+  启用或禁用已安装能力，安装精选项目，手动添加 MCP 服务，并从已有工具配置中导入 MCP 定义。
+
+- **会话、记忆与可观测**
+  查看会话、管理记忆后端，并追踪 ClawProbe 状态、Token 使用量和费用估算。
 
 ## 快速开始
 
-### 下载安装包
+### 方式一：下载桌面安装包
 
-从 [Releases](https://github.com/clawmaster-ai/clawmaster/releases) 页面下载适合你系统的最新版本。
+从 [GitHub Releases](https://github.com/clawmaster-ai/clawmaster/releases) 下载对应平台的安装包。
 
-### 从源码构建
+当前 CI 构建目标：
+- Linux x64：`.deb`、`.rpm`、`.AppImage`
+- macOS Intel：`.dmg`
+- macOS Apple Silicon：`.dmg`
+- Windows x64：`.msi`、`.exe`
+
+对于未发布的 QA 构建，也可以在 GitHub Actions 中下载各平台 workflow artifacts。
+
+### 方式二：从源码运行
 
 ```bash
 git clone https://github.com/clawmaster-ai/clawmaster.git
 cd clawmaster
 npm install
 
-# Web 模式（前端 + 后端）
+# Web 控制台 + 后端
 npm run dev:web
 
-# 桌面模式（Tauri）
+# 桌面应用
 npm run tauri:dev
-
-# 生产构建
-npm run build         # web
-npm run tauri:build   # 桌面端
 ```
 
-需要 Node.js 20+。桌面端构建还需要 Rust 1.77+ 和平台相关的系统依赖（参见 [Tauri 前置条件](https://tauri.app/start/prerequisites/)）。
+生产构建：
 
-## 截图
-
-> 即将上线。
-
-## 架构
-
-```
-clawmaster/
-├── packages/web/          React 18 + Vite + Tailwind CSS 前端
-│   └── src/
-│       ├── modules/       功能模块（setup、observe、memory）
-│       ├── shared/        适配器、Hooks、公共组件
-│       ├── pages/         旧版页面组件
-│       └── i18n/          翻译文件（zh、en、ja）
-├── packages/backend/      Express API 服务（端口 3001）+ WebSocket 日志
-├── src-tauri/             Tauri 2 Rust 后端（9 个命令）
-├── tests/ui/              YAML 格式的 UI 测试计划
-└── bin/clawmaster.mjs     CLI 入口
+```bash
+npm run build
+npm run tauri:build
 ```
 
-两种运行模式：
-- **桌面端**：React 通过 `@tauri-apps/api` 的 invoke 调用 Rust 命令
-- **Web 端**：React 将 `/api` 请求代理到 Express 后端（Vite 开发代理 3000 -> 3001）
+依赖要求：
+- Node.js 20 或更高版本
+- 如需构建桌面端，还需要 Rust 与对应平台的 Tauri 前置依赖
+- 参考 [Tauri prerequisites](https://tauri.app/start/prerequisites/)
 
-新功能以功能模块形式构建在 `packages/web/src/modules/` 下，通过 `import.meta.glob` 自动发现。
+## 首次使用流程
+
+1. 启动 ClawMaster。
+2. 选择已有的 OpenClaw Profile，或新建一个。
+3. 至少接入一个模型供应商，并设置默认模型。
+4. 如果需要运行时观测，启用网关或可观测模块。
+5. 按你的工作流继续添加频道、插件、技能或 MCP 服务。
 
 ## 开发
 
 ```bash
-npm install               # 安装所有工作区依赖
-npm run dev               # 仅前端（端口 3000）
-npm run dev:web           # 前端 + 后端
-npm run dev:backend       # 仅 Express 后端（端口 3001）
-npm run tauri:dev         # 桌面应用
+npm install
 
-npm test                  # 运行所有测试（vitest）
-npm run build             # Web 生产构建
-npm run tauri:build       # 桌面端生产构建
+# 仅前端
+npm run dev
+
+# 前端 + 后端
+npm run dev:web
+
+# 仅后端
+npm run dev:backend
+
+# Tauri 桌面应用
+npm run tauri:dev
 ```
+
+## 测试与 CI
+
+本地验证：
+
+```bash
+npm test
+npm run build
+```
+
+仓库 CI 当前覆盖：
+- TypeScript 检查与单元测试
+- 后端接口集成冒烟检查
+- Web 页面渲染冒烟
+- 部分 YAML UI 测试套件
+- 多平台桌面安装包构建
+
+工作流：
+- [Test Suite](https://github.com/clawmaster-ai/clawmaster/actions/workflows/test.yml)
+- [Desktop Bundles](https://github.com/clawmaster-ai/clawmaster/actions/workflows/build.yml)
+
+## 项目结构
+
+```text
+clawmaster/
+├── packages/web/          React + Vite 前端
+├── packages/backend/      Web 模式下的 Express 后端
+├── src-tauri/             Tauri 桌面宿主
+├── tests/ui/              YAML UI 测试套件
+└── bin/clawmaster.mjs     CLI 入口
+```
+
+运行模型：
+- **Desktop**：React 调用 Tauri commands
+- **Web**：React 通过 `/api` 调用 Express 后端
 
 ## 致谢
 
-ClawMaster 基于以下优秀的开源项目构建：
+ClawMaster 构建于以下项目之上：
 
-| 项目 | 用途 |
-|------|------|
-| [OpenClaw](https://github.com/openclaw/openclaw) | 核心 AI 网关引擎 -- ClawMaster 是其 CLI 的图形界面 |
-| [ClawProbe](https://github.com/openclaw/clawprobe) | 可观测性守护进程，负责费用、Token 和上下文追踪 |
-| [ClawHub](https://clawhub.ai) | 技能注册中心与市场 |
-| [PowerMem](https://github.com/openclaw/powermem) | 智能体长期记忆管理 |
-| [Tauri](https://tauri.app) | 桌面应用框架（Rust + WebView） |
-| [React](https://react.dev) | 前端 UI 库 |
-| [Vite](https://vitejs.dev) | 前端构建工具 |
-| [Tailwind CSS](https://tailwindcss.com) | 原子化 CSS 框架 |
-| [Lucide](https://lucide.dev) | 图标库 |
-| [Playwright](https://playwright.dev) | E2E 测试与 UI 自动化 |
-| [Ollama](https://ollama.com) | 本地大模型推理引擎 |
+| 项目 | 作用 |
+| --- | --- |
+| [OpenClaw](https://github.com/openclaw/openclaw) | 核心运行时与配置模型 |
+| [ClawProbe](https://github.com/openclaw/clawprobe) | 可观测守护进程 |
+| [ClawHub](https://clawhub.ai) | 技能注册中心 |
+| [PowerMem](https://github.com/openclaw/powermem) | 记忆后端 |
+| [Tauri](https://tauri.app) | 桌面应用框架 |
+| [React](https://react.dev) | 前端 UI |
+| [Vite](https://vitejs.dev) | 前端工具链 |
+| [Playwright](https://playwright.dev) | 浏览器自动化与冒烟测试 |
 
-## 版本管理
+## 贡献
 
-本项目遵循 [Pride Versioning](https://pridever.org/)（`PROUD.DEFAULT.SHAME`）：
+欢迎贡献。
 
-- **PROUD** -- 当你为这次发布感到自豪时递增
-- **DEFAULT** -- 普通的、还行的发布递增
-- **SHAME** -- 修复那些不好意思承认的问题时递增
-
-当 PROUD 版本号递增时，DEFAULT 和 SHAME 重置为零。
-
-## 参与贡献
-
-欢迎贡献代码。请：
-
-1. Fork 本仓库
-2. 从 `main` 创建功能分支
-3. 修改代码并补充测试
-4. 运行 `npm test`，确保 TypeScript 编译通过
-5. 提交 Pull Request
-
-版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
+1. Fork 仓库。
+2. 从 `main` 创建分支。
+3. 修改代码，并在适用时补充测试。
+4. 运行 `npm test` 与 `npm run build`。
+5. 提交 Pull Request。
 
 ## 许可证
 
-MIT -- 详见 [LICENSE](./LICENSE)。
+MIT。详见 [LICENSE](./LICENSE)。
