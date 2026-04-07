@@ -14,6 +14,7 @@ import {
   Pin,
   Puzzle,
   Radio,
+  ScrollText,
   Send,
   Shield,
   Sparkles,
@@ -26,6 +27,7 @@ import type { OpenClawChannelEntry } from '@/lib/types'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 import { execCommand, isTauri } from '@/shared/adapters/platform'
 import { LoadingState } from '@/shared/components/LoadingState'
+import { RecentLogsSheet } from '@/shared/components/RecentLogsSheet'
 import { buildChannelRegistry } from '@/modules/channels/channelRegistry'
 import type { ChannelFieldDef } from '@/modules/channels/channelRegistry'
 
@@ -169,6 +171,7 @@ export default function Channels() {
   const [wechatSetupStage, setWechatSetupStage] = useState<WechatSetupStage>('idle')
   const [wechatSetupError, setWechatSetupError] = useState<string | null>(null)
   const [wechatPluginInstalled, setWechatPluginInstalled] = useState(false)
+  const [logsOpen, setLogsOpen] = useState(false)
 
   const channels: Record<string, OpenClawChannelEntry> = config?.channels || {}
   const allAgents = config?.agents?.list ?? []
@@ -490,9 +493,23 @@ export default function Channels() {
 
   if (error || config === null) {
     return (
-      <div className="state-panel text-sm text-red-500">
-        {error ? `${t('channelsPage.loadFailed')}${error}` : t('channelsPage.noConfig')}
-      </div>
+      <>
+        <div className="state-panel space-y-3 text-sm text-red-500">
+          <div>{error ? `${t('channelsPage.loadFailed')}${error}` : t('channelsPage.noConfig')}</div>
+          <button type="button" onClick={() => setLogsOpen(true)} className="button-secondary">
+            <ScrollText className="h-4 w-4" />
+            {t('logs.openRecent')}
+          </button>
+        </div>
+        <RecentLogsSheet
+          open={logsOpen}
+          onClose={() => setLogsOpen(false)}
+          title={t('logs.channelsTitle')}
+          description={t('logs.channelsDescription')}
+          lines={320}
+          scope="channels"
+        />
+      </>
     )
   }
 
@@ -536,6 +553,10 @@ export default function Channels() {
           <p className="page-subtitle">{t('channelsPage.subtitle')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setLogsOpen(true)} className="button-secondary">
+            <ScrollText className="h-4 w-4" />
+            {t('logs.openRecent')}
+          </button>
           <button type="button" onClick={focusCatalog} className="button-secondary">
             <Layers3 className="h-4 w-4" />
             {t('channelsPage.jumpToCatalog')}
@@ -1119,6 +1140,16 @@ export default function Channels() {
                 {verifyResult.detail ? (
                   <div className="mt-1 text-xs opacity-90 whitespace-pre-wrap break-all">{verifyResult.detail}</div>
                 ) : null}
+                {!verifyResult.ok ? (
+                  <button
+                    type="button"
+                    className="button-secondary mt-3 px-3 py-1.5 text-xs"
+                    onClick={() => setLogsOpen(true)}
+                  >
+                    <ScrollText className="h-3.5 w-3.5" />
+                    {t('logs.openRecent')}
+                  </button>
+                ) : null}
               </div>
             ) : null}
             <div className="flex justify-end gap-2 pt-2">
@@ -1152,6 +1183,15 @@ export default function Channels() {
           </div>
         </div>
       )}
+
+      <RecentLogsSheet
+        open={logsOpen}
+        onClose={() => setLogsOpen(false)}
+        title={t('logs.channelsTitle')}
+        description={t('logs.channelsDescription')}
+        lines={320}
+        scope="channels"
+      />
     </div>
   )
 }

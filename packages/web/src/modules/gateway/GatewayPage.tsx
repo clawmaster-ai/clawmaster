@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ScrollText } from 'lucide-react'
 import { platform } from '@/adapters'
 import { platformResults } from '@/shared/adapters/platformResults'
 import { LoadingState } from '@/shared/components/LoadingState'
+import { RecentLogsSheet } from '@/shared/components/RecentLogsSheet'
 import type { GatewayStatus, OpenClawConfig } from '@/lib/types'
 import { buildGatewayUrl } from '@/shared/gatewayUrl'
 
@@ -13,6 +15,7 @@ export default function Gateway() {
   const [loading, setLoading] = useState(true)
   const [statusLoading, setStatusLoading] = useState(true)
   const [operating, setOperating] = useState<string | null>(null)
+  const [logsOpen, setLogsOpen] = useState(false)
 
   useEffect(() => {
     void loadData()
@@ -100,6 +103,10 @@ export default function Gateway() {
           <h1 className="page-title">{t('gateway.title')}</h1>
           <p className="page-subtitle">{t('gateway.editConfigHint')}</p>
         </div>
+        <button type="button" onClick={() => setLogsOpen(true)} className="button-secondary">
+          <ScrollText className="h-4 w-4" />
+          {t('logs.openRecent')}
+        </button>
       </div>
 
       <div className="metric-grid">
@@ -184,6 +191,10 @@ export default function Gateway() {
               >
                 {t('gateway.openInBrowser')}
               </a>
+              <button type="button" onClick={() => setLogsOpen(true)} className="button-secondary">
+                <ScrollText className="h-4 w-4" />
+                {t('logs.openRecent')}
+              </button>
             </div>
           </div>
         )}
@@ -223,6 +234,15 @@ export default function Gateway() {
           </>
         )}
       </div>
+
+      <RecentLogsSheet
+        open={logsOpen}
+        onClose={() => setLogsOpen(false)}
+        title={t('logs.gatewayTitle')}
+        description={t('logs.gatewayDescription')}
+        lines={240}
+        scope="gateway"
+      />
     </div>
   )
 }

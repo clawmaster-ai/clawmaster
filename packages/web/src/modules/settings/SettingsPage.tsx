@@ -6,6 +6,7 @@ import { isTauri } from '@/shared/adapters/platform'
 import { changeLanguage } from '@/i18n'
 import { useInstallTask } from '@/shared/hooks/useInstallTask'
 import { InstallTask } from '@/shared/components/InstallTask'
+import { RecentLogsSheet } from '@/shared/components/RecentLogsSheet'
 import { CheckCircle2, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, FileText, Copy, FolderInput, Sparkles } from 'lucide-react'
 import type { SystemInfo } from '@/lib/types'
 import type { OpenclawNpmVersions } from '@/shared/adapters/npmOpenclaw'
@@ -43,6 +44,7 @@ export default function Settings() {
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [profileMessage, setProfileMessage] = useState<string | null>(null)
+  const [logsOpen, setLogsOpen] = useState(false)
 
   useEffect(() => {
     loadSystemInfo()
@@ -442,40 +444,6 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* 花费预算 */}
-      <section className="surface-card">
-        <div className="section-heading">
-          <h3 className="section-title">{t('settings.budget')}</h3>
-        </div>
-        <p className="text-sm text-muted-foreground mb-3">{t('settings.budgetDesc')}</p>
-        <div className="space-y-3">
-          {(['day', 'week', 'month'] as const).map((period) => {
-            const labelKeys = { day: 'settings.budgetDay', week: 'settings.budgetWeek', month: 'settings.budgetMonth' }
-            const key = `clawmaster-budget-${period}`
-            return (
-              <div key={period} className="grid gap-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-                <label className="text-sm text-muted-foreground">{t(labelKeys[period])}:</label>
-                <div className="flex items-center gap-1">
-                  <span className="text-sm">$</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    placeholder={t('settings.budgetUnlimited')}
-                    defaultValue={localStorage.getItem(key) ?? ''}
-                    onChange={(e) => {
-                      if (e.target.value) localStorage.setItem(key, e.target.value)
-                      else localStorage.removeItem(key)
-                    }}
-                    className="control-input min-w-0 flex-1 px-2 py-1.5"
-                  />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </section>
-
       {/* 系统信息 */}
       <section className="surface-card">
         <div className="section-heading">
@@ -507,6 +475,19 @@ export default function Settings() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="surface-card">
+        <div className="section-heading">
+          <div>
+            <h3 className="section-title">{t('logs.settingsTitle')}</h3>
+            <p className="section-subtitle">{t('logs.settingsDescription')}</p>
+          </div>
+        </div>
+        <button type="button" className="button-secondary" onClick={() => setLogsOpen(true)}>
+          <FileText className="h-4 w-4" />
+          {t('logs.openRecent')}
+        </button>
       </section>
 
       {/* 更新 */}
@@ -597,6 +578,15 @@ export default function Settings() {
           </div>
         </div>
       </section>
+
+      <RecentLogsSheet
+        open={logsOpen}
+        onClose={() => setLogsOpen(false)}
+        title={t('logs.settingsTitle')}
+        description={t('logs.settingsDescription')}
+        lines={200}
+        scope="all"
+      />
     </div>
   )
 }

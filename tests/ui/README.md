@@ -10,7 +10,7 @@
 | `02-page-navigation.yaml` | 15 | 全部 15 个页面导航可达性 + 渲染验证 |
 | `03-memory-module.yaml` | 10 | 记忆管理完整功能（降级/健康/列表/搜索/添加/编辑/删除/Agent 切换） |
 | `04-observe-module.yaml` | 9 | 可观测 Dashboard（降级/费用卡片/图表/健康度/建议/会话） |
-| `05-config-and-security.yaml` | 13 | 配置编辑 + API Key 脱敏 + 预算 + 主题切换 + 版本更新 |
+| `05-config-and-security.yaml` | 10 | 配置编辑 + API Key 脱敏 + 主题切换 + 版本更新 |
 | `06-skills-marketplace.yaml` | 10 | 技能市场（分类过滤/场景推荐/精选目录/安装卸载/市场搜索） |
 | `07-setup-install-real.yaml` | 16 | 安装向导真实安装全流程（检测/卸载/安装/CapabilityGuard/错误处理/API） |
 | `08-onboarding-config.yaml` | 17 | 安装后配置引导（初始化/API Key/模型/网关/通道/跳过/汇总） |
