@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, X } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -40,7 +40,7 @@ export function ConfirmDialog({
         aria-labelledby="confirm-dialog-title"
         className="relative z-10 w-full max-w-lg rounded-[1.75rem] border border-border/80 bg-background p-5 shadow-2xl sm:p-6"
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${tone === 'danger' ? 'border-destructive/30 bg-destructive/5 text-destructive' : 'border-border/70 bg-muted/60 text-foreground'}`}>
               <AlertTriangle className="h-5 w-5" />
@@ -52,10 +52,6 @@ export function ConfirmDialog({
               {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
             </div>
           </div>
-          <button type="button" onClick={onCancel} disabled={busy} className="button-secondary px-3">
-            <X className="h-4 w-4" />
-            {t('common.close')}
-          </button>
         </div>
 
         {children ? <div className="mt-4">{children}</div> : null}
