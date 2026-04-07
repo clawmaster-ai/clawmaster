@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import type { SkillGuardScanResult, SkillInfo } from '@/lib/types'
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary'
+import { ActionBanner } from '@/shared/components/ActionBanner'
 import { InstallTask } from '@/shared/components/InstallTask'
 import { LoadingState } from '@/shared/components/LoadingState'
 import {
@@ -144,6 +145,7 @@ function SkillsContent() {
   const [installedQuery, setInstalledQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<SkillCategory | 'all'>('all')
   const [operatingKey, setOperatingKey] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<string | null>(null)
   const [scanBusyKey, setScanBusyKey] = useState<string | null>(null)
   const [scanResults, setScanResults] = useState<Record<string, SkillGuardScanResult>>({})
   const [scanErrors, setScanErrors] = useState<Record<string, string>>({})
@@ -260,7 +262,7 @@ function SkillsContent() {
     setOperatingKey(key)
     const result = await setSkillEnabledResult(key, enabled)
     if (!result.success) {
-      alert(t('skills.enableFailed', { message: result.error }))
+      setFeedback(t('skills.enableFailed', { message: result.error }))
     }
     await refetch()
     setOperatingKey(null)
@@ -297,6 +299,7 @@ function SkillsContent() {
 
   return (
     <div className="page-shell page-shell-bleed">
+      {feedback ? <ActionBanner tone="error" message={feedback} onDismiss={() => setFeedback(null)} /> : null}
       <div className="page-header">
         <div className="page-header-copy">
           <div className="page-header-meta">

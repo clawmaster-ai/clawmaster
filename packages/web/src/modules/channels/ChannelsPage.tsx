@@ -26,6 +26,8 @@ import { platformResults } from '@/adapters'
 import type { OpenClawChannelEntry } from '@/lib/types'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 import { execCommand, isTauri } from '@/shared/adapters/platform'
+import { ActionBanner } from '@/shared/components/ActionBanner'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { LoadingState } from '@/shared/components/LoadingState'
 import { RecentLogsSheet } from '@/shared/components/RecentLogsSheet'
 import { buildChannelRegistry } from '@/modules/channels/channelRegistry'
@@ -172,6 +174,9 @@ export default function Channels() {
   const [wechatSetupError, setWechatSetupError] = useState<string | null>(null)
   const [wechatPluginInstalled, setWechatPluginInstalled] = useState(false)
   const [logsOpen, setLogsOpen] = useState(false)
+  const [feedback, setFeedback] = useState<{ tone: 'info' | 'success' | 'error'; message: string } | null>(null)
+  const [pendingRemoval, setPendingRemoval] = useState<{ typeId: string; label: string } | null>(null)
+  const [pendingAccountRemoval, setPendingAccountRemoval] = useState<{ typeId: string; accountId: string } | null>(null)
 
   const channels: Record<string, OpenClawChannelEntry> = config?.channels || {}
   const allAgents = config?.agents?.list ?? []
@@ -424,15 +429,12 @@ export default function Channels() {
     }
   }
 
-  async function removeChannelType(typeId: string, label: string) {
-    if (!window.confirm(t('channelsPage.removeConfirm', { label }))) {
-      return
-    }
+  async function removeChannelType(typeId: string) {
     setBusy(true)
     try {
       const r = await platformResults.removeChannel(typeId)
       if (!r.success) {
-        window.alert(r.error ?? t('channelsPage.removeFailed'))
+        setFeedback({ tone: 'error', message: r.error ?? t('channelsPage.removeFailed') })
         return
       }
       await refetch()
@@ -446,7 +448,7 @@ export default function Channels() {
     try {
       const r = await platformResults.setConfig(`channels.${typeId}.enabled`, enabled)
       if (!r.success) {
-        window.alert(r.error ?? t('channelsPage.toggleFailed'))
+        setFeedback({ tone: 'error', message: r.error ?? t('channelsPage.toggleFailed') })
         return
       }
       await refetch()
@@ -457,7 +459,6 @@ export default function Channels() {
 
   async function removeChannelAccount(typeId: string, accountId: string) {
     if (!config) return
-    if (!window.confirm(t('channelsPage.deleteAccountConfirm', { id: accountId }))) return
     const current = channels[typeId]
     if (!current || !isRecord(current) || !isRecord(current.accounts)) return
 
@@ -478,7 +479,7 @@ export default function Channels() {
       }
       const r = await platformResults.saveFullConfig(next)
       if (!r.success) {
-        window.alert(r.error ?? t('channelsPage.deleteAccountFailed'))
+        setFeedback({ tone: 'error', message: r.error ?? t('channelsPage.deleteAccountFailed') })
         return
       }
       await refetch()
@@ -542,6 +543,9 @@ export default function Channels() {
 
   return (
     <div className="page-shell page-shell-wide">
+      {feedback ? (
+        <ActionBanner tone={feedback.tone} message={feedback.message} onDismiss={() => setFeedback(null)} />
+      ) : null}
       <div className="page-header">
         <div className="page-header-copy">
           <div className="page-header-meta">
@@ -566,7 +570,7 @@ export default function Channels() {
             disabled={busy || missingTypes.length === 0}
             onClick={() => {
               if (missingTypes.length === 0) {
-                window.alert(t('channelsPage.allTypesPresent'))
+                setFeedback({ tone: 'info', message: t('channelsPage.allTypesPresent') })
                 return
               }
               openChannelSetup(missingTypes[0].id)
@@ -731,7 +735,7 @@ export default function Channels() {
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void removeChannelType(ch.type, ch.typeName)}
+                      onClick={() => setPendingRemoval({ typeId: ch.type, label: ch.typeName })}
                       className="button-danger px-3 py-1.5 text-sm disabled:opacity-50"
                     >
                       {t('channelsPage.removeChannel')}
@@ -767,7 +771,7 @@ export default function Channels() {
                             <button
                               type="button"
                               disabled={busy}
-                              onClick={() => void removeChannelAccount(ch.type, acc.id)}
+                              onClick={() => setPendingAccountRemoval({ typeId: ch.type, accountId: acc.id })}
                               className="button-secondary px-2.5 py-1.5 text-xs text-muted-foreground"
                             >
                               {t('channelsPage.removeAccount')}
@@ -1191,6 +1195,30 @@ export default function Channels() {
         description={t('logs.channelsDescription')}
         lines={320}
         scope="channels"
+      />
+      <ConfirmDialog
+        open={Boolean(pendingRemoval)}
+        title={pendingRemoval ? t('channelsPage.removeConfirm', { label: pendingRemoval.label }) : ''}
+        tone="danger"
+        onCancel={() => setPendingRemoval(null)}
+        onConfirm={() => {
+          if (!pendingRemoval) return
+          const current = pendingRemoval
+          setPendingRemoval(null)
+          void removeChannelType(current.typeId)
+        }}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingAccountRemoval)}
+        title={pendingAccountRemoval ? t('channelsPage.deleteAccountConfirm', { id: pendingAccountRemoval.accountId }) : ''}
+        tone="danger"
+        onCancel={() => setPendingAccountRemoval(null)}
+        onConfirm={() => {
+          if (!pendingAccountRemoval) return
+          const current = pendingAccountRemoval
+          setPendingAccountRemoval(null)
+          void removeChannelAccount(current.typeId, current.accountId)
+        }}
       />
     </div>
   )

@@ -5,6 +5,8 @@ import { platformResults } from '@/shared/adapters/platformResults'
 import { isTauri } from '@/shared/adapters/platform'
 import { changeLanguage } from '@/i18n'
 import { useInstallTask } from '@/shared/hooks/useInstallTask'
+import { ActionBanner } from '@/shared/components/ActionBanner'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { InstallTask } from '@/shared/components/InstallTask'
 import { RecentLogsSheet } from '@/shared/components/RecentLogsSheet'
 import { CheckCircle2, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, FileText, Copy, FolderInput, Sparkles } from 'lucide-react'
@@ -45,6 +47,8 @@ export default function Settings() {
   const [profileError, setProfileError] = useState<string | null>(null)
   const [profileMessage, setProfileMessage] = useState<string | null>(null)
   const [logsOpen, setLogsOpen] = useState(false)
+  const [feedback, setFeedback] = useState<{ tone: 'info' | 'success' | 'error'; message: string } | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'reset' | 'uninstall' | null>(null)
 
   useEffect(() => {
     loadSystemInfo()
@@ -129,6 +133,9 @@ export default function Settings() {
 
   return (
     <div className="page-shell page-shell-narrow">
+      {feedback ? (
+        <ActionBanner tone={feedback.tone} message={feedback.message} onDismiss={() => setFeedback(null)} />
+      ) : null}
       <div className="page-header">
         <div className="page-header-copy">
           <h1 className="page-title">{t('settings.title')}</h1>
@@ -501,30 +508,13 @@ export default function Settings() {
         <div className="flex gap-3">
           <button
             className="button-secondary"
-            onClick={async () => {
-              if (!window.confirm(t('settings.resetConfigConfirm'))) return
-              const r = await platformResults.resetOpenclawConfig()
-              if (r.success) {
-                window.location.reload()
-              } else {
-                alert(r.error ?? 'Failed to reset config')
-              }
-            }}
+            onClick={() => setConfirmAction('reset')}
           >
             {t('settings.resetConfig')}
           </button>
           <button
             className="button-danger"
-            onClick={async () => {
-              if (!window.confirm(t('settings.uninstallConfirm'))) return
-              const r = await platformResults.uninstallOpenclawCli()
-              if (r.success) {
-                alert(t('settings.uninstallSuccess'))
-                window.location.reload()
-              } else {
-                alert(r.error ?? 'Failed to uninstall')
-              }
-            }}
+            onClick={() => setConfirmAction('uninstall')}
           >
             {t('settings.uninstallOpenClaw')}
           </button>
@@ -586,6 +576,41 @@ export default function Settings() {
         description={t('logs.settingsDescription')}
         lines={200}
         scope="all"
+      />
+      <ConfirmDialog
+        open={confirmAction === 'reset'}
+        title={t('settings.resetConfigConfirm')}
+        tone="danger"
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => {
+          setConfirmAction(null)
+          void (async () => {
+            const r = await platformResults.resetOpenclawConfig()
+            if (r.success) {
+              window.location.reload()
+            } else {
+              setFeedback({ tone: 'error', message: r.error ?? 'Failed to reset config' })
+            }
+          })()
+        }}
+      />
+      <ConfirmDialog
+        open={confirmAction === 'uninstall'}
+        title={t('settings.uninstallConfirm')}
+        tone="danger"
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => {
+          setConfirmAction(null)
+          void (async () => {
+            const r = await platformResults.uninstallOpenclawCli()
+            if (r.success) {
+              setFeedback({ tone: 'success', message: t('settings.uninstallSuccess') })
+              window.setTimeout(() => window.location.reload(), 400)
+            } else {
+              setFeedback({ tone: 'error', message: r.error ?? 'Failed to uninstall' })
+            }
+          })()
+        }}
       />
     </div>
   )

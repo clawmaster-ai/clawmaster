@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ScrollText } from 'lucide-react'
 import { platform } from '@/adapters'
 import { platformResults } from '@/shared/adapters/platformResults'
+import { ActionBanner } from '@/shared/components/ActionBanner'
 import { LoadingState } from '@/shared/components/LoadingState'
 import { RecentLogsSheet } from '@/shared/components/RecentLogsSheet'
 import type { GatewayStatus, OpenClawConfig } from '@/lib/types'
@@ -16,6 +17,7 @@ export default function Gateway() {
   const [statusLoading, setStatusLoading] = useState(true)
   const [operating, setOperating] = useState<string | null>(null)
   const [logsOpen, setLogsOpen] = useState(false)
+  const [feedback, setFeedback] = useState<{ tone: 'info' | 'success' | 'error'; message: string } | null>(null)
 
   useEffect(() => {
     void loadData()
@@ -67,21 +69,21 @@ export default function Gateway() {
       const expectRunning = action !== 'stop'
       const ok = await pollStatus(expectRunning)
       if (!ok) {
-        alert(t('gateway.operationTimeout'))
+        setFeedback({ tone: 'error', message: t('gateway.operationTimeout') })
       }
       await loadData()
     } catch (err: any) {
-      alert(t('gateway.operationFailed', { message: err.message }))
+      setFeedback({ tone: 'error', message: t('gateway.operationFailed', { message: err.message }) })
     } finally {
       setOperating(null)
     }
   }
 
-  function copyToken() {
+  async function copyToken() {
     const token = config?.gateway?.auth?.token
     if (token) {
-      navigator.clipboard.writeText(token)
-      alert(t('gateway.tokenCopied'))
+      await navigator.clipboard.writeText(token)
+      setFeedback({ tone: 'success', message: t('gateway.tokenCopied') })
     }
   }
 
@@ -93,6 +95,9 @@ export default function Gateway() {
 
   return (
     <div className="page-shell page-shell-medium">
+      {feedback ? (
+        <ActionBanner tone={feedback.tone} message={feedback.message} onDismiss={() => setFeedback(null)} />
+      ) : null}
       <div className="page-header">
         <div className="page-header-copy">
           <div className="page-header-meta">

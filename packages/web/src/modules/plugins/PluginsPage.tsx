@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { platformResults } from '@/adapters'
 import type { OpenClawPluginInfo } from '@/lib/types'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { LoadingState } from '@/shared/components/LoadingState'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 
@@ -391,6 +392,7 @@ export default function PluginsPage() {
   const [categoryFilter, setCategoryFilter] = useState<PluginCategory | 'all'>('all')
   const [busy, setBusy] = useState<PluginBusy | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [pendingUninstall, setPendingUninstall] = useState<OpenClawPluginInfo | null>(null)
   const [installId, setInstallId] = useState('')
   const [uninstallKeepFiles, setUninstallKeepFiles] = useState(false)
 
@@ -442,16 +444,6 @@ export default function PluginsPage() {
 
   const runUninstall = useCallback(
     async (plugin: OpenClawPluginInfo) => {
-      if (
-        !window.confirm(
-          t('plugins.uninstallConfirm', {
-            id: plugin.id,
-            name: pluginDisplayName(plugin),
-          })
-        )
-      ) {
-        return
-      }
       setActionError(null)
       setBusy({ kind: 'uninstall', id: plugin.id })
       const r = await platformResults.uninstallPlugin(plugin.id, {
@@ -827,7 +819,7 @@ export default function PluginsPage() {
                       busy={busy}
                       onEnable={(id) => void runSetEnabled(id, true)}
                       onDisable={(id) => void runSetEnabled(id, false)}
-                      onUninstall={(item) => void runUninstall(item)}
+                      onUninstall={(item) => setPendingUninstall(item)}
                     />
                   ))}
                 </div>
@@ -849,6 +841,25 @@ export default function PluginsPage() {
       {plugins.length === 0 && !rawCliOutput && (
         <p className="text-sm text-muted-foreground">{t('plugins.emptyList')}</p>
       )}
+      <ConfirmDialog
+        open={Boolean(pendingUninstall)}
+        title={
+          pendingUninstall
+            ? t('plugins.uninstallConfirm', {
+                id: pendingUninstall.id,
+                name: pluginDisplayName(pendingUninstall),
+              })
+            : ''
+        }
+        tone="danger"
+        onCancel={() => setPendingUninstall(null)}
+        onConfirm={() => {
+          if (!pendingUninstall) return
+          const plugin = pendingUninstall
+          setPendingUninstall(null)
+          void runUninstall(plugin)
+        }}
+      />
     </div>
   )
 }

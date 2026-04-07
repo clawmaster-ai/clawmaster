@@ -4,6 +4,8 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { platformResults } from '@/adapters'
 import type { OpenclawMemoryStatusPayload, PowermemMemoryRow, PowermemMeta } from '@/lib/types'
+import { ActionBanner } from '@/shared/components/ActionBanner'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import type { OpenclawMemoryHit } from '@/shared/memoryOpenclawParse'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 import type { AdapterResult } from '@/shared/adapters/types'
@@ -290,6 +292,8 @@ function PowermemMemoryPanel() {
   const [pmSearchRows, setPmSearchRows] = useState<PowermemMemoryRow[] | null>(null)
   const [pmSearchLoading, setPmSearchLoading] = useState(false)
   const [pmSearchErr, setPmSearchErr] = useState<string | null>(null)
+  const [pmActionError, setPmActionError] = useState<string | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
   const metaFetcher = useCallback(async () => platformResults.powermemMeta(), [])
   const {
@@ -369,18 +373,21 @@ function PowermemMemoryPanel() {
   }
 
   async function deletePowermemRow(id: string) {
-    if (!window.confirm(t('memory.confirmDelete', { id }))) return
     const r = await platformResults.powermemDelete(id)
     if (!r.success) {
-      alert(r.error ?? t('memory.deleteFailed'))
+      setPmActionError(r.error ?? t('memory.deleteFailed'))
       return
     }
+    setPmActionError(null)
     void refetchPmList()
     setPmSearchRows((prev) => (prev ? prev.filter((row) => row.id !== id) : prev))
   }
 
   return (
     <div className="surface-card space-y-4">
+      {pmActionError ? (
+        <ActionBanner tone="error" message={pmActionError} onDismiss={() => setPmActionError(null)} />
+      ) : null}
       <div className="border-b border-border pb-3">
         <h3 className="text-base font-semibold">{t('memory.sectionPowermem')}</h3>
         <p className="text-sm text-muted-foreground mt-1">{t('memory.powermemHelp')}</p>
@@ -518,7 +525,7 @@ function PowermemMemoryPanel() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => void deletePowermemRow(row.id)}
+                  onClick={() => setPendingDeleteId(row.id)}
                   className="button-danger shrink-0 px-2 py-1 text-xs"
                 >
                   {t('memory.delete')}
@@ -534,6 +541,18 @@ function PowermemMemoryPanel() {
           ) : null}
         </>
       )}
+      <ConfirmDialog
+        open={Boolean(pendingDeleteId)}
+        title={pendingDeleteId ? t('memory.confirmDelete', { id: pendingDeleteId }) : ''}
+        tone="danger"
+        onCancel={() => setPendingDeleteId(null)}
+        onConfirm={() => {
+          if (!pendingDeleteId) return
+          const id = pendingDeleteId
+          setPendingDeleteId(null)
+          void deletePowermemRow(id)
+        }}
+      />
 
       {pmReady ? (
         <div className="space-y-2 pt-2 border-t border-border">
