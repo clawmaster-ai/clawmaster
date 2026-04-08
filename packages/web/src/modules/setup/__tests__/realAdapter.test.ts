@@ -41,14 +41,9 @@ describe('realSetupAdapter', () => {
     })
   })
 
-  it('detects memory capability from memory-powermem plugin status', async () => {
+  it('detects memory capability from the native OpenClaw runtime', async () => {
     vi.mocked(execCommand).mockImplementation(async (cmd, args) => {
       if (cmd === 'openclaw' && args.join(' ') === '--version') return 'OpenClaw 2026.3.11'
-      if (cmd === 'openclaw' && args.join(' ') === 'plugins list --json') {
-        return JSON.stringify({
-          plugins: [{ id: 'memory-powermem', status: 'loaded', version: '0.2.0' }],
-        })
-      }
       throw new Error('missing optional dependency')
     })
 
@@ -60,7 +55,7 @@ describe('realSetupAdapter', () => {
     expect(result.find((item) => item.id === 'memory')).toMatchObject({
       id: 'memory',
       status: 'installed',
-      version: '0.2.0',
+      version: '2026.3.11',
     })
   })
 

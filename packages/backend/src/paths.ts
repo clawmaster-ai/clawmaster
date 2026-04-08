@@ -149,32 +149,6 @@ export function getOpenclawDataDir(): string {
   return getOpenclawConfigResolution().dataDir
 }
 
-/**
- * PowerMem (pmem) bundle under OpenClaw data: default `.env`, managed Python venv, etc.
- * Keeps third-party plugin secrets and runtime out of `~/.clawmaster` and off the openclaw.json parent alone.
- */
-export function getOpenclawPowermemDir(): string {
-  return path.join(getOpenclawDataDir(), 'powermem')
-}
-
-/** Default PowerMem env file: `powermem/.env` next to OpenClaw state. */
-export function getDefaultPowermemEnvFilePath(): string {
-  return path.join(getOpenclawPowermemDir(), '.env')
-}
-
-/**
- * SQLite file used by OpenClaw gateway + memory-powermem when no custom `.env` layout
- * (`openclaw-powermem-env.ts` `buildDefaultSqlitePowermemEnv`). Clawmaster must use the same
- * path when running `pmem` or generated `.env` or the UI lists an empty DB.
- */
-export function getOpenclawPowermemGatewayDataDir(): string {
-  return path.join(getOpenclawPowermemDir(), 'data')
-}
-
-export function getOpenclawPowermemGatewaySqlitePath(): string {
-  return path.join(getOpenclawPowermemGatewayDataDir(), 'powermem.db')
-}
-
 /** Default snapshots dir (aligned with openclaw-uninstaller) */
 export function getOpenclawSnapshotsDir(): string {
   return path.join(os.homedir(), '.openclaw_snapshots')

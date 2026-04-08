@@ -550,7 +550,6 @@ export default function Settings() {
               { name: 'OpenClaw', url: 'https://github.com/openclaw/openclaw', desc: t('settings.ack.openclaw') },
               { name: 'ClawProbe', url: 'https://github.com/openclaw/clawprobe', desc: t('settings.ack.clawprobe') },
               { name: 'ClawHub', url: 'https://clawhub.ai', desc: t('settings.ack.clawhub') },
-              { name: 'PowerMem', url: 'https://github.com/openclaw/powermem', desc: t('settings.ack.powermem') },
               { name: 'Tauri', url: 'https://tauri.app', desc: t('settings.ack.tauri') },
               { name: 'Ollama', url: 'https://ollama.com', desc: t('settings.ack.ollama') },
             ].map((p) => (

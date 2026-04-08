@@ -17,31 +17,6 @@ import {
   type CapabilityId,
 } from './types'
 
-interface PluginsListJson {
-  plugins?: Array<{ id?: string; status?: string; version?: string }>
-}
-
-async function detectMemoryCapability(): Promise<CapabilityStatus> {
-  const raw = await execCommand('openclaw', ['plugins', 'list', '--json'])
-  const data = JSON.parse(raw) as PluginsListJson
-  const plugin = data.plugins?.find((p) => p.id === 'memory-powermem')
-  if (!plugin) {
-    return {
-      id: 'memory',
-      name: 'capability.memory',
-      status: 'not_installed',
-    }
-  }
-
-  const enabled = !/\bdisabled\b|\boff\b/i.test(plugin.status ?? '')
-  return {
-    id: 'memory',
-    name: 'capability.memory',
-    status: enabled ? 'installed' : 'not_installed',
-    version: enabled ? plugin.version : undefined,
-  }
-}
-
 // ─── 接口 ───
 
 export interface OnboardingAdapter {
@@ -191,18 +166,15 @@ export const realSetupAdapter: SetupAdapter = {
         onUpdate({ id: cap.id, name: cap.name, status: 'checking' })
 
         try {
-          const status =
-            cap.id === 'memory'
-              ? await detectMemoryCapability()
-              : await execCommand(cap.detectCmd, cap.detectArgs).then((output) => {
-                  const match = output.match(/v?(\d+\.\d+[\w.-]*)/)
-                  return {
-                    id: cap.id,
-                    name: cap.name,
-                    status: 'installed',
-                    version: match ? match[1] : output.trim().slice(0, 20),
-                  } satisfies CapabilityStatus
-                })
+          const status = await execCommand(cap.detectCmd, cap.detectArgs).then((output) => {
+            const match = output.match(/v?(\d+\.\d+[\w.-]*)/)
+            return {
+              id: cap.id,
+              name: cap.name,
+              status: 'installed',
+              version: match ? match[1] : output.trim().slice(0, 20),
+            } satisfies CapabilityStatus
+          })
           onUpdate(status)
           return status
         } catch {
@@ -262,10 +234,10 @@ export const realSetupAdapter: SetupAdapter = {
 
 const DEMO_DETECT_RESULTS: Record<CapabilityId, { installed: boolean; version: string }> = {
   engine: { installed: true, version: '2026.3.13' },
-  memory: { installed: true, version: '0.2.0' },
+  memory: { installed: true, version: '2026.3.13' },
   observe: { installed: false, version: '' },
   ocr: { installed: false, version: '' },
-  agent: { installed: true, version: '0.1.4' },
+  agent: { installed: true, version: '2026.3.13' },
 }
 
 function delay(ms: number): Promise<void> {

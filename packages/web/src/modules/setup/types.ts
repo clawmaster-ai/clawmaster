@@ -52,20 +52,9 @@ export const CAPABILITIES: CapabilityDef[] = [
     id: 'memory',
     name: 'capability.memory',
     detectCmd: 'openclaw',
-    detectArgs: ['ltm', 'health'],
+    detectArgs: ['--version'],
     required: false,
-    installSteps: [
-      // 1. 创建目录 + 虚拟环境
-      { cmd: 'bash', args: ['-lc', 'mkdir -p "$HOME/.openclaw/powermem" && python3 -m venv "$HOME/.openclaw/powermem/.venv"'] },
-      // 2. 在虚拟环境中安装 PowerMem
-      { cmd: 'bash', args: ['-lc', '"$HOME/.openclaw/powermem/.venv/bin/pip" install powermem'] },
-      // 3. 安装 OpenClaw 插件
-      { cmd: 'openclaw', args: ['plugins', 'install', 'memory-powermem'] },
-      // 4. 通过 ClawHub Skill 自动完成配置 + 槽位切换
-      { cmd: 'clawhub', args: ['install', 'teingi/install-powermem-memory-minimal'] },
-      // 5. 启动 PowerMem HTTP API 服务（供大师 GUI 调用）
-      { cmd: 'bash', args: ['-c', 'cd ~/.openclaw/powermem && source .venv/bin/activate && nohup powermem-server --host 0.0.0.0 --port 8000 > powermem.log 2>&1 &'] },
-    ],
+    installSteps: [],
   },
   {
     id: 'observe',
@@ -91,12 +80,10 @@ export const CAPABILITIES: CapabilityDef[] = [
   {
     id: 'agent',
     name: 'capability.agent',
-    detectCmd: 'python3',
-    detectArgs: ['-c', 'import deepagents; print(deepagents.__version__)'],
+    detectCmd: 'openclaw',
+    detectArgs: ['--version'],
     required: false,
-    installSteps: [
-      { cmd: 'pip', args: ['install', 'langchain', 'langgraph', 'deepagents'] },
-    ],
+    installSteps: [],
   },
 ]
 
