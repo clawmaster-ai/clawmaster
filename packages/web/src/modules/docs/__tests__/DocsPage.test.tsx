@@ -56,6 +56,23 @@ describe('DocsPage', () => {
     })
   })
 
+  it('shows the local empty state when no built-in results match the query', async () => {
+    render(
+      <MemoryRouter>
+        <DocsPage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('Search guides, commands, and troubleshooting...'), {
+      target: { value: 'totally-unmatched-keyword' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('No local matches yet')).toBeInTheDocument()
+      expect(screen.getByText('Try a broader keyword or use live docs search for upstream results.')).toBeInTheDocument()
+    })
+  })
+
   it('runs live docs fallback search through the OpenClaw CLI', async () => {
     mockExecCommand.mockResolvedValue(
       'Gateway Authentication https://docs.openclaw.ai/gateway/auth\nToken mode, loopback bind, and browser access.',
@@ -79,6 +96,23 @@ describe('DocsPage', () => {
     expect(await screen.findByRole('heading', { name: 'Live Docs Results' })).toBeInTheDocument()
     expect(screen.getByText('Gateway Authentication')).toBeInTheDocument()
     expect(screen.getByText(/Token mode, loopback bind/)).toBeInTheDocument()
+  })
+
+  it('shows an error banner when the live docs fallback search fails', async () => {
+    mockExecCommand.mockRejectedValue(new Error('cli unavailable'))
+
+    render(
+      <MemoryRouter>
+        <DocsPage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('Search guides, commands, and troubleshooting...'), {
+      target: { value: 'gateway auth' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Search Live Docs' }))
+
+    expect(await screen.findByText('Search failed. Check your network.')).toBeInTheDocument()
   })
 
   it('copies command snippets from the docs hub', async () => {

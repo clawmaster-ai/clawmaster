@@ -804,13 +804,12 @@ function TaskChecklistDrawer({
   const nextItem = findNextChecklistItem(task.checklist)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-slate-950/55 p-0 backdrop-blur-sm">
-      <div className="absolute inset-0" aria-hidden="true" onClick={onClose} />
+    <div className="pointer-events-none fixed inset-0 z-50 flex items-stretch justify-end bg-slate-950/55 p-0 backdrop-blur-sm">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="dashboard-task-drawer-title"
-        className="relative flex h-full min-h-0 w-full max-w-[42rem] flex-col overflow-hidden border-l border-border/80 bg-background shadow-2xl"
+        className="pointer-events-auto relative flex h-full min-h-0 w-full max-w-[42rem] flex-col overflow-hidden border-l border-border/80 bg-background shadow-2xl"
       >
         <div className="border-b border-border/70 bg-background/96 px-5 py-5 sm:px-7">
           <div className="flex items-start justify-between gap-4">
