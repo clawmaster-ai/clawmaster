@@ -31,7 +31,7 @@ function splitProviderIds(providerIds: string[]) {
 }
 
 function ProviderBadge({ providerId }: { providerId: string }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   if (PROVIDER_BADGES[providerId as keyof typeof PROVIDER_BADGES] !== 'golden-sponsor') {
     return null
   }
@@ -45,7 +45,7 @@ function ProviderBadge({ providerId }: { providerId: string }) {
 }
 
 export default function Models() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [config, setConfig] = useState<OpenClawConfig | null>(null)
   const [, setModels] = useState<ModelInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -203,7 +203,7 @@ function ProviderCard({
   isDefault: boolean
   onRefresh: () => void
 }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<boolean | null>(null)
   const adapter = getSetupAdapter()

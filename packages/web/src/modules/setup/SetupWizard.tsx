@@ -100,7 +100,7 @@ function sortProviderIds(providerIds: string[]) {
 }
 
 function ProviderBadge({ providerId }: { providerId: string }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   if (PROVIDER_BADGES[providerId as keyof typeof PROVIDER_BADGES] !== 'golden-sponsor') {
     return null
   }
@@ -1388,7 +1388,7 @@ function ProviderStep({
   onSubmit: () => void
   onSkip: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [showMore, setShowMore] = useState(false)
   const visibleIds = sortProviderIds(showMore ? allProviderIds : [...primaryIds])
   const sponsorIds = visibleIds.filter((providerId) => isGoldenSponsor(providerId))
