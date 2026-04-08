@@ -6,6 +6,7 @@ description: |
   2. 配置保存/导出
   3. API Key 脱敏
   4. 主题切换
+  5. Settings 中的 Profile 与确认对话框
 
 preconditions:
   - dev server 已启动
@@ -194,7 +195,8 @@ cases:
     assertions:
       - 危险操作区显示"重置配置"按钮
       - 按钮有 click handler（非死按钮）
-      - 点击后弹出 window.confirm 确认对话框
+      - 点击后弹出应用内确认对话框（非原生 window.confirm）
+      - 确认对话框包含取消与确认操作
       - 取消后不执行重置
 
   - id: cfg-15
@@ -207,7 +209,8 @@ cases:
     assertions:
       - 危险操作区显示"卸载 OpenClaw"按钮
       - 按钮有 click handler（非死按钮）
-      - 点击后弹出 window.confirm 确认对话框
+      - 点击后弹出应用内确认对话框（非原生 window.confirm）
+      - 确认对话框包含取消与确认操作
 
   - id: cfg-16
     name: Web 模式隐藏 Tauri 专用系统设置
@@ -222,3 +225,39 @@ cases:
       - 不显示"显示托盘图标"复选框
       - 不显示"最小化到托盘"复选框
       - 页面无 defaultChecked 且无 onChange 的复选框
+
+  - id: cfg-17
+    name: Settings 配置档切换与命名配置校验
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: settings-profile-section
+    assertions:
+      - 显示"OpenClaw 配置档"区块
+      - 提供 Default、Dev、Named 三种模式
+      - 切换到 Named 后显示配置档名称输入框
+      - 未填写名称直接保存时显示校验错误
+      - 选择"导入配置路径"后显示配置文件路径输入框
+      - 右侧显示当前解析出的配置目标、数据目录与 config path
+
+  - id: cfg-18
+    name: Settings 诊断入口
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 1500ms
+      - action: click
+        target: text("查看最近日志")
+      - action: wait
+        duration: 800ms
+      - action: screenshot
+        name: settings-diagnostics-sheet
+    assertions:
+      - 显示"诊断与排障"区块
+      - 点击后打开最近日志弹层
+      - 弹层可关闭
+      - 日志内容保留完整系统流，不只限某个模块
