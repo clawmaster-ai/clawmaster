@@ -54,7 +54,7 @@ cases:
         value: "{ invalid json"
     assertions:
       - 显示红色错误提示"JSON 语法错误: ..."
-      - "保存"按钮置灰（disabled）
+      - '“保存”按钮置灰（disabled）'
 
   - id: cfg-04
     name: 配置保存（原子 saveFullConfig）
@@ -118,11 +118,11 @@ cases:
       - action: navigate_to
         target: 设置页面
       - action: click
-        target: "深色"主题 radio
+        target: '“深色”主题 radio'
       - action: screenshot
         name: sec-theme-dark
       - action: click
-        target: "浅色"主题 radio
+        target: '“浅色”主题 radio'
       - action: screenshot
         name: sec-theme-light
     assertions:
@@ -184,7 +184,7 @@ cases:
   # === Issue #4 修复验证：Settings 死按钮 ===
 
   - id: cfg-14
-    name: "重置配置"按钮已接线
+    name: '“重置配置”按钮已接线'
     steps:
       - action: navigate
         url: "{BASE_URL}/settings"
@@ -200,7 +200,7 @@ cases:
       - 取消后不执行重置
 
   - id: cfg-15
-    name: "卸载 OpenClaw"按钮已接线
+    name: '“卸载 OpenClaw”按钮已接线'
     steps:
       - action: navigate
         url: "{BASE_URL}/settings"
@@ -261,3 +261,33 @@ cases:
       - 点击后打开最近日志弹层
       - 弹层可关闭
       - 日志内容保留完整系统流，不只限某个模块
+
+  - id: cfg-19
+    name: 全局更新横幅与设置页联动
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/"
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: settings-update-banner
+    assertions:
+      - 当存在新版本时，页面顶部显示 OpenClaw 更新横幅
+      - 横幅包含目标版本号
+      - 横幅提供"查看更新"入口
+      - 点击后可跳转到设置页更新区块
+
+  - id: cfg-20
+    name: Profile 区块说明配置与运行时隔离关系
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: settings-profile-scope
+    assertions:
+      - Profile 区块显示当前解析目标
+      - 显示数据目录与配置文件路径
+      - 导入配置路径模式展示路径输入框
+      - 页面说明仅复制配置，不复制技能、插件、日志等运行时状态

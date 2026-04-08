@@ -80,3 +80,38 @@ cases:
       - 对话框文案包含待删除的相对路径
       - 显示取消与确认按钮
       - 点击取消后文件仍保留在列表中
+
+  - id: mem-05
+    name: 慢加载时显示区块级 loading 指示
+    preconditions:
+      - 后端响应被人工限速，或首次加载存在可感知延迟
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/memory"
+      - action: wait
+        duration: 300ms
+      - action: screenshot
+        name: memory-loading
+    assertions:
+      - 页面标题与基础布局先渲染
+      - 概览卡、搜索区、文件列表区各自显示 loading 状态
+      - loading 态不阻塞整页显示
+      - 数据返回后各区块分别替换为真实内容
+
+  - id: mem-06
+    name: 搜索无结果与 FTS 降级提示
+    steps:
+      - action: fill
+        target: input[placeholder*="搜索记忆"]
+        value: "unlikely-memory-query-fts-test"
+      - action: click
+        target: text("搜索")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: memory-search-empty
+    assertions:
+      - 页面不会出现崩溃或裸露堆栈
+      - 如有结果：结果列表正常渲染并可查看来源文件
+      - 如无结果：显示明确空状态
+      - 如底层环境缺少 FTS5：显示可理解的降级说明或帮助文案，而非生硬技术报错

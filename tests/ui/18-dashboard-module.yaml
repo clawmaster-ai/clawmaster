@@ -77,12 +77,12 @@ cases:
         name: dashboard-actions
     assertions:
       - 显示"快捷操作"标题
-      - "打开控制台"按钮（外部链接，href 由 buildGatewayUrl 生成，非硬编码 localhost:18789）
-      - "查看日志"按钮（链接到 /gateway，非不存在的 /logs）
-      - "编辑配置"按钮（链接到 /config）
-      - "打开控制台"有 ExternalLink 图标
-      - "查看日志"有 ScrollText 图标
-      - "编辑配置"有 Settings2 图标
+      - '“打开控制台”按钮（外部链接，href 由 buildGatewayUrl 生成，非硬编码 localhost:18789）'
+      - '“查看日志”按钮（链接到 /gateway，非不存在的 /logs）'
+      - '“编辑配置”按钮（链接到 /config）'
+      - '“打开控制台”有 ExternalLink 图标'
+      - '“查看日志”有 ScrollText 图标'
+      - '“编辑配置”有 Settings2 图标'
       - 页面不存在 href="/logs" 的链接
 
   - id: dash-06
