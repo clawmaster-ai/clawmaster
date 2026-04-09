@@ -34,6 +34,7 @@ import {
 } from '@/shared/adapters/ollama'
 import { changeLanguage } from '@/i18n'
 import { buildGatewayUrl } from '@/shared/gatewayUrl'
+import { isWindowsHostPlatform } from '@/shared/hostPlatform'
 import { getSetupAdapter } from './adapters'
 import {
   CAPABILITIES,
@@ -1065,6 +1066,14 @@ function SetupProfileCard({
           <p className="text-sm text-muted-foreground">{t('setup.profileFallbackDesc')}</p>
         </div>
       </div>
+
+      {isWindowsHostPlatform(systemInfo.runtime?.hostPlatform)
+        && systemInfo.runtime?.wslAvailable
+        && !systemInfo.openclaw.installed && (
+          <div className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+            {t('setup.runtimeWslHint')}
+          </div>
+        )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(14rem,0.8fr)]">
         <div className="space-y-4">
