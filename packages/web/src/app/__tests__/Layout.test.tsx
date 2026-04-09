@@ -38,6 +38,17 @@ function DelayedProfileAnchor() {
   return visible ? <div id="settings-profile">Profile anchor</div> : null
 }
 
+function SlowObserveAnchor() {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setVisible(true), 3_200)
+    return () => window.clearTimeout(handle)
+  }, [])
+
+  return visible ? <div id="observe-runtime">Observe anchor</div> : null
+}
+
 function renderLayout(initialPath = '/settings', children?: React.ReactNode) {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
@@ -194,6 +205,17 @@ describe('Layout', () => {
     })
   })
 
+  it('does not open the command palette from focused text inputs', async () => {
+    renderLayout('/settings', <input aria-label="Config input" />)
+
+    const input = screen.getByRole('textbox', { name: 'Config input' })
+    input.focus()
+
+    fireEvent.keyDown(input, { key: 'k', ctrlKey: true })
+
+    expect(screen.queryByRole('dialog', { name: '命令面板' })).not.toBeInTheDocument()
+  })
+
   it('uses cmd+k on apple clients without stealing ctrl+k', async () => {
     Object.defineProperty(window.navigator, 'platform', {
       configurable: true,
@@ -229,6 +251,16 @@ describe('Layout', () => {
       expect(scrollIntoViewMock).toHaveBeenCalled()
     }, { timeout: 1000 })
   })
+
+  it('keeps waiting for section anchors that mount after several seconds', async () => {
+    renderLayout('/observe#observe-runtime', <SlowObserveAnchor />)
+
+    expect(scrollIntoViewMock).not.toHaveBeenCalled()
+
+    await waitFor(() => {
+      expect(scrollIntoViewMock).toHaveBeenCalled()
+    }, { timeout: 4_500 })
+  }, 7_000)
 
   it('does not expose windows-only runtime jump before backend host detection resolves', async () => {
     mockDetectSystem.mockImplementation(() => new Promise(() => {}))

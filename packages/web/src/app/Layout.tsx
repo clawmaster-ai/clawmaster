@@ -67,6 +67,14 @@ type UpdateBannerState =
 
 const COMMAND_HINT_DISMISSED_KEY = 'clawmaster-command-palette-hint-dismissed'
 
+function isEditableEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+
+  const editableRoot = target.closest('input, textarea, select, [contenteditable="true"]')
+  return Boolean(editableRoot)
+}
+
 function normalizeVersion(version: string | undefined): string {
   const raw = String(version ?? '').replace(/^v/i, '').trim()
   const match = raw.match(/\d+\.\d+\.\d+[\w.-]*/)
@@ -199,26 +207,27 @@ export default function Layout({ children }: LayoutProps) {
   useEffect(() => {
     if (!location.hash) return undefined
     let cancelled = false
-    let attempts = 0
-    let handle: number | undefined
+    let observer: MutationObserver | undefined
 
-    function attemptScroll() {
-      if (cancelled) return
-      if (scrollToHashTarget(location.hash)) return
-
-      attempts += 1
-      if (attempts >= 60) return
-
-      handle = window.setTimeout(attemptScroll, 50)
+    function tryScroll() {
+      if (cancelled) return true
+      const found = scrollToHashTarget(location.hash)
+      if (found) {
+        observer?.disconnect()
+      }
+      return found
     }
 
-    attemptScroll()
+    if (tryScroll()) return undefined
+
+    observer = new MutationObserver(() => {
+      void tryScroll()
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
 
     return () => {
       cancelled = true
-      if (typeof handle === 'number') {
-        window.clearTimeout(handle)
-      }
+      observer?.disconnect()
     }
   }, [location.hash, location.pathname, scrollToHashTarget])
 
@@ -258,6 +267,7 @@ export default function Layout({ children }: LayoutProps) {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key.toLowerCase() !== 'k') return
       if (isAppleClientPlatform(clientPlatform) ? !event.metaKey : !event.ctrlKey) return
+      if (isEditableEventTarget(event.target)) return
       event.preventDefault()
       openCommandPalette()
     }
