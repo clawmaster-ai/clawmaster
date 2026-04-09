@@ -159,6 +159,17 @@ jobs:
           "DISTRO_NAME=Ubuntu-24.04" >> $env:GITHUB_ENV
           "WSL_SMOKE_MARKER=WSL-SMOKE-MARKER" >> $env:GITHUB_ENV
 
+      - name: Ensure WSL is installed on runner
+        shell: pwsh
+        run: |
+          $statusOutput = & wsl.exe --status 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $statusOutput -match 'not installed') {
+            Write-Host 'Installing WSL on runner before distribution bootstrap'
+            & wsl.exe --install --no-distribution
+          } else {
+            Write-Host 'WSL already available on runner'
+          }
+
       - name: Install Ubuntu WSL2
         uses: Vampire/setup-wsl@v6
         with:
