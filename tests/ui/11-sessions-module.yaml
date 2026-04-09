@@ -1,0 +1,139 @@
+suite: sessions-module
+name: 会话管理功能
+description: |
+  验证会话管理页面的完整功能：
+  会话列表、Agent 过滤、Token 使用条、展开对话历史、清理会话
+
+preconditions:
+  - dev server 已启动（{BASE_URL} 可访问）
+  - 已进入主界面
+  - OpenClaw 网关有过使用记录（至少 1 个会话）
+
+viewport: { width: 1280, height: 800 }
+
+cases:
+  - id: ses-01
+    name: 会话列表渲染
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/sessions"
+      - action: wait
+        duration: 3000ms
+      - action: screenshot
+        name: sessions-list
+    assertions:
+      - 页面标题"会话管理"
+      - 显示刷新按钮和"清理"按钮
+      - 显示 Agent 过滤下拉框
+      - 显示会话数量统计（"X / Y sessions"格式）
+      - 每个会话卡片包含：session key（monospace）、模型名、Agent ID
+      - 每个会话卡片包含 Token 使用进度条
+      - 活跃会话显示绿色脉冲圆点
+
+  - id: ses-02
+    name: Agent 过滤功能
+    preconditions:
+      - 存在多个 Agent 的会话
+    steps:
+      - action: select
+        target: Agent 过滤下拉框
+        value: 选择特定 Agent
+      - action: wait
+        duration: 1000ms
+      - action: screenshot
+        name: sessions-filtered
+    assertions:
+      - 下拉框显示可选的 Agent 列表
+      - 选择后仅显示该 Agent 的会话
+      - 会话数量统计更新（"X / Y"中 X 变小）
+      - 选择"全部 Agent"恢复完整列表
+
+  - id: ses-03
+    name: Token 使用进度条颜色
+    steps:
+      - action: observe
+        target: Token 使用条
+    assertions:
+      - 使用率 <70% 的进度条为蓝色（bg-blue-500）
+      - 使用率 70%-90% 的进度条为黄色（bg-yellow-500）
+      - 使用率 >90% 的进度条为红色（bg-red-500）
+      - 进度条右侧显示"已用 / 上下文"token 数和百分比
+      - 底部显示"Xin / Yout"输入输出 token 统计
+      - 底部右侧显示相对时间（"Xm ago"格式）
+
+  - id: ses-04
+    name: 展开对话历史
+    steps:
+      - action: click
+        target: 第一个会话卡片
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: sessions-expanded
+    assertions:
+      - 卡片展开（border-primary/40 高亮）
+      - 显示加载指示器后出现对话历史
+      - 汇总行显示：预估费用（$X.XXXX）、轮次数、持续时间
+      - 如有 compaction：显示黄色警告标签
+      - 轮次时间线中每轮显示：序号圆圈、时间戳、token 增量、费用
+      - 工具调用显示为灰色标签（font-mono）
+      - 再次点击可折叠
+      - 展开使用 useEffect 获取详情（非 useState 副作用），仅触发一次请求
+
+  - id: ses-05
+    name: 清理会话
+    steps:
+      - action: click
+        target: text("清理")
+      - action: observe
+        duration: 3000ms
+    assertions:
+      - 按钮变为"清理中..."（disabled 状态）
+      - 清理完成后列表刷新
+      - 会话数量可能减少（旧会话被清理）
+      - 按钮恢复为"清理"可用状态
+
+  - id: ses-06
+    name: 空状态显示
+    preconditions:
+      - 无任何会话（或已全部清理）
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/sessions"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: sessions-empty
+    assertions:
+      - 显示 MessageCircle 图标（灰色、半透明）
+      - 显示"暂无会话"空状态提示文字
+      - 不显示会话卡片
+      - 刷新按钮和过滤器仍然可用
+
+  # === Issue #4 修复验证 ===
+
+  - id: ses-07
+    name: useAdapterCall 不因 inline fetcher 触发无限循环
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/sessions"
+      - action: wait
+        duration: 6000ms
+      - action: screenshot
+        name: sessions-stability
+    assertions:
+      - 页面在初始加载后稳定，不持续闪烁或重新加载
+      - 无 "loading → data → loading → data" 的状态抖动
+      - 控制台无 "Maximum update depth exceeded" 警告
+      - 5 秒内网络请求数量合理（≤3 次，含初始 + 轮询）
+
+  - id: ses-08
+    name: 轮询 interval 不因 refetch 重建导致泄漏
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/sessions"
+      - action: wait
+        duration: 60000ms
+    assertions:
+      - 60 秒内 /api/exec 请求数量符合 30 秒轮询预期（约 2-3 次）
+      - 不出现请求数量随时间线性增长的情况

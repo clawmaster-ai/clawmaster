@@ -1,18 +1,18 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "OpenClawManager",
-  "version": "0.2.3",
+  "productName": "ClawMaster",
+  "version": "0.1.0",
   "identifier": "ai.openclaw.manager",
   "build": {
     "frontendDist": "../packages/web/dist",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:3000",
     "beforeDevCommand": "npm run dev --workspace=@openclaw-manager/web",
     "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
       {
-        "title": "龙虾管家 - OpenClaw Manager",
+        "title": "ClawMaster",
         "width": 800,
         "height": 600,
         "resizable": true,

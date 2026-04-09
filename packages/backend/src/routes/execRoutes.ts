@@ -1,0 +1,143 @@
+import type { Express } from 'express'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import { existsSync } from 'fs'
+import { homedir, tmpdir, platform } from 'os'
+import path from 'path'
+import { execOpenclaw } from '../execOpenclaw.js'
+import { runClawprobeCommand } from '../execClawprobe.js'
+
+const execFileAsync = promisify(execFile)
+const IS_WINDOWS = platform() === 'win32'
+const INVALID_REQUEST_RE = /Missing cmd parameter|Args must be an array of strings|Command (?:path is not allowed|is not allowed)/
+const ALLOWED_COMMANDS = new Set([
+  'bash',
+  'clawhub',
+  'clawprobe',
+  'curl',
+  'mkdir',
+  'nohup',
+  'node',
+  'npm',
+  'ollama',
+  'openclaw',
+])
+
+function resolveShell(): string {
+  if (!IS_WINDOWS) return 'bash'
+  const candidates = [
+    path.join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'Git', 'bin', 'bash.exe'),
+    path.join(process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)', 'Git', 'bin', 'bash.exe'),
+    path.join(process.env['LOCALAPPDATA'] ?? '', 'Programs', 'Git', 'bin', 'bash.exe'),
+  ]
+  for (const p of candidates) {
+    if (existsSync(p)) return p
+  }
+  return 'bash'
+}
+
+const RESOLVED_SHELL = resolveShell()
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function expandHomeToken(token: string): string {
+  if (token.startsWith('~/')) {
+    return path.join(homedir(), token.slice(2))
+  }
+  return token
+}
+
+function normalizeExecRequest(cmd: string, args: unknown): { cmd: string; args: string[] } {
+  const trimmedCmd = cmd.trim()
+  if (!trimmedCmd) {
+    throw new Error('Missing cmd parameter')
+  }
+  if (trimmedCmd.includes('/') || trimmedCmd.includes('\\')) {
+    throw new Error(`Command path is not allowed: ${trimmedCmd}`)
+  }
+  if (!ALLOWED_COMMANDS.has(trimmedCmd)) {
+    throw new Error(`Command is not allowed: ${trimmedCmd}`)
+  }
+  if (args !== undefined && !isStringArray(args)) {
+    throw new Error('Args must be an array of strings')
+  }
+  const normalizedArgs = (args ?? []).map((arg) => expandHomeToken(arg))
+  const normalizedCmd = trimmedCmd === 'bash' && IS_WINDOWS ? RESOLVED_SHELL : trimmedCmd
+  return {
+    cmd: normalizedCmd,
+    args: normalizedArgs,
+  }
+}
+
+/**
+ * Generic exec endpoint — used as a fallback for CLI commands that don't yet
+ * have dedicated backend routes.
+ *
+ * NOTE: On Windows, ClawMaster (like OpenClaw) expects WSL2 as the runtime
+ * environment. The `shell: false` flag works correctly inside WSL2 since the
+ * backend runs in a Linux environment. Native Windows `.cmd/.bat` wrappers
+ * are NOT supported without WSL2.
+ */
+export function registerExecRoutes(app: Express): void {
+  app.get('/api/shell-info', (_req, res) => {
+    res.json({
+      shell: RESOLVED_SHELL,
+      tempDir: tmpdir(),
+      isWindows: IS_WINDOWS,
+      gitBashAvailable: IS_WINDOWS ? existsSync(RESOLVED_SHELL) : true,
+    })
+  })
+
+  app.post('/api/exec', async (req, res) => {
+    const body = req.body ?? {}
+    const { cmd, args } = body
+    if (!cmd || typeof cmd !== 'string') {
+      res.status(400).json({ error: 'Missing cmd parameter' })
+      return
+    }
+    try {
+      const normalized = normalizeExecRequest(cmd, args)
+      if (normalized.cmd === 'openclaw') {
+        const result = await execOpenclaw(normalized.args)
+        res.json({
+          ok: result.code === 0,
+          stdout: result.stdout.trim(),
+          stderr: result.stderr.trim(),
+          exitCode: result.code,
+          ...(result.code === 0 ? {} : { error: result.stderr.trim() || result.stdout.trim() }),
+        })
+        return
+      }
+      if (normalized.cmd === 'clawprobe') {
+        const result = await runClawprobeCommand(normalized.args)
+        res.json({
+          ok: result.ok,
+          stdout: result.stdout.trim(),
+          stderr: result.stderr.trim(),
+          exitCode: result.code,
+          ...(result.ok ? {} : { error: result.stderr.trim() || result.stdout.trim() }),
+        })
+        return
+      }
+      const { stdout, stderr } = await execFileAsync(normalized.cmd, normalized.args, { shell: false })
+      res.json({ ok: true, stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0 })
+    } catch (err: any) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (INVALID_REQUEST_RE.test(message)) {
+        res.status(400).json({ error: message, stdout: '', stderr: err?.stderr || '' })
+        return
+      }
+
+      const exitCode = typeof err?.code === 'number' ? err.code : err?.code === 'ENOENT' ? 127 : 1
+      res.json({
+        ok: false,
+        error: message,
+        stdout: (err?.stdout || '').trim(),
+        stderr: (err?.stderr || '').trim(),
+        exitCode,
+      })
+    }
+  })
+}

@@ -1,0 +1,176 @@
+suite: channels-module
+name: 通道管理功能
+description: |
+  验证通道管理页面的完整功能：
+  已配置通道列表、添加新通道、编辑器模态框、验证连接、启用/禁用、账号管理
+
+preconditions:
+  - dev server 已启动（{BASE_URL} 可访问）
+  - 已进入主界面
+
+viewport: { width: 1280, height: 800 }
+
+cases:
+  - id: ch-01
+    name: 已配置通道列表
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/channels"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: channels-list
+    assertions:
+      - 页面标题"通道管理"
+      - 显示"添加通道"按钮
+      - 已配置的通道类型显示为卡片
+      - 每张卡片包含：emoji 图标 + 通道类型名称
+      - 启用的通道显示绿色状态圆点
+      - 禁用的通道显示灰色状态圆点
+      - 每张卡片显示"设置""启用/禁用""移除"按钮
+      - 账号列表嵌套显示在通道卡片下方
+
+  - id: ch-02
+    name: 添加新通道
+    steps:
+      - action: click
+        target: text("添加通道")
+      - action: wait
+        duration: 500ms
+      - action: screenshot
+        name: channels-add-modal
+    assertions:
+      - 弹出通道类型选择界面
+      - 显示未配置的通道类型列表
+      - 每种类型显示 emoji + 名称 + 描述
+      - 支持的类型包含：飞书、Telegram、Discord、QQ、钉钉 等
+      - 点击类型后进入配置编辑器
+
+  - id: ch-03
+    name: 通道配置编辑器
+    steps:
+      - action: click
+        target: 某通道类型的"设置"按钮
+      - action: wait
+        duration: 500ms
+      - action: screenshot
+        name: channels-editor
+    assertions:
+      - 显示模态框编辑器
+      - 表单字段包含：通道状态（启用/禁用下拉框）
+      - 表单字段包含：账号 ID 输入框
+      - 表单字段包含：账号名称输入框
+      - 表单字段包含：账号状态（启用/禁用下拉框）
+      - 表单字段包含：绑定 Agent 下拉框
+      - 根据通道类型显示特有字段（如 Telegram 的 bot token）
+      - 显示配置指南（可展开的 details 区域）
+      - 显示"验证连接""保存""取消"按钮
+
+  - id: ch-04
+    name: 验证连接功能（Web 模式）
+    steps:
+      - action: click
+        target: text("验证连接")
+      - action: observe
+        duration: 5000ms
+    assertions:
+      - Web 模式下显示"验证连接"按钮
+      - 按钮显示加载状态
+      - 验证成功：显示绿色成功反馈
+      - 验证失败：显示红色失败反馈 + 详情
+      - 验证结果不影响保存按钮状态
+
+  - id: ch-04b
+    name: Tauri 模式隐藏验证连接按钮
+    steps:
+      - action: observe
+        target: 通道编辑器
+    assertions:
+      - Tauri 模式下（window.__TAURI__ 存在）不渲染"验证连接"按钮
+      - 因为后端 adapter 返回 "tauriVerifyUnsupported"
+
+  - id: ch-05
+    name: 启用/禁用通道
+    preconditions:
+      - 已配置至少一个通道
+    steps:
+      - action: click
+        target: 某通道的启用/禁用按钮
+      - action: wait
+        duration: 1500ms
+    assertions:
+      - 状态圆点颜色切换（绿⇄灰）
+      - 通道状态文字更新
+
+  - id: ch-06
+    name: 账号管理
+    preconditions:
+      - 已配置至少一个通道
+    steps:
+      - action: observe
+        target: 账号列表区域
+      - action: screenshot
+        name: channels-accounts
+    assertions:
+      - 显示该通道下的账号列表（左侧竖线缩进）
+      - 每个账号显示：状态圆点 + 名称/ID
+      - 如有 group disabled 策略：显示灰色标签
+      - 每个账号有"编辑"和"移除"按钮
+
+  - id: ch-07
+    name: 移除通道
+    steps:
+      - action: click
+        target: 某通道的"移除"按钮
+      - action: observe
+        duration: 1000ms
+    assertions:
+      - 弹出确认对话框
+      - 确认后该通道从列表中移除
+      - 取消则保持原状态
+      - 移除后该通道类型出现在"添加新通道"区域
+
+  - id: ch-08
+    name: 推荐入口分组与重点通道优先
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/channels"
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: channels-featured-groups
+    assertions:
+      - 页面顶部显示"推荐入口"
+      - 显示"国内团队协作"与"全球工作区与社区"两个分组
+      - 飞书、微信、Discord、Slack 被优先突出展示
+      - 每张推荐卡提供"开始配置"入口
+
+  - id: ch-09
+    name: 微信安装优先的扫码接入流程
+    steps:
+      - action: click
+        target: 微信推荐卡的"开始配置"按钮
+      - action: wait
+        duration: 800ms
+      - action: screenshot
+        name: channels-wechat-qr-flow
+    assertions:
+      - 不显示通用 token 表单
+      - 先显示微信插件安装状态
+      - 显示微信运行时依赖包名
+      - 显示扫码登录引导
+      - 安装完成后进入扫码等待态
+
+  - id: ch-10
+    name: 上下文排障日志弹层
+    steps:
+      - action: click
+        target: text("查看最近日志")
+      - action: wait
+        duration: 800ms
+      - action: screenshot
+        name: channels-contextual-logs
+    assertions:
+      - 打开"通道排障日志"弹层
+      - 日志内容聚焦当前通道相关问题
+      - 弹层支持关闭返回当前页面

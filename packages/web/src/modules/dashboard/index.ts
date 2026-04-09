@@ -1,0 +1,14 @@
+import { lazy } from 'react'
+import type { ClawModule } from '@/types/module'
+
+export default {
+  id: 'dashboard',
+  nameKey: 'nav.dashboard',
+  icon: 'layout-dashboard',
+  group: 'main',
+  navOrder: 10,
+  route: {
+    path: '/',
+    LazyPage: lazy(() => import('./DashboardPage')),
+  },
+} satisfies ClawModule

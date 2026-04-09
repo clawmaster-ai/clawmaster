@@ -1,0 +1,124 @@
+suite: agents-module
+name: 代理管理功能
+description: |
+  验证代理管理页面的完整功能：
+  默认配置卡片、代理列表、路由绑定、空状态、main 代理保护
+
+preconditions:
+  - dev server 已启动（{BASE_URL} 可访问）
+  - 已进入主界面
+
+viewport: { width: 1280, height: 800 }
+
+cases:
+  - id: agt-01
+    name: 默认配置卡片
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/agents"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: agents-defaults
+    assertions:
+      - 页面标题"代理管理"
+      - 显示"创建代理"按钮
+      - 默认配置卡片显示 3 列网格
+      - 显示"默认模型"及其值（或"-"）
+      - 显示"工作空间"及其路径（monospace 字体）
+      - 显示"最大并发"及其数值
+
+  - id: agt-02
+    name: 代理列表
+    preconditions:
+      - 至少配置了一个代理
+    steps:
+      - action: observe
+        target: 代理列表区域
+      - action: screenshot
+        name: agents-list
+    assertions:
+      - 每个代理显示为卡片
+      - 卡片左侧显示头像（首字母圆形标识，bg-primary/10）
+      - 显示代理名称或 ID
+      - 显示模型标签（灰色 bg-muted 小标签）
+      - 如有工作空间路径则显示（monospace 字体）
+      - 如有 agentDir 则显示配置路径
+      - 非 main 代理显示"删除"按钮（已接线，点击弹出确认对话框）
+
+  - id: agt-03
+    name: 路由绑定显示
+    steps:
+      - action: scroll_to
+        target: 路由绑定区域
+      - action: screenshot
+        name: agents-bindings
+    assertions:
+      - 显示"路由绑定"标题和描述
+      - 如有绑定：显示 channel → agentId 映射列表
+      - channel 名称以 capitalize 格式显示（bg-muted 标签）
+      - 箭头符号"→"连接 channel 和 agent
+      - 如无绑定：显示"暂无路由绑定"提示
+      - 页面底部显示编辑配置提示
+
+  - id: agt-04
+    name: 空状态
+    preconditions:
+      - 未配置任何代理
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/agents"
+      - action: wait
+        duration: 2000ms
+    assertions:
+      - 默认配置卡片仍然显示（defaults 区域）
+      - 代理列表区域显示空状态卡片
+      - 空状态文字"暂无代理"
+      - '“创建代理”按钮仍然可用'
+
+  - id: agt-05
+    name: main 代理删除保护
+    preconditions:
+      - 存在 id 为"main"的代理
+    steps:
+      - action: observe
+        target: main 代理卡片
+    assertions:
+      - main 代理卡片不显示"删除"按钮（agent.id !== 'main' 条件）
+      - 其他代理（非 main）显示"删除"按钮
+
+  # === Issue #4 修复验证 ===
+
+  - id: agt-06
+    name: '“创建代理”按钮已接线'
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/agents"
+      - action: wait
+        duration: 2000ms
+    assertions:
+      - '“+ 创建代理”按钮有 click handler（非死按钮）'
+      - 点击后弹出 window.prompt 输入代理 ID
+      - 取消后不创建代理
+
+  - id: agt-07
+    name: '“删除”按钮已接线'
+    preconditions:
+      - 存在非 main 代理
+    steps:
+      - action: observe
+        target: 非 main 代理卡片的删除按钮
+    assertions:
+      - 删除按钮有 click handler
+      - 点击后弹出 window.confirm 确认对话框
+      - 取消后不删除代理
+
+  - id: agt-08
+    name: 无死"编辑"按钮
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/agents"
+      - action: wait
+        duration: 2000ms
+    assertions:
+      - 页面不存在无 handler 的"编辑"按钮

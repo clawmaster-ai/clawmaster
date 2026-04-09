@@ -1,0 +1,293 @@
+suite: config-and-security
+name: 配置编辑 + 安全功能
+description: |
+  验证配置页面的可写能力和安全相关功能：
+  1. JSON 编辑器
+  2. 配置保存/导出
+  3. API Key 脱敏
+  4. 主题切换
+  5. Settings 中的 Profile 与确认对话框
+
+preconditions:
+  - dev server 已启动
+  - 已进入主界面
+
+viewport: { width: 1280, height: 800 }
+
+cases:
+  # === 配置编辑 ===
+
+  - id: cfg-01
+    name: JSON 编辑器模式
+    steps:
+      - action: navigate_to
+        target: 配置页面
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: cfg-json-mode
+    assertions:
+      - 显示格式化的 JSON 文本
+      - textarea 可编辑
+      - 显示"保存""刷新""导出"三个按钮
+
+  - id: cfg-02
+    name: JSON 内容编辑
+    steps:
+      - action: clear_and_fill
+        target: JSON textarea
+        value: |
+          {
+            "gateway": { "port": 18800 }
+          }
+      - action: screenshot
+        name: cfg-editing
+    assertions:
+      - textarea 内容更新
+      - 内容保持可编辑
+
+  - id: cfg-03
+    name: JSON 语法校验
+    steps:
+      - action: clear_and_fill
+        target: JSON textarea
+        value: "{ invalid json"
+    assertions:
+      - 显示红色错误提示"JSON 语法错误: ..."
+      - '“保存”按钮置灰（disabled）'
+
+  - id: cfg-04
+    name: 配置保存（原子 saveFullConfig）
+    steps:
+      - action: click
+        target: text("保存")
+      - action: wait
+        duration: 1000ms
+    assertions:
+      - 按钮变为"保存中..."
+      - 保存成功显示绿色"保存成功"提示
+      - 保存失败显示红色错误信息
+      - 提示 2 秒后自动消失
+      - 保存使用 saveFullConfigResult（原子整文件写入），非逐 key 循环 setConfig
+
+  - id: cfg-05
+    name: 配置导出
+    steps:
+      - action: click
+        target: text("导出")
+    assertions:
+      - 触发文件下载
+      - 下载文件名为"openclaw-config.json"
+      - 文件内容为当前 JSON 配置
+
+  # === API Key 脱敏 ===
+
+  - id: sec-01
+    name: API Key 脱敏显示
+    preconditions:
+      - OpenClaw 配置中有模型提供商配置（含 apiKey 字段）
+    steps:
+      - action: navigate_to
+        target: 模型页面
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: sec-api-key-masked
+    assertions:
+      - API Key 显示为脱敏格式：前 3 位 + 省略号 + 后 4 位（如"sk-•••••1234"）
+      - 旁边有眼睛图标（👁️）和复制图标（📋）
+      - 不显示完整 Key
+
+  - id: sec-02
+    name: API Key 显示切换
+    steps:
+      - action: click
+        target: 眼睛图标（👁️）
+      - action: screenshot
+        name: sec-api-key-visible
+    assertions:
+      - 完整 API Key 显示
+      - 图标变为 🙈
+      - 再次点击恢复脱敏
+
+  # === 主题切换 ===
+
+  - id: sec-03
+    name: 主题切换
+    steps:
+      - action: navigate_to
+        target: 设置页面
+      - action: click
+        target: '“深色”主题 radio'
+      - action: screenshot
+        name: sec-theme-dark
+      - action: click
+        target: '“浅色”主题 radio'
+      - action: screenshot
+        name: sec-theme-light
+    assertions:
+      - 选中"深色"后页面背景变暗，文字变浅
+      - 选中"浅色"后页面恢复亮色
+      - <html> 元素的 class 包含 "dark" 或 "light"
+      - 刷新后主题保持（localStorage 持久化）
+
+  - id: cfg-11
+    name: 更新区块渲染
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 2000ms
+      - action: scroll_to
+        target: 更新区块
+      - action: screenshot
+        name: settings-update-section
+    assertions:
+      - 显示更新区块标题
+      - 显示 OpenClaw CLI 当前版本号
+      - 显示检查更新按钮
+
+  - id: cfg-12
+    name: 检查更新显示版本列表
+    steps:
+      - action: click
+        target: text("检查更新")
+      - action: wait
+        duration: 5000ms
+        reason: 需要从 npm registry 获取版本列表
+      - action: screenshot
+        name: settings-update-check
+    assertions:
+      - 显示更新通道选择器（Stable/Beta/Dev）
+      - 显示目标版本下拉框（含多个版本号）
+      - 显示 dist-tags 信息（latest、beta 等标签）
+      - 如有新版本：显示更新按钮
+      - 如已是最新：显示绿色已是最新版本提示
+
+  - id: cfg-13
+    name: 更新通道切换
+    preconditions:
+      - 已点击检查更新且版本列表已加载
+    steps:
+      - action: select
+        target: 更新通道下拉框
+        value: "Beta"
+      - action: wait
+        duration: 500ms
+      - action: screenshot
+        name: settings-update-beta
+    assertions:
+      - 通道切换为 Beta
+      - 目标版本更新为 beta dist-tag 对应的版本
+      - 如 beta 版本与当前版本不同：显示更新/降级按钮
+
+  # === Issue #4 修复验证：Settings 死按钮 ===
+
+  - id: cfg-14
+    name: '“重置配置”按钮已接线'
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: settings-danger-wired
+    assertions:
+      - 危险操作区显示"重置配置"按钮
+      - 按钮有 click handler（非死按钮）
+      - 点击后弹出应用内确认对话框（非原生 window.confirm）
+      - 确认对话框包含取消与确认操作
+      - 取消后不执行重置
+
+  - id: cfg-15
+    name: '“卸载 OpenClaw”按钮已接线'
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 2000ms
+    assertions:
+      - 危险操作区显示"卸载 OpenClaw"按钮
+      - 按钮有 click handler（非死按钮）
+      - 点击后弹出应用内确认对话框（非原生 window.confirm）
+      - 确认对话框包含取消与确认操作
+
+  - id: cfg-16
+    name: Web 模式隐藏 Tauri 专用系统设置
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 2000ms
+    assertions:
+      - Web 模式下不显示"系统"设置区块
+      - 不显示"开机自启"复选框
+      - 不显示"显示托盘图标"复选框
+      - 不显示"最小化到托盘"复选框
+      - 页面无 defaultChecked 且无 onChange 的复选框
+
+  - id: cfg-17
+    name: Settings 配置档切换与命名配置校验
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: settings-profile-section
+    assertions:
+      - 显示"OpenClaw 配置档"区块
+      - 提供 Default、Dev、Named 三种模式
+      - 切换到 Named 后显示配置档名称输入框
+      - 未填写名称直接保存时显示校验错误
+      - 选择"导入配置路径"后显示配置文件路径输入框
+      - 右侧显示当前解析出的配置目标、数据目录与 config path
+
+  - id: cfg-18
+    name: Settings 诊断入口
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 1500ms
+      - action: click
+        target: text("查看最近日志")
+      - action: wait
+        duration: 800ms
+      - action: screenshot
+        name: settings-diagnostics-sheet
+    assertions:
+      - 显示"诊断与排障"区块
+      - 点击后打开最近日志弹层
+      - 弹层可关闭
+      - 日志内容保留完整系统流，不只限某个模块
+
+  - id: cfg-19
+    name: 全局更新横幅与设置页联动
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/"
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: settings-update-banner
+    assertions:
+      - 当存在新版本时，页面顶部显示 OpenClaw 更新横幅
+      - 横幅包含目标版本号
+      - 横幅提供"查看更新"入口
+      - 点击后可跳转到设置页更新区块
+
+  - id: cfg-20
+    name: Profile 区块说明配置与运行时隔离关系
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: settings-profile-scope
+    assertions:
+      - Profile 区块显示当前解析目标
+      - 显示数据目录与配置文件路径
+      - 导入配置路径模式展示路径输入框
+      - 页面说明仅复制配置，不复制技能、插件、日志等运行时状态

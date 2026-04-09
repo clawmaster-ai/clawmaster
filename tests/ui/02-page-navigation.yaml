@@ -1,0 +1,258 @@
+suite: page-navigation
+name: 全部页面导航
+description: |
+  验证所有 15 个页面可通过侧边栏导航到达，每个页面：
+  1. 能正常渲染（无白屏、无 JS 错误）
+  2. 侧边栏高亮正确
+  3. 页面标题/内容区有对应文字
+
+preconditions:
+  - dev server 已启动
+  - 已通过安装向导进入主界面（执行 01-setup-wizard 的 setup-05 后）
+
+viewport: { width: 1280, height: 800 }
+
+# 进入主界面的前置步骤
+setup:
+  - action: navigate
+    url: "{BASE_URL}?demo=install"
+  - action: wait
+    duration: 5500ms
+  - action: click
+    target: text("一键安装全部能力")
+    optional: true
+  - action: wait
+    duration: 6500ms
+  - action: click
+    target: text("进入管理大师")
+    optional: true
+  - action: wait
+    duration: 2000ms
+
+cases:
+  - id: nav-01
+    name: 概览页
+    steps:
+      - action: click
+        target: role(link, "概览")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-dashboard
+    assertions:
+      - 侧边栏"概览"项高亮
+      - 内容区标题包含"概览"
+      - 页面包含"费用追踪""记忆管理""技能市场"三张快捷卡片
+      - 页面包含"系统环境""网关状态""通道连接"等区块
+      - 无 JS 错误（无"Cannot read""undefined is not"文字）
+
+  - id: nav-02
+    name: 可观测页
+    steps:
+      - action: click
+        target: role(link, "可观测")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-observe
+    assertions:
+      - 侧边栏"可观测"项高亮
+      - 页面标题"可观测"
+      - 显示 ClawProbe 状态指示（"运行中"或"未启动"）
+      - 显示 ClawProbe 启动/停止按钮
+      - 如果 ClawProbe 未运行：显示"无法获取可观测数据"提示 + 重试按钮
+      - 如果 ClawProbe 运行中：显示费用卡片、图表、会话列表
+
+  - id: nav-03
+    name: 记忆页
+    steps:
+      - action: click
+        target: role(link, "记忆")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-memory
+    assertions:
+      - 侧边栏"记忆"项高亮
+      - 页面标题"记忆管理"
+      - 显示原生记忆概览区块
+      - 显示搜索输入框与搜索按钮
+      - 显示存储文件列表
+
+  - id: nav-04
+    name: 网关页
+    steps:
+      - action: click
+        target: role(link, "网关")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-gateway
+    assertions:
+      - 侧边栏"网关"项高亮
+      - 页面包含"网关管理"标题
+      - 显示状态指示灯（绿色运行中 / 红色已停止）
+      - 显示启动/停止/重启按钮
+      - 显示配置区（端口、绑定模式、认证方式）
+
+  - id: nav-05
+    name: 通道页
+    steps:
+      - action: click
+        target: role(link, "通道")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-channels
+    assertions:
+      - 侧边栏"通道"项高亮
+      - 页面有内容渲染（非白屏）
+
+  - id: nav-06
+    name: 模型页
+    steps:
+      - action: click
+        target: role(link, "模型")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-models
+    assertions:
+      - 侧边栏"模型"项高亮
+      - 页面包含"模型配置"标题
+      - 如有 API Key 配置：显示脱敏格式（sk-••••xxxx）+ 眼睛图标
+
+  - id: nav-07
+    name: 技能页
+    steps:
+      - action: click
+        target: role(link, "技能")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-skills
+    assertions:
+      - 侧边栏"技能"项高亮
+      - 显示重点推荐技能区块
+      - 显示"当前工作区已安装"区块
+      - 显示分类 pill 和已安装技能过滤输入框
+
+  - id: nav-08
+    name: 代理页
+    steps:
+      - action: click
+        target: role(link, "代理")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-agents
+    assertions:
+      - 侧边栏"代理"项高亮
+      - 页面有内容渲染
+
+  - id: nav-09
+    name: 配置页
+    steps:
+      - action: click
+        target: role(link, "配置")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-config
+    assertions:
+      - 侧边栏"配置"项高亮
+      - 显示 JSON 编辑区域
+      - 显示"保存""刷新""导出"按钮
+      - textarea 不是 readOnly（可编辑）
+
+  - id: nav-10
+    name: 文档页
+    steps:
+      - action: click
+        target: role(link, "文档")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-docs
+    assertions:
+      - 侧边栏"文档"项高亮
+      - 页面有内容渲染
+
+  - id: nav-11
+    name: 日志页
+    steps:
+      - action: click
+        target: role(link, "日志")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-logs
+    assertions:
+      - 侧边栏"日志"项高亮
+      - 页面有内容渲染
+
+  - id: nav-12
+    name: 设置页
+    steps:
+      - action: click
+        target: role(link, "设置")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-settings
+    assertions:
+      - 侧边栏"设置"项高亮
+      - 显示"外观"区块（主题选择：跟随系统/浅色/深色）
+      - 显示"系统信息"区块
+      - 显示"关于"区块与版本信息
+      - 主题 radio 按钮可点击切换
+
+  - id: nav-13
+    name: MCP 服务器页
+    steps:
+      - action: click
+        target: role(link, "MCP")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-mcp
+    assertions:
+      - 侧边栏"MCP"项高亮
+      - 页面标题"MCP 服务器"
+      - 显示"已接入服务"区块
+      - 显示"推荐配置"区块
+      - 显示"导入现有配置"与"手动添加服务"区块
+
+  - id: nav-14
+    name: 会话页
+    steps:
+      - action: click
+        target: role(link, "会话")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-sessions
+    assertions:
+      - 侧边栏"会话"项高亮
+      - 页面标题"会话管理"
+      - 显示刷新按钮和清理按钮
+      - 显示 Agent 过滤下拉框
+      - 如有会话：显示会话卡片列表（含 session key、模型、token 使用条）
+      - 如无会话：显示空状态提示
+
+  - id: nav-15
+    name: 插件页
+    steps:
+      - action: click
+        target: role(link, "插件")
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: nav-plugins
+    assertions:
+      - 侧边栏"插件"项高亮
+      - 页面标题"插件管理"
+      - 显示搜索输入框 + 状态过滤下拉框
+      - 显示安装插件输入区域
+      - 如有插件：显示插件表格（名称、状态、版本、描述列）
+      - 如无插件：显示空状态提示

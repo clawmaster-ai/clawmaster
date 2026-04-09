@@ -1,0 +1,205 @@
+suite: dashboard-module
+name: 概览页面功能
+description: |
+  验证概览 Dashboard 页面的完整功能：
+  系统信息、网关状态、通道连接、模型显示、快捷速览、快捷操作
+
+preconditions:
+  - dev server 已启动（{BASE_URL} 可访问）
+  - 已进入主界面
+
+viewport: { width: 1280, height: 800 }
+
+cases:
+  - id: dash-01
+    name: 系统信息卡片
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: dashboard-overview
+    assertions:
+      - 页面标题"概览"
+      - 显示"系统环境"卡片
+      - 3 列网格：Node.js、npm、OpenClaw
+      - 已安装的显示绿色版本号
+      - 未安装的显示红色"未安装"
+      - 无 JS 错误（无"Cannot read""undefined"文字）
+
+  - id: dash-02
+    name: 网关状态卡片
+    steps:
+      - action: observe
+        target: 网关状态区域
+    assertions:
+      - 显示"网关状态"标题
+      - 显示状态指示灯（绿色运行中 / 红色已停止）
+      - 显示端口号
+      - 显示绑定地址
+      - 显示认证方式
+      - 显示"管理"按钮（链接到 /gateway）
+
+  - id: dash-03
+    name: 通道连接卡片
+    steps:
+      - action: observe
+        target: 通道连接区域
+    assertions:
+      - 显示"通道连接"标题
+      - 如有通道：每个通道显示状态圆点 + 名称 + 账号数
+      - 启用的通道显示绿色圆点
+      - 禁用的通道显示灰色圆点
+      - 如无通道：显示"暂无通道配置"
+      - 显示"管理通道"按钮（链接到 /channels）
+
+  - id: dash-04
+    name: 六大核心速览
+    steps:
+      - action: observe
+        target: 核心速览网格
+      - action: screenshot
+        name: dashboard-quicklinks
+    assertions:
+      - 3 列卡片网格
+      - 显示"费用追踪"卡片（BarChart3 图标 + 描述，链接到 /observe）
+      - 显示"记忆管理"卡片（Brain 图标 + 描述，链接到 /memory）
+      - 显示"技能市场"卡片（Zap 图标 + 描述，链接到 /skills）
+      - 每张卡片 hover 时 border 变色
+
+  - id: dash-05
+    name: 快捷操作区域
+    steps:
+      - action: scroll_to
+        target: 快捷操作区域
+      - action: screenshot
+        name: dashboard-actions
+    assertions:
+      - 显示"快捷操作"标题
+      - '“打开控制台”按钮（外部链接，href 由 buildGatewayUrl 生成，非硬编码 localhost:18789）'
+      - '“查看日志”按钮（链接到 /gateway，非不存在的 /logs）'
+      - '“编辑配置”按钮（链接到 /config）'
+      - '“打开控制台”有 ExternalLink 图标'
+      - '“查看日志”有 ScrollText 图标'
+      - '“编辑配置”有 Settings2 图标'
+      - 页面不存在 href="/logs" 的链接
+
+  - id: dash-06
+    name: 当前模型与代理卡片
+    steps:
+      - action: observe
+        target: 当前模型和代理区域
+    assertions:
+      - 显示"当前模型"卡片
+      - 模型名称以大号字体显示
+      - 显示工作空间路径
+      - 显示"配置模型"按钮（链接到 /models）
+      - 显示"代理"卡片
+      - 显示代理数量统计
+      - 最多显示前 3 个代理名称
+      - 显示"管理代理"按钮（链接到 /agents）
+
+  # === Issue #4 修复验证 ===
+
+  - id: dash-07
+    name: 页脚网关状态反映真实运行时（非硬编码）
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/"
+      - action: wait
+        duration: 2500ms
+      - action: screenshot
+        name: dashboard-footer-status
+    assertions:
+      - 页脚不包含硬编码版本 "v2026.3.8"
+      - 页脚显示已翻译的网关状态（"Gateway 已停止"或"Gateway 运行中"）
+      - 页脚不显示 i18n raw key（如 "layout.status.gatewayStopped"）
+      - 页脚状态指示灯颜色与真实状态一致（红色=停止，绿色=运行）
+      - 如网关运行中，页脚额外显示端口号
+
+  - id: dash-08
+    name: 所有页面页脚一致性
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/gateway"
+      - action: wait
+        duration: 1500ms
+      - action: navigate
+        url: "{BASE_URL}/settings"
+      - action: wait
+        duration: 1500ms
+      - action: navigate
+        url: "{BASE_URL}/agents"
+      - action: wait
+        duration: 1500ms
+      - action: screenshot
+        name: dashboard-footer-xpage
+    assertions:
+      - 每个页面的 footer 都显示相同的网关翻译状态
+      - footer 不出现 i18n raw key
+      - footer 不显示硬编码版本号
+
+  - id: dash-09
+    name: 推荐任务流卡片显示实时就绪状态
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/"
+      - action: wait
+        duration: 2500ms
+      - action: observe
+        target: 推荐任务流区域
+      - action: screenshot
+        name: dashboard-task-flow
+    assertions:
+      - 显示"推荐任务流"标题
+      - 至少显示 4 张任务卡片
+      - 每张任务卡片显示已就绪步骤计数（如"3 / 4 已就绪"）
+      - 每张任务卡片显示状态标签（已就绪 / 需关注 / 待确认 / 检查中）
+      - 每张任务卡片显示"查看清单"按钮
+      - 卡片包含模块入口链接（如"文档""插件"）
+
+  - id: dash-10
+    name: 任务清单抽屉可打开并跳转到精确区块
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/"
+      - action: wait
+        duration: 2500ms
+      - action: click
+        target: 接入飞书或 Lark 卡片的"查看清单"按钮
+      - action: wait
+        duration: 800ms
+      - action: screenshot
+        name: dashboard-task-drawer
+    assertions:
+      - 打开右侧抽屉或弹层
+      - 抽屉显示"任务清单"标题
+      - 抽屉显示当前任务名称
+      - 抽屉显示"建议下一步"
+      - 抽屉内每一步都显示状态标签
+      - 抽屉内包含"前往对应区块"链接
+      - 至少一个链接包含 hash 锚点（如 /channels#channel-focus）
+      - 点击关闭后抽屉消失
+
+  - id: dash-11
+    name: 任务清单链接可直达目标模块区块
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/"
+      - action: wait
+        duration: 2500ms
+      - action: click
+        target: 接入飞书或 Lark 卡片的"查看清单"按钮
+      - action: wait
+        duration: 600ms
+      - action: click
+        target: 抽屉内第一个"前往对应区块"链接
+      - action: wait
+        duration: 1200ms
+      - action: screenshot
+        name: dashboard-task-deeplink
+    assertions:
+      - 页面已跳转到对应模块
+      - URL 包含 hash 锚点
+      - 目标页面存在对应区块标题或内容

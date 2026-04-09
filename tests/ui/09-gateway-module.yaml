@@ -1,0 +1,95 @@
+suite: gateway-module
+name: 网关管理功能
+description: |
+  验证网关管理页面的完整功能：
+  状态显示、启动/停止/重启、配置概览、Token 复制、外部链接
+
+preconditions:
+  - dev server 已启动（{BASE_URL} 可访问）
+  - 已进入主界面
+
+viewport: { width: 1280, height: 800 }
+
+cases:
+  - id: gw-01
+    name: 状态指示器渲染
+    steps:
+      - action: navigate
+        url: "{BASE_URL}/gateway"
+      - action: wait
+        duration: 2000ms
+      - action: screenshot
+        name: gateway-status
+    assertions:
+      - 页面标题"网关管理"
+      - 显示圆形状态指示灯（绿色运行中 / 红色已停止）
+      - 显示状态文字"运行中"或"已停止"（大号字体）
+      - 显示 WebSocket URL（由 buildGatewayUrl 生成，格式 ws://host:port）
+      - 显示操作按钮区域
+
+  - id: gw-02
+    name: 网关启动操作
+    preconditions:
+      - 网关当前处于停止状态
+    steps:
+      - action: click
+        target: text("启动")
+      - action: observe
+        duration: 3000ms
+    assertions:
+      - 按钮区域显示"启动中..."（animate-pulse 动画）
+      - 操作完成后状态变为"运行中"（绿色）
+      - 启动完成后显示"停止"和"重启"按钮
+
+  - id: gw-03
+    name: 配置概览卡片
+    steps:
+      - action: scroll_to
+        target: 配置概览区域
+      - action: screenshot
+        name: gateway-config
+    assertions:
+      - 显示"配置"标题
+      - 4 列网格：端口、绑定地址、认证方式、Token
+      - 端口值显示数字（默认 18789）
+      - 绑定地址显示"loopback"
+      - 认证方式显示"token"
+      - Token 区域显示"复制 Token"链接
+      - 底部显示编辑配置提示文字
+
+  - id: gw-04
+    name: 复制 Token 按钮
+    preconditions:
+      - 配置中存在 gateway.auth.token
+    steps:
+      - action: click
+        target: text("复制 Token")
+      - action: wait
+        duration: 500ms
+    assertions:
+      - 弹出提示"Token 已复制到剪贴板"
+      - 剪贴板内容为配置中的 token 值
+
+  - id: gw-05
+    name: 在浏览器中打开链接
+    steps:
+      - action: observe
+        target: text("在浏览器中打开")
+    assertions:
+      - '“在浏览器中打开”按钮可见'
+      - 按钮 href 由 buildGatewayUrl(config) 生成（使用 config.gateway.bind/port）
+      - 按钮有 target="_blank" 属性
+
+  - id: gw-06
+    name: 网关重启操作
+    preconditions:
+      - 网关当前处于运行状态
+    steps:
+      - action: click
+        target: text("重启")
+      - action: observe
+        duration: 5000ms
+    assertions:
+      - 按钮区域显示"重启中..."（操作状态）
+      - 操作完成后状态恢复为"运行中"
+      - '“停止”和“重启”按钮恢复可用'
