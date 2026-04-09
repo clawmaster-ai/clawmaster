@@ -1,6 +1,6 @@
 import type { Express } from 'express'
-import { runOpenclawSkillsChecked, runOpenclawSkillsUninstall } from '../skillsCli'
-import { mapSkillJson } from '../skillsParse'
+import { runOpenclawSkillsChecked, runOpenclawSkillsUninstall } from '../skillsCli.js'
+import { mapSkillJson } from '../skillsParse.js'
 
 export function registerSkillsRoutes(app: Express): void {
   app.get('/api/skills', async (_req, res) => {

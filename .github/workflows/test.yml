@@ -104,6 +104,35 @@ jobs:
       - name: Build backend
         run: npm run build --workspace=@openclaw-manager/backend
 
+      - name: Start built backend smoke check
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'backend-native.log'
+          $err = Join-Path $env:RUNNER_TEMP 'backend-native.err.log'
+          $proc = Start-Process node `
+            -ArgumentList 'packages/backend/dist/index.js' `
+            -RedirectStandardOutput $log `
+            -RedirectStandardError $err `
+            -PassThru
+
+          try {
+            Start-Sleep -Seconds 5
+            $response = Invoke-RestMethod -Uri 'http://127.0.0.1:3001/api/system/detect'
+            if (-not $response.runtime) {
+              throw 'Missing runtime information from backend detect endpoint'
+            }
+          } finally {
+            if ($proc -and -not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+            if (Test-Path $log) {
+              Get-Content $log
+            }
+            if (Test-Path $err) {
+              Get-Content $err
+            }
+          }
+
   backend-windows-wsl2:
     name: Backend WSL2 Smoke (Windows)
     runs-on: windows-2022
