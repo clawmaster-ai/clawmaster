@@ -9,6 +9,10 @@ import {
   shouldUseWslRuntime,
 } from './wslRuntime.js'
 
+export function normalizeWslLogPath(logPath: string): string {
+  return logPath.replace(/\\/g, '/')
+}
+
 export function readLogTailStrings(n: number): string[] {
   const cfg = readConfigJson()
   const runtimeSelection = getClawmasterRuntimeSelection()
@@ -16,9 +20,10 @@ export function readLogTailStrings(n: number): string[] {
     const distro = resolveSelectedWslDistroSync(runtimeSelection)
     if (!distro) return ['No WSL2 distro selected']
     for (const logPath of getOpenclawLogReadPaths(cfg)) {
+      const wslLogPath = normalizeWslLogPath(logPath)
       const out = runWslShellSync(
         distro,
-        `[ -f ${shellEscapePosixArg(logPath)} ] && tail -n ${Math.max(1, n)} ${shellEscapePosixArg(logPath)}`
+        `[ -f ${shellEscapePosixArg(wslLogPath)} ] && tail -n ${Math.max(1, n)} ${shellEscapePosixArg(wslLogPath)}`
       )
       if (out.code !== 0 || !out.stdout.trim()) continue
       const nonEmpty = out.stdout

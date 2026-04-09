@@ -868,6 +868,13 @@ fn list_wsl_distros() -> Vec<RuntimeDistroInfo> {
 #[cfg(target_os = "windows")]
 fn resolve_selected_wsl_distro(selection: &ClawmasterRuntimeSelection) -> Option<String> {
     let distros = list_wsl_distros();
+    resolve_selected_wsl_distro_from_list(&distros, selection)
+}
+
+fn resolve_selected_wsl_distro_from_list(
+    distros: &[RuntimeDistroInfo],
+    selection: &ClawmasterRuntimeSelection,
+) -> Option<String> {
     if let Some(name) = selection
         .wsl_distro
         .as_ref()
@@ -877,6 +884,7 @@ fn resolve_selected_wsl_distro(selection: &ClawmasterRuntimeSelection) -> Option
         if let Some(found) = distros.iter().find(|item| item.name == name) {
             return Some(found.name.clone());
         }
+        return None;
     }
     distros
         .iter()
@@ -1639,7 +1647,8 @@ mod tests {
     use super::{
         get_config_path_candidates_for, get_openclaw_profile_args, get_openclaw_profile_data_dir,
         normalize_clawmaster_runtime_selection, parse_wsl_list_verbose,
-        resolve_config_path_from_candidates, OpenclawProfileSelection,
+        resolve_config_path_from_candidates, resolve_selected_wsl_distro_from_list,
+        OpenclawProfileSelection,
     };
     use std::fs;
     use std::path::Path;
@@ -1780,6 +1789,38 @@ mod tests {
         assert_eq!(parsed[1].name, "Debian");
         assert_eq!(parsed[1].version, Some(2));
         assert!(!parsed[1].is_default);
+    }
+
+    #[test]
+    fn selected_wsl_distro_returns_none_when_saved_distro_is_missing() {
+        let distros = parse_wsl_list_verbose(
+            "  NAME                   STATE           VERSION\r\n* Ubuntu-24.04           Running         2\r\n  Debian                 Stopped         2\r\n",
+        );
+        let selection = normalize_clawmaster_runtime_selection(
+            Some("wsl2".to_string()),
+            Some("Renamed-Ubuntu".to_string()),
+            None,
+            None,
+        );
+
+        assert_eq!(
+            resolve_selected_wsl_distro_from_list(&distros, &selection),
+            None
+        );
+    }
+
+    #[test]
+    fn selected_wsl_distro_falls_back_only_without_saved_distro() {
+        let distros = parse_wsl_list_verbose(
+            "  NAME                   STATE           VERSION\r\n* Ubuntu-24.04           Running         2\r\n  Debian                 Stopped         2\r\n",
+        );
+        let selection =
+            normalize_clawmaster_runtime_selection(Some("wsl2".to_string()), None, None, None);
+
+        assert_eq!(
+            resolve_selected_wsl_distro_from_list(&distros, &selection),
+            Some("Ubuntu-24.04".to_string())
+        );
     }
 }
 
