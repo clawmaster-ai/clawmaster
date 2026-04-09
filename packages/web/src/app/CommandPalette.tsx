@@ -91,6 +91,10 @@ export function CommandPalette({ open, commands, onClose }: CommandPaletteProps)
   }, [commands, query])
 
   useEffect(() => {
+    setActiveIndex(0)
+  }, [query])
+
+  useEffect(() => {
     setActiveIndex((current) => {
       if (filteredCommands.length === 0) return 0
       return Math.min(current, filteredCommands.length - 1)

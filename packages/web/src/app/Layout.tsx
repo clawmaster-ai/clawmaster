@@ -180,7 +180,13 @@ export default function Layout({ children }: LayoutProps) {
   }, [currentPath])
 
   const scrollToHashTarget = useCallback((hashValue: string) => {
-    const targetId = decodeURIComponent(hashValue.replace(/^#/, ''))
+    let targetId = ''
+    try {
+      targetId = decodeURIComponent(hashValue.replace(/^#/, ''))
+    } catch {
+      return false
+    }
+
     if (!targetId) return false
 
     const target = document.getElementById(targetId)

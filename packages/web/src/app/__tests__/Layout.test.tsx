@@ -243,6 +243,30 @@ describe('Layout', () => {
     expect(screen.getByRole('dialog', { name: '命令面板' })).toBeInTheDocument()
   })
 
+  it('resets the active command to the top match when the query changes', async () => {
+    renderLayout('/settings')
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+
+    const dialog = await screen.findByRole('dialog', { name: '命令面板' })
+
+    fireEvent.keyDown(window, { key: 'ArrowDown' })
+
+    fireEvent.change(within(dialog).getByPlaceholderText('搜索页面、区块和快捷操作...'), {
+      target: { value: 'profile' },
+    })
+
+    const options = within(dialog).getAllByRole('option')
+    expect(options[0]).toHaveAttribute('aria-selected', 'true')
+    expect(options[0]).toHaveTextContent('Profile 路径')
+
+    fireEvent.keyDown(window, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-spy')).toHaveTextContent('/settings#settings-profile')
+    })
+  })
+
   it('does not move palette selection when arrow keys are used during IME composition', async () => {
     renderLayout('/settings')
 
@@ -259,6 +283,14 @@ describe('Layout', () => {
 
     expect(initialOption).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('dialog', { name: '命令面板' })).toBeInTheDocument()
+  })
+
+  it('ignores malformed hash fragments instead of crashing the shell', async () => {
+    renderLayout('/settings#%E0%A4%A')
+
+    expect(await screen.findByRole('heading', { level: 2, name: '设置' })).toBeInTheDocument()
+    expect(screen.getByTestId('location-spy')).toHaveTextContent('/settings#%E0%A4%A')
+    expect(scrollIntoViewMock).not.toHaveBeenCalled()
   })
 
   it('runs quick actions from the command palette', async () => {
