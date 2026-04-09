@@ -112,6 +112,10 @@ describe('ChannelsPage', () => {
     renderChannels()
 
     expect(await screen.findByText('推荐入口')).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: '更多诊断' })[0]).toHaveAttribute(
+      'href',
+      '/settings#settings-logs',
+    )
 
     fireEvent.click(screen.getByRole('button', { name: '查看最近日志' }))
 
