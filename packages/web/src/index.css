@@ -291,6 +291,28 @@
     @apply rounded-full border border-border/80 bg-background/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground;
   }
 
+  .app-command-hint {
+    @apply flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/15 bg-card/90 px-4 py-3;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .app-command-hint-copy {
+    @apply min-w-0 flex-1;
+  }
+
+  .app-command-hint-title-row {
+    @apply flex items-center gap-2;
+  }
+
+  .app-command-hint-title {
+    font-family: var(--font-display);
+    @apply text-sm font-semibold tracking-tight text-foreground;
+  }
+
+  .app-command-hint-desc {
+    @apply mt-1 text-sm leading-6 text-muted-foreground;
+  }
+
   .app-mini-select {
     @apply rounded-xl border border-border/80 bg-card/70 px-2.5 py-1.5 text-xs text-muted-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15;
   }

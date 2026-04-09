@@ -74,6 +74,10 @@ describe('Layout', () => {
         dispatchEvent: vi.fn(),
       })),
     })
+    Object.defineProperty(window.navigator, 'platform', {
+      configurable: true,
+      value: 'Win32',
+    })
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: scrollIntoViewMock,
@@ -105,6 +109,7 @@ describe('Layout', () => {
     renderLayout('/settings')
 
     expect(await screen.findByRole('heading', { level: 2, name: '设置' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /跳转\s*Ctrl K/i })).toBeInTheDocument()
     expect(screen.getAllByText('运行').length).toBeGreaterThan(0)
     expect(screen.getAllByText('工作区').length).toBeGreaterThan(0)
     expect(screen.getAllByText('扩展').length).toBeGreaterThan(0)
@@ -117,6 +122,17 @@ describe('Layout', () => {
       expect(screen.getAllByText('Gateway 运行中').length).toBeGreaterThan(0)
     })
     expect(screen.getByText(':8787')).toBeInTheDocument()
+  })
+
+  it('shows and persists dismissal of the command shortcut hint', async () => {
+    renderLayout('/settings')
+
+    expect(await screen.findByText('用 Ctrl K 快速跳转')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '知道了' }))
+
+    expect(screen.queryByText('用 Ctrl K 快速跳转')).not.toBeInTheDocument()
+    expect(localStorage.getItem('clawmaster-command-palette-hint-dismissed')).toBe('1')
   })
 
   it('toggles dark mode and switches language from the header controls', async () => {

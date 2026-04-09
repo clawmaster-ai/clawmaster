@@ -10,6 +10,7 @@ import { platformResults } from '@/shared/adapters/platformResults'
 import { getClawModules } from './moduleRegistry'
 import { CommandPalette, type CommandEntry } from './CommandPalette'
 import { getCommandDescriptors } from './commandRegistry'
+import { getCommandShortcutLabel } from './commandShortcut'
 import { resolveIcon } from './iconRegistry'
 import { NAV_SECTIONS, PAGE_META } from './navigationMeta'
 import {
@@ -64,6 +65,8 @@ type UpdateBannerState =
   | { status: 'idle' | 'checking' | 'unavailable' | 'up-to-date' | 'error' }
   | { status: 'available'; currentVersion: string; latestVersion: string }
 
+const COMMAND_HINT_DISMISSED_KEY = 'clawmaster-command-palette-hint-dismissed'
+
 function normalizeVersion(version: string | undefined): string {
   const raw = String(version ?? '').replace(/^v/i, '').trim()
   const match = raw.match(/\d+\.\d+\.\d+[\w.-]*/)
@@ -78,6 +81,9 @@ export default function Layout({ children }: LayoutProps) {
   const [dark, setDark] = useState(isDark)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [commandHintVisible, setCommandHintVisible] = useState(() => (
+    typeof window !== 'undefined' && localStorage.getItem(COMMAND_HINT_DISMISSED_KEY) !== '1'
+  ))
   const [hostPlatform, setHostPlatform] = useState<string | undefined>()
   const [gwStatus, setGwStatus] = useState<GatewayStatus | null>(null)
   const [updateBanner, setUpdateBanner] = useState<UpdateBannerState>({ status: 'idle' })
@@ -216,6 +222,18 @@ export default function Layout({ children }: LayoutProps) {
     setDark(next === 'dark')
   }
 
+  function dismissCommandPaletteHint() {
+    setCommandHintVisible(false)
+    localStorage.setItem(COMMAND_HINT_DISMISSED_KEY, '1')
+  }
+
+  function openCommandPalette() {
+    setCommandPaletteOpen(true)
+    if (commandHintVisible) {
+      dismissCommandPaletteHint()
+    }
+  }
+
   const runCommandTarget = useCallback((path: string, hash?: string) => {
     const target = hash ? `${path}#${hash}` : path
     if (currentPath === path && hash && location.hash === `#${hash}`) {
@@ -230,18 +248,23 @@ export default function Layout({ children }: LayoutProps) {
     function handleKeyDown(event: KeyboardEvent) {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return
       event.preventDefault()
-      setCommandPaletteOpen(true)
+      openCommandPalette()
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [commandHintVisible])
 
   const currentLabel = navItems.find((item) => item.path === currentPath)
   const pageTitle = currentLabel ? t(currentLabel.labelKey) : t('layout.appName')
   const currentMeta = PAGE_META[currentPath]
   const currentSection = navSections.find((section) => section.id === currentMeta?.sectionId) ?? navSections[0]
   const pageDescription = currentMeta ? t(currentMeta.descriptionKey) : t('layout.section.liveDesc')
+  const commandShortcut = getCommandShortcutLabel(
+    typeof navigator === 'undefined'
+      ? undefined
+      : (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform,
+  )
   const commandHostPlatform = isWindowsHostPlatform(hostPlatform) ? hostPlatform : undefined
   const commandEntries = useMemo<CommandEntry[]>(() => {
     return getCommandDescriptors(modules, { hostPlatform: commandHostPlatform }).map((command) => {
@@ -381,13 +404,13 @@ export default function Layout({ children }: LayoutProps) {
           <div className="app-topbar-controls">
             <button
               type="button"
-              onClick={() => setCommandPaletteOpen(true)}
+              onClick={openCommandPalette}
               className="app-command-trigger"
-              title={t('command.openHint')}
+              title={t('command.openHint', { shortcut: commandShortcut })}
             >
               <Search className="h-4 w-4 shrink-0" />
               <span className="hidden sm:inline">{t('command.open')}</span>
-              <span className="app-command-trigger-shortcut">Ctrl K</span>
+              <span className="app-command-trigger-shortcut">{commandShortcut}</span>
             </button>
             <select
               value={i18n.language}
@@ -408,29 +431,48 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </header>
 
-        {updateBanner.status === 'available' && !updateBannerDismissed && (
+        {(updateBanner.status === 'available' && !updateBannerDismissed) || commandHintVisible ? (
           <div className="px-4 pt-3 lg:px-6">
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <ArrowUpCircle className="h-4 w-4 shrink-0 text-primary" />
-                <p className="min-w-0 text-foreground">
-                  {t('layout.update.available', { version: updateBanner.latestVersion })}
-                </p>
-              </div>
-              <Link to="/settings" className="button-secondary text-xs">
-                {t('layout.update.action')}
-              </Link>
-              <button
-                onClick={() => setUpdateBannerDismissed(true)}
-                className="app-icon-button"
-                aria-label={t('layout.update.dismiss')}
-                title={t('layout.update.dismiss')}
-              >
-                <X className="h-4 w-4" />
-              </button>
+            <div className="space-y-3">
+              {updateBanner.status === 'available' && !updateBannerDismissed && (
+                <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <ArrowUpCircle className="h-4 w-4 shrink-0 text-primary" />
+                    <p className="min-w-0 text-foreground">
+                      {t('layout.update.available', { version: updateBanner.latestVersion })}
+                    </p>
+                  </div>
+                  <Link to="/settings" className="button-secondary text-xs">
+                    {t('layout.update.action')}
+                  </Link>
+                  <button
+                    onClick={() => setUpdateBannerDismissed(true)}
+                    className="app-icon-button"
+                    aria-label={t('layout.update.dismiss')}
+                    title={t('layout.update.dismiss')}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+
+              {commandHintVisible && (
+                <div className="app-command-hint">
+                  <div className="app-command-hint-copy">
+                    <div className="app-command-hint-title-row">
+                      <Search className="h-4 w-4 shrink-0 text-primary" />
+                      <p className="app-command-hint-title">{t('command.discovery.title', { shortcut: commandShortcut })}</p>
+                    </div>
+                    <p className="app-command-hint-desc">{t('command.discovery.desc', { shortcut: commandShortcut })}</p>
+                  </div>
+                  <button type="button" onClick={dismissCommandPaletteHint} className="button-secondary text-xs">
+                    {t('command.discovery.dismiss')}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        ) : null}
 
         <main className="app-main">{children}</main>
 
