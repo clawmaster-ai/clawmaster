@@ -164,8 +164,8 @@ jobs:
         run: |
           $statusOutput = & wsl.exe --status 2>&1 | Out-String
           if ($LASTEXITCODE -ne 0 -or $statusOutput -match 'not installed') {
-            Write-Host 'Installing WSL on runner before distribution bootstrap'
-            & wsl.exe --install --no-distribution
+            Write-Host 'Enabling WSL Windows features on runner before distribution bootstrap'
+            Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux, VirtualMachinePlatform -NoRestart
           } else {
             Write-Host 'WSL already available on runner'
           }
