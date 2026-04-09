@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import i18n, { changeLanguage } from '@/i18n'
 import Layout from '../Layout'
 
@@ -19,10 +19,20 @@ vi.mock('@/shared/adapters/platformResults', () => ({
   },
 }))
 
+const scrollIntoViewMock = vi.fn()
+
+function LocationSpy() {
+  const location = useLocation()
+  return <div data-testid="location-spy">{`${location.pathname}${location.hash}`}</div>
+}
+
 function renderLayout(initialPath = '/settings') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <Layout>
+        <LocationSpy />
+        <div id="settings-profile">Profile anchor</div>
+        <div id="gateway-runtime">Gateway anchor</div>
         <div>测试内容</div>
       </Layout>
     </MemoryRouter>,
@@ -47,6 +57,10 @@ describe('Layout', () => {
         removeEventListener: vi.fn(),
         dispatchEvent: vi.fn(),
       })),
+    })
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
     })
     await changeLanguage('zh')
     mockGatewayStatus.mockResolvedValue({
@@ -125,5 +139,44 @@ describe('Layout', () => {
     expect(screen.getAllByText('Gateway 已停止').length).toBeGreaterThan(0)
 
     vi.useRealTimers()
+  })
+
+  it('opens the command palette with the keyboard and jumps to a page section', async () => {
+    renderLayout('/settings')
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+
+    const dialog = await screen.findByRole('dialog', { name: '命令面板' })
+    expect(dialog).toBeInTheDocument()
+
+    fireEvent.change(within(dialog).getByPlaceholderText('搜索页面、区块和快捷操作...'), {
+      target: { value: 'profile' },
+    })
+
+    fireEvent.click(await within(dialog).findByRole('option', { name: /Profile 路径/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-spy')).toHaveTextContent('/settings#settings-profile')
+      expect(scrollIntoViewMock).toHaveBeenCalled()
+    })
+  })
+
+  it('runs quick actions from the command palette', async () => {
+    renderLayout('/settings')
+
+    fireEvent.click(await screen.findByRole('button', { name: /跳转/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: '命令面板' })
+
+    fireEvent.change(within(dialog).getByPlaceholderText('搜索页面、区块和快捷操作...'), {
+      target: { value: 'theme' },
+    })
+
+    fireEvent.click(await within(dialog).findByRole('option', { name: /切换到深色模式/i }))
+
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '命令面板' })).not.toBeInTheDocument()
+    })
   })
 })

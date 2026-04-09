@@ -1,0 +1,114 @@
+suite: command-palette
+name: Shared Command Palette
+description: Verify the shared jump surface can open from the shell, find pages and deep links, and run quick actions without breaking navigation.
+preconditions: App boots into the main shell with at least dashboard, settings, gateway, models, skills, plugins, MCP, and config pages available.
+viewport: 1440x960
+
+cases:
+  - id: cp-open-shortcut
+    name: Open palette from keyboard shortcut
+    steps:
+      - action: navigate
+        target: /
+      - action: observe
+        target: press Ctrl/Cmd+K
+      - action: screenshot
+        target: command-palette-open
+    assertions:
+      - The command palette dialog opens above the current page.
+      - The search input is focused automatically.
+      - The top result set includes page, section, and action badges.
+
+  - id: cp-page-jump
+    name: Jump to a page from palette
+    steps:
+      - action: navigate
+        target: /
+      - action: observe
+        target: press Ctrl/Cmd+K
+      - action: fill
+        target: input[placeholder*="Search"]
+        value: settings
+      - action: click
+        target: text("Settings")
+    assertions:
+      - The app navigates to the Settings page.
+      - The palette closes after the selection runs.
+
+  - id: cp-section-jump
+    name: Jump to a deep section with hash navigation
+    steps:
+      - action: navigate
+        target: /settings
+      - action: observe
+        target: press Ctrl/Cmd+K
+      - action: fill
+        target: input[placeholder*="Search"]
+        value: profile
+      - action: click
+        target: text("Profile")
+      - action: screenshot
+        target: command-palette-profile-jump
+    assertions:
+      - The URL updates with #settings-profile.
+      - The viewport scrolls to the profile path section rather than staying at the top.
+
+  - id: cp-theme-action
+    name: Run quick theme action
+    steps:
+      - action: navigate
+        target: /settings
+      - action: click
+        target: role(button, "Jump")
+      - action: fill
+        target: input[placeholder*="Search"]
+        value: theme
+      - action: click
+        target: text("light mode") or text("dark mode")
+    assertions:
+      - The palette closes after the action runs.
+      - The document theme switches immediately.
+
+  - id: cp-ranked-results
+    name: Surface curated workflow sections first
+    steps:
+      - action: navigate
+        target: /
+      - action: observe
+        target: press Ctrl/Cmd+K
+      - action: fill
+        target: input[placeholder*="Search"]
+        value: mcp
+      - action: screenshot
+        target: command-palette-mcp-results
+    assertions:
+      - Curated MCP import entry appears in the result list.
+      - The matching MCP page command remains available.
+
+  - id: cp-empty-state
+    name: Show empty state when nothing matches
+    steps:
+      - action: navigate
+        target: /
+      - action: observe
+        target: press Ctrl/Cmd+K
+      - action: fill
+        target: input[placeholder*="Search"]
+        value: no-such-command
+    assertions:
+      - The empty state explains how to search by page, section, or action.
+      - No stale results remain visible behind the empty state.
+
+  - id: cp-mobile-trigger
+    name: Open palette from shell trigger on narrow viewport
+    viewport: 390x844
+    steps:
+      - action: navigate
+        target: /gateway
+      - action: click
+        target: role(button, "Jump")
+      - action: screenshot
+        target: command-palette-mobile
+    assertions:
+      - The trigger remains visible in the top bar on mobile.
+      - The palette fits within the viewport without clipped controls.

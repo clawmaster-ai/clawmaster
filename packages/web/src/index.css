@@ -282,6 +282,15 @@
     @apply flex items-center gap-2;
   }
 
+  .app-command-trigger {
+    @apply inline-flex items-center gap-2 rounded-[1rem] border border-border/80 bg-card/70 px-3 py-2 text-sm text-muted-foreground transition hover:border-primary/25 hover:bg-background/90 hover:text-foreground;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  }
+
+  .app-command-trigger-shortcut {
+    @apply rounded-full border border-border/80 bg-background/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground;
+  }
+
   .app-mini-select {
     @apply rounded-xl border border-border/80 bg-card/70 px-2.5 py-1.5 text-xs text-muted-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15;
   }
@@ -298,8 +307,121 @@
     @apply relative flex-1 overflow-auto px-4 py-4 sm:px-6 sm:py-6;
   }
 
+  .app-main [id] {
+    scroll-margin-top: 5.75rem;
+  }
+
   .app-footer {
     @apply flex items-center gap-3 border-t border-border/70 px-4 py-2 text-[11px] uppercase tracking-[0.12em] text-muted-foreground;
+  }
+
+  .command-palette-shell {
+    @apply fixed inset-0 z-50 flex items-start justify-center px-4 py-6 sm:px-6 sm:py-10;
+  }
+
+  .command-palette-backdrop {
+    @apply absolute inset-0 bg-slate-950/55 backdrop-blur-sm;
+  }
+
+  .command-palette-panel {
+    @apply relative z-10 w-full max-w-3xl overflow-hidden rounded-[2rem] border border-border/80 bg-background/95;
+    box-shadow: 0 32px 90px rgba(15, 23, 42, 0.26);
+  }
+
+  .dark .command-palette-panel {
+    box-shadow: 0 36px 96px rgba(2, 6, 23, 0.55);
+  }
+
+  .command-palette-search {
+    @apply flex items-center gap-3 border-b border-border/70 px-4 py-4 sm:px-5;
+    background:
+      linear-gradient(125deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 56%),
+      radial-gradient(circle at right top, rgba(233, 98, 36, 0.12) 0%, rgba(233, 98, 36, 0) 42%);
+  }
+
+  .dark .command-palette-search {
+    background:
+      linear-gradient(125deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 56%),
+      radial-gradient(circle at right top, rgba(233, 98, 36, 0.14) 0%, rgba(233, 98, 36, 0) 42%);
+  }
+
+  .command-palette-input {
+    @apply h-11 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground;
+  }
+
+  .command-palette-shortcut {
+    @apply rounded-full border border-border/80 bg-card/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground;
+  }
+
+  .command-palette-meta {
+    @apply flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground sm:px-5;
+  }
+
+  .command-palette-meta-hint {
+    @apply inline-flex items-center gap-1.5;
+  }
+
+  .command-palette-list {
+    @apply max-h-[min(68vh,36rem)] overflow-auto px-3 py-3 sm:px-4;
+  }
+
+  .command-palette-item {
+    @apply grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[1.4rem] border border-transparent px-3 py-3 text-left transition;
+  }
+
+  .command-palette-item:hover,
+  .command-palette-item-active {
+    @apply border-primary/20 bg-primary/10;
+    box-shadow: inset 0 0 0 1px rgba(233, 98, 36, 0.12);
+  }
+
+  .command-palette-item-icon {
+    @apply flex h-11 w-11 items-center justify-center rounded-2xl border border-border/80 bg-card/80 text-primary;
+  }
+
+  .command-palette-item-copy {
+    @apply min-w-0;
+  }
+
+  .command-palette-item-row {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .command-palette-item-title {
+    font-family: var(--font-display);
+    @apply text-base font-semibold tracking-tight text-foreground;
+  }
+
+  .command-palette-item-badge {
+    @apply rounded-full border border-border/75 bg-card/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground;
+  }
+
+  .command-palette-item-desc {
+    @apply mt-1 overflow-hidden text-sm leading-6 text-muted-foreground;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .command-palette-item-trail {
+    @apply flex items-center gap-2 text-muted-foreground;
+  }
+
+  .command-palette-item-shortcut {
+    @apply rounded-full border border-border/75 bg-card/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em];
+  }
+
+  .command-palette-empty {
+    @apply flex min-h-[16rem] flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-border/80 bg-card/65 px-4 py-10 text-center;
+  }
+
+  .command-palette-empty-title {
+    font-family: var(--font-display);
+    @apply text-xl font-semibold tracking-tight text-foreground;
+  }
+
+  .command-palette-empty-copy {
+    @apply mt-2 max-w-md text-sm leading-6 text-muted-foreground;
   }
 
   .page-shell {

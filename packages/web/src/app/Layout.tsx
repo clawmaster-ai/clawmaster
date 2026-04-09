@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useLocation, Link } from 'react-router-dom'
+import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { changeLanguage } from '@/i18n'
@@ -7,55 +7,20 @@ import type { GatewayStatus } from '@/lib/types'
 import { getGatewayStatusResult } from '@/shared/adapters/gateway'
 import { platformResults } from '@/shared/adapters/platformResults'
 import { getClawModules } from './moduleRegistry'
+import { CommandPalette, type CommandEntry } from './CommandPalette'
+import { getCommandDescriptors } from './commandRegistry'
+import { resolveIcon } from './iconRegistry'
+import { NAV_SECTIONS, PAGE_META } from './navigationMeta'
 import {
-  LayoutDashboard,
-  BarChart3,
-  Brain,
-  Radio,
-  MessageSquare,
-  MessageCircle,
-  Box,
-  Zap,
-  Users,
-  Settings2,
-  FileText,
-  ScrollText,
-  Wrench,
-  Plug,
   Shell,
   Sun,
   Moon,
   Menu,
+  Search,
   X,
-  HardDrive,
   ArrowUpCircle,
   type LucideIcon,
 } from 'lucide-react'
-
-// ─── Lucide icon registry ───
-
-const ICON_MAP: Record<string, LucideIcon> = {
-  'layout-dashboard': LayoutDashboard,
-  'bar-chart-3': BarChart3,
-  brain: Brain,
-  radio: Radio,
-  'message-square': MessageSquare,
-  'message-circle': MessageCircle,
-  box: Box,
-  zap: Zap,
-  users: Users,
-  'settings-2': Settings2,
-  'file-text': FileText,
-  'scroll-text': ScrollText,
-  wrench: Wrench,
-  plug: Plug,
-  shell: Shell,
-  'hard-drive': HardDrive,
-}
-
-function resolveIcon(name: string): LucideIcon {
-  return ICON_MAP[name] ?? Box
-}
 
 interface NavItem {
   path: string
@@ -63,56 +28,6 @@ interface NavItem {
   icon: LucideIcon
 }
 
-interface NavSection {
-  id: string
-  labelKey: string
-  descriptionKey: string
-  paths: string[]
-}
-
-const NAV_SECTIONS: NavSection[] = [
-  {
-    id: 'live',
-    labelKey: 'layout.section.live',
-    descriptionKey: 'layout.section.liveDesc',
-    paths: ['/', '/gateway', '/observe', '/sessions'],
-  },
-  {
-    id: 'workspace',
-    labelKey: 'layout.section.workspace',
-    descriptionKey: 'layout.section.workspaceDesc',
-    paths: ['/channels', '/models', '/agents', '/memory'],
-  },
-  {
-    id: 'extend',
-    labelKey: 'layout.section.extend',
-    descriptionKey: 'layout.section.extendDesc',
-    paths: ['/skills', '/plugins', '/mcp', '/docs'],
-  },
-  {
-    id: 'control',
-    labelKey: 'layout.section.control',
-    descriptionKey: 'layout.section.controlDesc',
-    paths: ['/config', '/settings'],
-  },
-]
-
-const PAGE_META: Record<string, { sectionId: string; descriptionKey: string }> = {
-  '/': { sectionId: 'live', descriptionKey: 'layout.page.dashboard' },
-  '/gateway': { sectionId: 'live', descriptionKey: 'layout.page.gateway' },
-  '/observe': { sectionId: 'live', descriptionKey: 'layout.page.observe' },
-  '/sessions': { sectionId: 'live', descriptionKey: 'layout.page.sessions' },
-  '/channels': { sectionId: 'workspace', descriptionKey: 'layout.page.channels' },
-  '/models': { sectionId: 'workspace', descriptionKey: 'layout.page.models' },
-  '/agents': { sectionId: 'workspace', descriptionKey: 'layout.page.agents' },
-  '/memory': { sectionId: 'workspace', descriptionKey: 'layout.page.memory' },
-  '/skills': { sectionId: 'extend', descriptionKey: 'layout.page.skills' },
-  '/plugins': { sectionId: 'extend', descriptionKey: 'layout.page.plugins' },
-  '/mcp': { sectionId: 'extend', descriptionKey: 'layout.page.mcp' },
-  '/docs': { sectionId: 'extend', descriptionKey: 'layout.page.docs' },
-  '/config': { sectionId: 'control', descriptionKey: 'layout.page.config' },
-  '/settings': { sectionId: 'control', descriptionKey: 'layout.page.settings' },
-}
 
 // ─── Dark mode ───
 
@@ -157,9 +72,11 @@ function normalizeVersion(version: string | undefined): string {
 export default function Layout({ children }: LayoutProps) {
   const { t, i18n } = useTranslation()
   const location = useLocation()
+  const navigate = useNavigate()
   const currentPath = location.pathname
   const [dark, setDark] = useState(isDark)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [gwStatus, setGwStatus] = useState<GatewayStatus | null>(null)
   const [updateBanner, setUpdateBanner] = useState<UpdateBannerState>({ status: 'idle' })
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
@@ -250,17 +167,101 @@ export default function Layout({ children }: LayoutProps) {
     setSidebarOpen(false)
   }, [currentPath])
 
+  const scrollToHashTarget = useCallback((hashValue: string) => {
+    const targetId = decodeURIComponent(hashValue.replace(/^#/, ''))
+    if (!targetId) return false
+
+    const target = document.getElementById(targetId)
+    if (!target) return false
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    return true
+  }, [])
+
+  useEffect(() => {
+    if (!location.hash) return undefined
+
+    if (scrollToHashTarget(location.hash)) return undefined
+
+    const handle = window.setTimeout(() => {
+      scrollToHashTarget(location.hash)
+    }, 80)
+
+    return () => window.clearTimeout(handle)
+  }, [location.hash, location.pathname, scrollToHashTarget])
+
   function toggleDarkMode() {
     const next = isDark() ? 'light' : 'dark'
     applyDarkMode(next)
     setDark(next === 'dark')
   }
 
+  const runCommandTarget = useCallback((path: string, hash?: string) => {
+    const target = hash ? `${path}#${hash}` : path
+    if (currentPath === path && hash && location.hash === `#${hash}`) {
+      scrollToHashTarget(hash)
+      return
+    }
+
+    navigate(target)
+  }, [currentPath, location.hash, navigate, scrollToHashTarget])
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return
+      event.preventDefault()
+      setCommandPaletteOpen(true)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   const currentLabel = navItems.find((item) => item.path === currentPath)
   const pageTitle = currentLabel ? t(currentLabel.labelKey) : t('layout.appName')
   const currentMeta = PAGE_META[currentPath]
   const currentSection = navSections.find((section) => section.id === currentMeta?.sectionId) ?? navSections[0]
   const pageDescription = currentMeta ? t(currentMeta.descriptionKey) : t('layout.section.liveDesc')
+  const commandEntries = useMemo<CommandEntry[]>(() => {
+    return getCommandDescriptors(modules).map((command) => {
+      if (command.kind === 'action') {
+        return {
+          id: command.id,
+          kind: command.kind,
+          icon: command.icon,
+          title: t(dark ? 'layout.darkMode.toLight' : 'layout.darkMode.toDark'),
+          description: t(command.descriptionKey),
+          keywords: command.keywords,
+          badge: t('command.badge.action'),
+          execute: toggleDarkMode,
+        }
+      }
+
+      if (command.kind === 'section') {
+        return {
+          id: command.id,
+          kind: command.kind,
+          icon: command.icon,
+          title: t(command.labelKey),
+          description: t(command.descriptionKey),
+          keywords: command.keywords,
+          badge: t('command.badge.section'),
+          execute: () => runCommandTarget(command.path, command.hash),
+        }
+      }
+
+      return {
+        id: command.id,
+        kind: command.kind,
+        icon: command.icon,
+        title: t(command.labelKey),
+        description: t(command.descriptionKey),
+        keywords: command.keywords,
+        badge: t('command.badge.page'),
+        execute: () => runCommandTarget(command.path),
+      }
+    })
+  }, [dark, modules, runCommandTarget, t])
 
   const sidebarContent = (
     <>
@@ -350,13 +351,23 @@ export default function Layout({ children }: LayoutProps) {
             <button onClick={() => setSidebarOpen(true)} className="app-icon-button lg:hidden">
               <Menu className="h-5 w-5" />
             </button>
-            <div className="app-topbar-copy">
+          <div className="app-topbar-copy">
               <p className="app-topbar-meta">{currentSection ? t(currentSection.labelKey) : t('layout.appName')}</p>
               <h2 className="app-topbar-title">{pageTitle}</h2>
               <p className="app-topbar-subtitle">{pageDescription}</p>
             </div>
           </div>
           <div className="app-topbar-controls">
+            <button
+              type="button"
+              onClick={() => setCommandPaletteOpen(true)}
+              className="app-command-trigger"
+              title={t('command.openHint')}
+            >
+              <Search className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{t('command.open')}</span>
+              <span className="app-command-trigger-shortcut">Ctrl K</span>
+            </button>
             <select
               value={i18n.language}
               onChange={(e) => changeLanguage(e.target.value)}
@@ -415,6 +426,12 @@ export default function Layout({ children }: LayoutProps) {
           )}
         </footer>
       </div>
+
+      <CommandPalette
+        open={commandPaletteOpen}
+        commands={commandEntries}
+        onClose={() => setCommandPaletteOpen(false)}
+      />
     </div>
   )
 }
