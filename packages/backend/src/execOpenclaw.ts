@@ -15,8 +15,9 @@ import { getClawmasterRuntimeSelection } from './clawmasterSettings.js'
 import { getOpenclawProfileArgs } from './openclawProfile.js'
 import {
   execWslCommand,
+  getWslRuntimeUnavailableMessage,
+  requireSelectedWslDistroSync,
   resolveCommandInWslSync,
-  resolveSelectedWslDistroSync,
   shouldUseWslRuntime,
 } from './wslRuntime.js'
 
@@ -146,14 +147,12 @@ function resolveDarwinCompatibleNodeBin(): string | null {
 function resolveOpenclawCommand(): ResolvedOpenclawCommand {
   const runtimeSelection = getClawmasterRuntimeSelection()
   if (shouldUseWslRuntime(runtimeSelection)) {
-    const distro = resolveSelectedWslDistroSync(runtimeSelection)
-    if (distro) {
-      const openclawBin = resolveCommandInWslSync(distro, 'openclaw') ?? 'openclaw'
-      return {
-        bin: 'wsl.exe',
-        argsPrefix: ['-d', distro, '--', openclawBin, ...getOpenclawProfileArgs()],
-        env: process.env,
-      }
+    const distro = requireSelectedWslDistroSync(runtimeSelection)
+    const openclawBin = resolveCommandInWslSync(distro, 'openclaw') ?? 'openclaw'
+    return {
+      bin: 'wsl.exe',
+      argsPrefix: ['-d', distro, '--', openclawBin, ...getOpenclawProfileArgs()],
+      env: process.env,
     }
   }
 
@@ -363,7 +362,15 @@ export function execOpenclaw(
   stdout: string
   stderr: string
 }> {
-  const command = resolveOpenclawCommand()
+  let command: ResolvedOpenclawCommand
+  try {
+    command = resolveOpenclawCommand()
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message === getWslRuntimeUnavailableMessage()) {
+      return Promise.resolve({ code: 1, stdout: '', stderr: error.message })
+    }
+    throw error
+  }
   const bin = command.bin
   const allArgs = [...command.argsPrefix, ...args]
   if (opts?.stdinInput !== undefined) {
@@ -436,19 +443,20 @@ export function execShellCommand(command: string): Promise<{
 }> {
   const runtimeSelection = getClawmasterRuntimeSelection()
   if (shouldUseWslRuntime(runtimeSelection)) {
-    const distro = resolveSelectedWslDistroSync(runtimeSelection)
-    if (!distro) {
+    try {
+      const distro = requireSelectedWslDistroSync(runtimeSelection)
+      return execWslCommand(distro, 'bash', ['-lc', command]).then((result) => ({
+        code: result.code,
+        stdout: result.stdout.trim(),
+        stderr: result.stderr.trim(),
+      }))
+    } catch (error: unknown) {
       return Promise.resolve({
         code: 1,
         stdout: '',
-        stderr: 'WSL2 runtime selected but no distro could be resolved',
+        stderr: error instanceof Error ? error.message : getWslRuntimeUnavailableMessage(),
       })
     }
-    return execWslCommand(distro, 'bash', ['-lc', command]).then((result) => ({
-      code: result.code,
-      stdout: result.stdout.trim(),
-      stderr: result.stderr.trim(),
-    }))
   }
 
   return new Promise((resolve, reject) => {

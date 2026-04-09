@@ -23,6 +23,14 @@ import {
   type OpenclawProfileContext,
   type OpenclawProfileSelection,
 } from '../openclawProfile.js'
+import {
+  fileExistsInWslSync,
+  getWslHomeDirSync,
+  readTextFileInWslSync,
+  requireSelectedWslDistroSync,
+  shouldUseWslRuntime,
+  writeTextFileInWslSync,
+} from '../wslRuntime.js'
 
 export interface OpenclawProfileSeedInput {
   mode?: 'empty' | 'clone-current' | 'import-config'
@@ -118,12 +126,105 @@ function resolveProfileSeedSourcePath(
   return sourcePath
 }
 
+function getWslProfileContext(
+  context: OpenclawProfileContext = {}
+): { distro: string; context: OpenclawProfileContext } | null {
+  const runtimeSelection = getClawmasterRuntimeSelection(context)
+  if (!shouldUseWslRuntime(runtimeSelection)) {
+    return null
+  }
+  const distro = requireSelectedWslDistroSync(runtimeSelection)
+  return {
+    distro,
+    context: {
+      ...context,
+      platform: 'linux',
+      homeDir: getWslHomeDirSync(distro),
+    },
+  }
+}
+
+function readProfileSeedJsonFromWsl(
+  distro: string,
+  seed: Required<OpenclawProfileSeedInput>,
+  context: OpenclawProfileContext
+): unknown | null {
+  if (seed.mode === 'empty') {
+    return null
+  }
+
+  if (seed.mode === 'clone-current') {
+    const sourcePath = getOpenclawConfigResolution(context).configPath
+    if (!fileExistsInWslSync(distro, sourcePath)) {
+      throw new Error('Current OpenClaw config does not exist, so there is nothing to clone yet')
+    }
+    const raw = readTextFileInWslSync(distro, sourcePath)
+    if (!raw) {
+      throw new Error('Current OpenClaw config does not exist, so there is nothing to clone yet')
+    }
+    return JSON.parse(raw)
+  }
+
+  const sourcePath = resolveProfileSeedSourcePath(seed, context)
+  if (!sourcePath) {
+    return null
+  }
+  return JSON.parse(fs.readFileSync(sourcePath, 'utf8'))
+}
+
+function seedNamedProfileConfigInWsl(
+  selection: OpenclawProfileSelection,
+  seed: Required<OpenclawProfileSeedInput>,
+  context: OpenclawProfileContext = {}
+): boolean {
+  if (selection.kind !== 'named' || seed.mode === 'empty') {
+    return false
+  }
+
+  const wslProfile = getWslProfileContext(context)
+  if (!wslProfile) {
+    return false
+  }
+
+  const targetDataDir = getOpenclawDataDirForProfile(selection, wslProfile.context)
+  if (!targetDataDir) {
+    throw new Error('Named OpenClaw profile target could not be resolved')
+  }
+  const targetConfigPath = getOpenclawPathModule('linux').join(targetDataDir, 'openclaw.json')
+  if (fileExistsInWslSync(wslProfile.distro, targetConfigPath)) {
+    throw new Error('Target named profile already has an OpenClaw config. Choose a new profile name or switch directly.')
+  }
+
+  let parsed: unknown
+  try {
+    parsed = readProfileSeedJsonFromWsl(wslProfile.distro, seed, wslProfile.context)
+  } catch (error: unknown) {
+    if (error instanceof SyntaxError) {
+      throw new Error('Imported OpenClaw config must be valid JSON')
+    }
+    throw error
+  }
+  if (parsed === null) {
+    return true
+  }
+
+  writeTextFileInWslSync(
+    wslProfile.distro,
+    targetConfigPath,
+    `${JSON.stringify(parsed, null, 2)}\n`
+  )
+  return true
+}
+
 function seedNamedProfileConfig(
   selection: OpenclawProfileSelection,
   seed: Required<OpenclawProfileSeedInput>,
   context: OpenclawProfileContext = {}
 ): void {
   if (selection.kind !== 'named' || seed.mode === 'empty') {
+    return
+  }
+  if (seedNamedProfileConfigInWsl(selection, seed, context)) {
     return
   }
 

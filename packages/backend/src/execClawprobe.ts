@@ -6,8 +6,9 @@ import { promisify } from 'node:util'
 import { getClawmasterRuntimeSelection } from './clawmasterSettings.js'
 import { normalizeLoginShellWhichLine } from './shellWhichNormalize.js'
 import {
+  getWslRuntimeUnavailableMessage,
+  requireSelectedWslDistroSync,
   resolveCommandInWslSync,
-  resolveSelectedWslDistroSync,
   shouldUseWslRuntime,
 } from './wslRuntime.js'
 
@@ -188,14 +189,12 @@ export function resolveClawprobeCommandForTest(options: {
 function resolveClawprobeCommand(): ClawprobeCommandResolution {
   const runtimeSelection = getClawmasterRuntimeSelection()
   if (shouldUseWslRuntime(runtimeSelection)) {
-    const distro = resolveSelectedWslDistroSync(runtimeSelection)
-    if (distro) {
-      return {
-        cmd: 'wsl.exe',
-        argsPrefix: ['-d', distro, '--', resolveCommandInWslSync(distro, 'clawprobe') ?? 'clawprobe'],
-        source: 'bare',
-        globalInstallDetected: false,
-      }
+    const distro = requireSelectedWslDistroSync(runtimeSelection)
+    return {
+      cmd: 'wsl.exe',
+      argsPrefix: ['-d', distro, '--', resolveCommandInWslSync(distro, 'clawprobe') ?? 'clawprobe'],
+      source: 'bare',
+      globalInstallDetected: false,
     }
   }
 
@@ -303,7 +302,20 @@ export async function runClawprobeJson(args: string[]): Promise<unknown> {
 }
 
 export async function runClawprobeCommand(args: string[]): Promise<ClawprobeCommandOutput> {
-  const resolution = resolveClawprobeCommand()
+  let resolution: ClawprobeCommandResolution
+  try {
+    resolution = resolveClawprobeCommand()
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message === getWslRuntimeUnavailableMessage()) {
+      return {
+        ok: false,
+        code: 1,
+        stdout: '',
+        stderr: error.message,
+      }
+    }
+    throw error
+  }
   try {
     const out = await execFileAsync(resolution.cmd, [...resolution.argsPrefix, ...args], {
       maxBuffer: 20 * 1024 * 1024,

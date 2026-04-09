@@ -39,8 +39,22 @@ const WSL_EXE = 'wsl.exe'
 
 export function shouldUseWslRuntime(
   selection: ClawmasterRuntimeSelection = getClawmasterRuntimeSelection()
-): selection is ClawmasterRuntimeSelection & { mode: 'wsl2'; wslDistro: string } {
-  return process.platform === 'win32' && selection.mode === 'wsl2' && Boolean(selection.wslDistro?.trim())
+): selection is ClawmasterRuntimeSelection & { mode: 'wsl2' } {
+  return process.platform === 'win32' && selection.mode === 'wsl2'
+}
+
+export function getWslRuntimeUnavailableMessage(): string {
+  return 'WSL2 runtime is selected, but the configured distro is missing or unavailable. Re-select a WSL2 distro in Settings.'
+}
+
+export function requireSelectedWslDistroSync(
+  selection: ClawmasterRuntimeSelection = getClawmasterRuntimeSelection()
+): string {
+  const distro = resolveSelectedWslDistroSync(selection)
+  if (!distro) {
+    throw new Error(getWslRuntimeUnavailableMessage())
+  }
+  return distro
 }
 
 export function shellEscapePosixArg(value: string): string {
@@ -180,6 +194,11 @@ export function fileExistsInWslSync(distro: string, targetPath: string): boolean
   return out.code === 0
 }
 
+export function directoryExistsInWslSync(distro: string, targetPath: string): boolean {
+  const out = runWslShellSync(distro, `[ -d ${shellEscapePosixArg(targetPath)} ]`)
+  return out.code === 0
+}
+
 export function readTextFileInWslSync(distro: string, targetPath: string): string | null {
   const out = runWslShellSync(distro, `cat ${shellEscapePosixArg(targetPath)}`)
   if (out.code !== 0) return null
@@ -195,6 +214,28 @@ export function writeTextFileInWslSync(
   execFileSync(WSL_EXE, ['-d', distro, '--', 'bash', '-lc', `mkdir -p ${shellEscapePosixArg(parent)} && cat > ${shellEscapePosixArg(targetPath)}`], {
     input: content,
     encoding: 'utf8',
+    windowsHide: true,
+    env: process.env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+}
+
+export function readBinaryFileInWslSync(distro: string, targetPath: string): Buffer {
+  return execFileSync(WSL_EXE, ['-d', distro, '--', 'cat', targetPath], {
+    windowsHide: true,
+    env: process.env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+}
+
+export function writeBinaryFileInWslSync(
+  distro: string,
+  targetPath: string,
+  content: Buffer
+): void {
+  const parent = targetPath.replace(/\/[^/]+$/, '') || '.'
+  execFileSync(WSL_EXE, ['-d', distro, '--', 'bash', '-lc', `mkdir -p ${shellEscapePosixArg(parent)} && cat > ${shellEscapePosixArg(targetPath)}`], {
+    input: content,
     windowsHide: true,
     env: process.env,
     stdio: ['pipe', 'pipe', 'pipe'],
