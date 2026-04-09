@@ -194,6 +194,21 @@ describe('Layout', () => {
     })
   })
 
+  it('uses cmd+k on apple clients without stealing ctrl+k', async () => {
+    Object.defineProperty(window.navigator, 'platform', {
+      configurable: true,
+      value: 'MacIntel',
+    })
+
+    renderLayout('/settings')
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    expect(screen.queryByRole('dialog', { name: '命令面板' })).not.toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    expect(await screen.findByRole('dialog', { name: '命令面板' })).toBeInTheDocument()
+  })
+
   it('shows section commands when the palette first opens', async () => {
     renderLayout('/settings')
 
@@ -310,5 +325,19 @@ describe('Layout', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: '命令面板' })).not.toBeInTheDocument()
     })
+  })
+
+  it('keeps the theme action searchable with localized terms', async () => {
+    renderLayout('/settings')
+
+    fireEvent.click(await screen.findByRole('button', { name: /跳转/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: '命令面板' })
+
+    fireEvent.change(within(dialog).getByPlaceholderText('搜索页面、区块和快捷操作...'), {
+      target: { value: '主题' },
+    })
+
+    expect(await within(dialog).findByRole('option', { name: /切换到深色模式/i })).toBeInTheDocument()
   })
 })

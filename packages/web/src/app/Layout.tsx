@@ -10,7 +10,7 @@ import { platformResults } from '@/shared/adapters/platformResults'
 import { getClawModules } from './moduleRegistry'
 import { CommandPalette, type CommandEntry } from './CommandPalette'
 import { getCommandDescriptors } from './commandRegistry'
-import { getCommandShortcutLabel } from './commandShortcut'
+import { getCommandShortcutLabel, isAppleClientPlatform } from './commandShortcut'
 import { resolveIcon } from './iconRegistry'
 import { NAV_SECTIONS, PAGE_META } from './navigationMeta'
 import {
@@ -250,27 +250,28 @@ export default function Layout({ children }: LayoutProps) {
     navigate(target)
   }, [currentPath, location.hash, navigate, scrollToHashTarget])
 
+  const clientPlatform = typeof navigator === 'undefined'
+    ? undefined
+    : (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return
+      if (event.key.toLowerCase() !== 'k') return
+      if (isAppleClientPlatform(clientPlatform) ? !event.metaKey : !event.ctrlKey) return
       event.preventDefault()
       openCommandPalette()
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [commandHintVisible])
+  }, [clientPlatform, commandHintVisible])
 
   const currentLabel = navItems.find((item) => item.path === currentPath)
   const pageTitle = currentLabel ? t(currentLabel.labelKey) : t('layout.appName')
   const currentMeta = PAGE_META[currentPath]
   const currentSection = navSections.find((section) => section.id === currentMeta?.sectionId) ?? navSections[0]
   const pageDescription = currentMeta ? t(currentMeta.descriptionKey) : t('layout.section.liveDesc')
-  const commandShortcut = getCommandShortcutLabel(
-    typeof navigator === 'undefined'
-      ? undefined
-      : (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform,
-  )
+  const commandShortcut = getCommandShortcutLabel(clientPlatform)
   const commandHostPlatform = isWindowsHostPlatform(hostPlatform) ? hostPlatform : undefined
   const commandEntries = useMemo<CommandEntry[]>(() => {
     return getCommandDescriptors(modules, { hostPlatform: commandHostPlatform }).map((command) => {
@@ -281,7 +282,12 @@ export default function Layout({ children }: LayoutProps) {
           icon: command.icon,
           title: t(dark ? 'layout.darkMode.toLight' : 'layout.darkMode.toDark'),
           description: t(command.descriptionKey),
-          keywords: command.keywords,
+          keywords: [
+            ...command.keywords,
+            t('command.action.toggleTheme'),
+            t('layout.darkMode.toDark'),
+            t('layout.darkMode.toLight'),
+          ],
           badge: t('command.badge.action'),
           execute: toggleDarkMode,
         }
