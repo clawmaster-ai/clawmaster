@@ -73,6 +73,7 @@ describe('Layout', () => {
         nodejs: { installed: true, version: 'v22.13.0' },
         npm: { installed: true, version: '11.12.1' },
         openclaw: { installed: true, version: '2026.4.2 (d74a122)', configPath: '/tmp/openclaw.json' },
+        runtime: { mode: 'native', hostPlatform: 'windows' },
       },
     })
     mockListVersions.mockResolvedValue({
@@ -159,6 +160,34 @@ describe('Layout', () => {
       expect(screen.getByTestId('location-spy')).toHaveTextContent('/settings#settings-profile')
       expect(scrollIntoViewMock).toHaveBeenCalled()
     })
+  })
+
+  it('shows section commands when the palette first opens', async () => {
+    renderLayout('/settings')
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+
+    const dialog = await screen.findByRole('dialog', { name: '命令面板' })
+
+    expect(within(dialog).getByRole('option', { name: /设置：Profile 路径/i })).toBeInTheDocument()
+    expect(within(dialog).getByRole('option', { name: /概览/i })).toBeInTheDocument()
+  })
+
+  it('does not execute a command when enter confirms IME composition', async () => {
+    renderLayout('/settings')
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+
+    const dialog = await screen.findByRole('dialog', { name: '命令面板' })
+
+    fireEvent.change(within(dialog).getByPlaceholderText('搜索页面、区块和快捷操作...'), {
+      target: { value: 'profile' },
+    })
+
+    fireEvent.keyDown(window, { key: 'Enter', isComposing: true })
+
+    expect(screen.getByTestId('location-spy')).toHaveTextContent('/settings')
+    expect(screen.getByRole('dialog', { name: '命令面板' })).toBeInTheDocument()
   })
 
   it('runs quick actions from the command palette', async () => {

@@ -1,32 +1,34 @@
 import { describe, expect, it } from 'vitest'
 import { getCommandDescriptors } from '../commandRegistry'
 
+const testModules = [
+  {
+    id: 'settings',
+    nameKey: 'layout.nav.settings',
+    icon: 'settings-2',
+    navOrder: 40,
+    route: { path: '/settings', LazyPage: {} as never },
+  },
+  {
+    id: 'gateway',
+    nameKey: 'layout.nav.gateway',
+    icon: 'radio',
+    navOrder: 10,
+    route: { path: '/gateway', LazyPage: {} as never },
+  },
+  {
+    id: 'setup',
+    nameKey: 'setup.title',
+    icon: 'sparkles',
+    navOrder: 0,
+    showInNav: false,
+    route: { path: '/setup', LazyPage: {} as never },
+  },
+] as const
+
 describe('getCommandDescriptors', () => {
   it('builds action, page, and curated section commands from visible modules', () => {
-    const commands = getCommandDescriptors([
-      {
-        id: 'settings',
-        nameKey: 'layout.nav.settings',
-        icon: 'settings-2',
-        navOrder: 40,
-        route: { path: '/settings', LazyPage: {} as never },
-      },
-      {
-        id: 'gateway',
-        nameKey: 'layout.nav.gateway',
-        icon: 'radio',
-        navOrder: 10,
-        route: { path: '/gateway', LazyPage: {} as never },
-      },
-      {
-        id: 'setup',
-        nameKey: 'setup.title',
-        icon: 'sparkles',
-        navOrder: 0,
-        showInNav: false,
-        route: { path: '/setup', LazyPage: {} as never },
-      },
-    ])
+    const commands = getCommandDescriptors([...testModules], { hostPlatform: 'windows' })
 
     expect(commands[0]).toMatchObject({
       id: 'toggle-theme',
@@ -64,5 +66,12 @@ describe('getCommandDescriptors', () => {
     )
 
     expect(commands.find((command) => command.id === 'page:setup')).toBeUndefined()
+  })
+
+  it('omits the Windows-only runtime jump on non-Windows hosts', () => {
+    const commands = getCommandDescriptors([...testModules], { hostPlatform: 'darwin' })
+
+    expect(commands.find((command) => command.id === 'settings-runtime')).toBeUndefined()
+    expect(commands.find((command) => command.id === 'settings-profile')).toBeDefined()
   })
 })

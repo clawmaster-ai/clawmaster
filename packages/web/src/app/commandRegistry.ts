@@ -1,4 +1,5 @@
 import type { ClawModule } from '@/types/module'
+import { isWindowsHostPlatform } from '@/shared/hostPlatform'
 import { PAGE_META } from './navigationMeta'
 
 export type CommandKind = 'page' | 'section' | 'action'
@@ -172,7 +173,14 @@ const ACTION_COMMANDS: ActionCommandDescriptor[] = [
   },
 ]
 
-export function getCommandDescriptors(modules: ClawModule[]): CommandDescriptor[] {
+interface CommandRegistryOptions {
+  hostPlatform?: string | null
+}
+
+export function getCommandDescriptors(
+  modules: ClawModule[],
+  options: CommandRegistryOptions = {},
+): CommandDescriptor[] {
   const pageCommands: PageCommandDescriptor[] = modules
     .filter((module) => module.showInNav !== false)
     .filter((module) => PAGE_META[module.route.path])
@@ -187,5 +195,10 @@ export function getCommandDescriptors(modules: ClawModule[]): CommandDescriptor[
       keywords: [module.id, module.route.path.replace(/^\//, '')],
     }))
 
-  return [...ACTION_COMMANDS, ...pageCommands, ...CURATED_SECTION_COMMANDS]
+  const sectionCommands = CURATED_SECTION_COMMANDS.filter((command) => {
+    if (command.id !== 'settings-runtime') return true
+    return isWindowsHostPlatform(options.hostPlatform)
+  })
+
+  return [...ACTION_COMMANDS, ...pageCommands, ...sectionCommands]
 }

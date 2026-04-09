@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { changeLanguage } from '@/i18n'
 import type { GatewayStatus } from '@/lib/types'
 import { getGatewayStatusResult } from '@/shared/adapters/gateway'
+import { isWindowsHostPlatform } from '@/shared/hostPlatform'
 import { platformResults } from '@/shared/adapters/platformResults'
 import { getClawModules } from './moduleRegistry'
 import { CommandPalette, type CommandEntry } from './CommandPalette'
@@ -69,6 +70,15 @@ function normalizeVersion(version: string | undefined): string {
   return match ? match[0] : raw
 }
 
+function getInitialHostPlatform(): string | undefined {
+  if (typeof navigator === 'undefined') return undefined
+
+  const userAgentPlatform = (navigator as Navigator & { userAgentData?: { platform?: string } })
+    .userAgentData?.platform
+    ?.toLowerCase()
+  return userAgentPlatform ?? navigator.platform?.toLowerCase() ?? undefined
+}
+
 export default function Layout({ children }: LayoutProps) {
   const { t, i18n } = useTranslation()
   const location = useLocation()
@@ -77,6 +87,7 @@ export default function Layout({ children }: LayoutProps) {
   const [dark, setDark] = useState(isDark)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [hostPlatform, setHostPlatform] = useState<string | undefined>(getInitialHostPlatform)
   const [gwStatus, setGwStatus] = useState<GatewayStatus | null>(null)
   const [updateBanner, setUpdateBanner] = useState<UpdateBannerState>({ status: 'idle' })
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
@@ -100,6 +111,10 @@ export default function Layout({ children }: LayoutProps) {
       setUpdateBanner({ status: 'checking' })
 
       const system = await platformResults.detectSystem()
+      const detectedHostPlatform = system.data?.runtime?.hostPlatform
+      if (detectedHostPlatform) {
+        setHostPlatform(detectedHostPlatform)
+      }
       const currentVersion = normalizeVersion(system.data?.openclaw.version)
       if (!system.success || !system.data?.openclaw.installed || !currentVersion) {
         if (!cancelled) setUpdateBanner({ status: 'unavailable' })
@@ -222,8 +237,9 @@ export default function Layout({ children }: LayoutProps) {
   const currentMeta = PAGE_META[currentPath]
   const currentSection = navSections.find((section) => section.id === currentMeta?.sectionId) ?? navSections[0]
   const pageDescription = currentMeta ? t(currentMeta.descriptionKey) : t('layout.section.liveDesc')
+  const commandHostPlatform = isWindowsHostPlatform(hostPlatform) ? hostPlatform : undefined
   const commandEntries = useMemo<CommandEntry[]>(() => {
-    return getCommandDescriptors(modules).map((command) => {
+    return getCommandDescriptors(modules, { hostPlatform: commandHostPlatform }).map((command) => {
       if (command.kind === 'action') {
         return {
           id: command.id,
@@ -261,7 +277,7 @@ export default function Layout({ children }: LayoutProps) {
         execute: () => runCommandTarget(command.path),
       }
     })
-  }, [dark, modules, runCommandTarget, t])
+  }, [commandHostPlatform, dark, modules, runCommandTarget, t])
 
   const sidebarContent = (
     <>

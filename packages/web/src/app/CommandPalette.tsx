@@ -45,6 +45,17 @@ function scoreCommand(query: string, command: CommandEntry, index: number): numb
   return score
 }
 
+function getDefaultCommands(commands: CommandEntry[]): CommandEntry[] {
+  const actions = commands.filter((command) => command.kind === 'action')
+  const sections = commands.filter((command) => command.kind === 'section')
+  const pages = commands.filter((command) => command.kind === 'page')
+  const preferred = [...actions.slice(0, 1), ...sections.slice(0, 6), ...pages.slice(0, 5)]
+  const seen = new Set(preferred.map((command) => command.id))
+  const remainder = commands.filter((command) => !seen.has(command.id))
+
+  return [...preferred, ...remainder].slice(0, 12)
+}
+
 export function CommandPalette({ open, commands, onClose }: CommandPaletteProps) {
   const { t } = useTranslation()
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -64,6 +75,9 @@ export function CommandPalette({ open, commands, onClose }: CommandPaletteProps)
 
   const filteredCommands = useMemo(() => {
     const normalizedQuery = normalize(query)
+    if (!normalizedQuery) {
+      return getDefaultCommands(commands)
+    }
 
     return commands
       .map((command, index) => ({
@@ -109,6 +123,7 @@ export function CommandPalette({ open, commands, onClose }: CommandPaletteProps)
       }
 
       if (event.key === 'Enter') {
+        if (event.isComposing || event.keyCode === 229) return
         const activeCommand = filteredCommands[activeIndex]
         if (!activeCommand) return
         event.preventDefault()
