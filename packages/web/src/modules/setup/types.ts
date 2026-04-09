@@ -1,11 +1,25 @@
 /** 能力项 ID */
-export type CapabilityId = 'engine' | 'memory' | 'observe' | 'ocr' | 'agent'
+export type CapabilityId =
+  | 'engine'
+  | 'memory'
+  | 'observe'
+  | 'ocr_text'
+  | 'ocr_doc'
+  | 'agent'
+
+export type CapabilityCardStatus =
+  | 'checking'
+  | 'installed'
+  | 'not_installed'
+  | 'needs_setup'
+  | 'ready'
+  | 'error'
 
 /** 能力项状态 */
 export interface CapabilityStatus {
   id: CapabilityId
   name: string
-  status: 'checking' | 'installed' | 'not_installed' | 'error'
+  status: CapabilityCardStatus
   version?: string
   error?: string
 }
@@ -31,7 +45,8 @@ export interface CapabilityDef {
   name: string
   detectCmd: string
   detectArgs: string[]
-  installSteps: Array<{ cmd: string; args: string[] }>
+  installSteps?: Array<{ cmd: string; args: string[] }>
+  action: 'install' | 'configure'
   /** 是否必装。false 表示可在对应模块页面按需安装 */
   required: boolean
 }
@@ -43,6 +58,7 @@ export const CAPABILITIES: CapabilityDef[] = [
     name: 'capability.engine',
     detectCmd: 'openclaw',
     detectArgs: ['--version'],
+    action: 'install',
     required: true,
     installSteps: [
       { cmd: 'npm', args: ['install', '-g', 'openclaw'] },
@@ -52,38 +68,59 @@ export const CAPABILITIES: CapabilityDef[] = [
     id: 'memory',
     name: 'capability.memory',
     detectCmd: 'openclaw',
-    detectArgs: ['--version'],
+    detectArgs: ['ltm', 'health'],
+    action: 'install',
     required: false,
-    installSteps: [],
+    installSteps: [
+      // 1. 创建目录 + 虚拟环境
+      { cmd: 'bash', args: ['-lc', 'mkdir -p "$HOME/.openclaw/powermem" && python3 -m venv "$HOME/.openclaw/powermem/.venv"'] },
+      // 2. 在虚拟环境中安装 PowerMem
+      { cmd: 'bash', args: ['-lc', '"$HOME/.openclaw/powermem/.venv/bin/pip" install powermem'] },
+      // 3. 安装 OpenClaw 插件
+      { cmd: 'openclaw', args: ['plugins', 'install', 'memory-powermem'] },
+      // 4. 通过 ClawHub Skill 自动完成配置 + 槽位切换
+      { cmd: 'clawhub', args: ['install', 'teingi/install-powermem-memory-minimal'] },
+      // 5. 启动 PowerMem HTTP API 服务（供大师 GUI 调用）
+      { cmd: 'bash', args: ['-c', 'cd ~/.openclaw/powermem && source .venv/bin/activate && nohup powermem-server --host 0.0.0.0 --port 8000 > powermem.log 2>&1 &'] },
+    ],
   },
   {
     id: 'observe',
     name: 'capability.observe',
     detectCmd: 'clawprobe',
     detectArgs: ['--version'],
+    action: 'install',
     required: false,
     installSteps: [
       { cmd: 'npm', args: ['install', '-g', 'clawprobe'] },
     ],
   },
   {
-    id: 'ocr',
-    name: 'capability.ocr',
-    detectCmd: 'clawhub',
-    detectArgs: ['list', '--json'],
+    id: 'ocr_text',
+    name: 'capability.ocrText',
+    detectCmd: '',
+    detectArgs: [],
+    action: 'configure',
     required: false,
-    installSteps: [
-      { cmd: 'clawhub', args: ['install', 'paddleocr-doc-parsing'] },
-      { cmd: 'clawhub', args: ['install', 'paddleocr-text-recognition'] },
-    ],
+  },
+  {
+    id: 'ocr_doc',
+    name: 'capability.ocrDoc',
+    detectCmd: '',
+    detectArgs: [],
+    action: 'configure',
+    required: false,
   },
   {
     id: 'agent',
     name: 'capability.agent',
-    detectCmd: 'openclaw',
-    detectArgs: ['--version'],
+    detectCmd: 'python3',
+    detectArgs: ['-c', 'import deepagents; print(deepagents.__version__)'],
+    action: 'install',
     required: false,
-    installSteps: [],
+    installSteps: [
+      { cmd: 'pip', args: ['install', 'langchain', 'langgraph', 'deepagents'] },
+    ],
   },
 ]
 
@@ -104,7 +141,7 @@ export interface OnboardingState {
 }
 
 export const DEFAULT_ONBOARDING_STATE: OnboardingState = {
-  provider: 'baidu-aistudio',
+  provider: 'openai',
   apiKey: '',
   customBaseUrl: '',
   model: '',
@@ -129,13 +166,7 @@ export interface ProviderConfig {
   configKeyOverride?: string
   /** API Key 管理页面链接 */
   keyUrl?: string
-  /** 凭证名称，默认 API Key */
-  credentialLabel?: string
-  /** 本地化凭证名称 */
-  credentialLabelByLocale?: Partial<Record<'zh' | 'en' | 'ja', string>>
 }
-
-export type ProviderBadgeTone = 'golden-sponsor'
 
 /**
  * 所有提供商共用 config path 模式: models.providers.<id>.apiKey
@@ -251,25 +282,6 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     ],
     defaultModel: 'deepseek-ai/DeepSeek-V3',
   },
-  'baidu-aistudio': {
-    label: 'Baidu AI Studio',
-    api: 'openai-completions',
-    keyUrl: 'https://aistudio.baidu.com/usercenter/token',
-    credentialLabel: 'Access Token',
-    credentialLabelByLocale: {
-      zh: '令牌',
-      en: 'Access Token',
-      ja: 'アクセストークン',
-    },
-    baseUrl: 'https://aistudio.baidu.com/llm/lmapi/v3',
-    models: [
-      { id: 'deepseek-v3', name: 'DeepSeek V3' },
-      { id: 'deepseek-r1', name: 'DeepSeek R1' },
-      { id: 'ernie-4.5-turbo-128k-preview', name: 'ERNIE 4.5 Turbo' },
-      { id: 'ernie-3.5-8k', name: 'ERNIE 3.5 8K' },
-    ],
-    defaultModel: 'deepseek-v3',
-  },
   // ── 聚合平台 ──
   openrouter: {
     label: 'OpenRouter',
@@ -348,19 +360,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
 }
 
 /** 首屏展示的提供商（按钮行），其余折叠在"更多"中 */
-export const PRIMARY_PROVIDERS = ['baidu-aistudio', 'openai', 'anthropic', 'deepseek', 'google', 'ollama', 'openrouter'] as const
-
-export const PROVIDER_BADGES: Partial<Record<keyof typeof PROVIDERS, ProviderBadgeTone>> = {
-  'baidu-aistudio': 'golden-sponsor',
-}
-
-export function getProviderCredentialLabel(providerId: string, locale?: string): string {
-  const provider = PROVIDERS[providerId]
-  if (!provider) return 'API Key'
-
-  const normalizedLocale = locale?.split('-')[0] as 'zh' | 'en' | 'ja' | undefined
-  return provider.credentialLabelByLocale?.[normalizedLocale ?? 'en'] ?? provider.credentialLabel ?? 'API Key'
-}
+export const PRIMARY_PROVIDERS = ['openai', 'anthropic', 'google', 'deepseek', 'ollama', 'openrouter'] as const
 
 export interface ChannelTokenField {
   key: string        // CLI flag name (e.g. 'token', 'bot-token')

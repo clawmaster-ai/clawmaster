@@ -13,8 +13,25 @@ vi.mock('@/shared/adapters/openclaw', () => ({
   setConfigResult: vi.fn(),
 }))
 
+vi.mock('@/shared/adapters/npmOpenclaw', () => ({
+  installOpenclawGlobalResult: vi.fn(),
+}))
+
+vi.mock('@/shared/adapters/openclawBootstrap', () => ({
+  bootstrapAfterInstallResult: vi.fn(),
+  formatBootstrapSummary: vi.fn(() => 'bootstrap failed'),
+}))
+
+vi.mock('@/shared/adapters/paddleocr', () => ({
+  getPaddleOcrStatusResult: vi.fn(),
+  setupPaddleOcrResult: vi.fn(),
+}))
+
 import { execCommand } from '@/shared/adapters/platform'
 import { setConfigResult } from '@/shared/adapters/openclaw'
+import { installOpenclawGlobalResult } from '@/shared/adapters/npmOpenclaw'
+import { bootstrapAfterInstallResult } from '@/shared/adapters/openclawBootstrap'
+import { getPaddleOcrStatusResult } from '@/shared/adapters/paddleocr'
 import { realSetupAdapter } from '../adapters'
 import type { InstallProgress } from '../types'
 
@@ -22,11 +39,73 @@ describe('realSetupAdapter', () => {
   beforeEach(() => {
     vi.mocked(execCommand).mockReset()
     vi.mocked(setConfigResult).mockReset()
+    vi.mocked(installOpenclawGlobalResult).mockReset()
+    vi.mocked(bootstrapAfterInstallResult).mockReset()
+    vi.mocked(getPaddleOcrStatusResult).mockReset()
+    vi.mocked(installOpenclawGlobalResult).mockResolvedValue({
+      success: true,
+      data: { ok: true, code: 0, stdout: 'installed', stderr: '' },
+      error: null,
+    })
+    vi.mocked(bootstrapAfterInstallResult).mockResolvedValue({
+      success: true,
+      data: {
+        doctorFix: { ok: true, code: 0, stdout: '', stderr: '' },
+        gatewayStart: { ok: true },
+      },
+      error: null,
+    })
+    vi.mocked(getPaddleOcrStatusResult).mockResolvedValue({
+      success: true,
+      data: {
+        configured: false,
+        enabledModules: [],
+        missingModules: [],
+        textRecognition: {
+          configured: false,
+          enabled: false,
+          missing: false,
+          apiUrlConfigured: false,
+          accessTokenConfigured: false,
+        },
+        docParsing: {
+          configured: false,
+          enabled: false,
+          missing: false,
+          apiUrlConfigured: false,
+          accessTokenConfigured: false,
+        },
+      },
+      error: null,
+    })
+  })
+
+  it('installs engine through the npm and bootstrap adapters', async () => {
+    const progress: InstallProgress[] = []
+
+    await expect(
+      realSetupAdapter.installCapabilities(['engine'], (item) => {
+        progress.push({ ...item })
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(installOpenclawGlobalResult).toHaveBeenCalledWith('latest')
+    expect(bootstrapAfterInstallResult).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(execCommand)).not.toHaveBeenCalled()
+    expect(progress.at(-1)).toMatchObject({
+      id: 'engine',
+      status: 'done',
+      progress: 100,
+    })
   })
 
   it('throws when a capability install fails', async () => {
     const progress: InstallProgress[] = []
-    vi.mocked(execCommand).mockRejectedValueOnce(new Error('install failed'))
+    vi.mocked(installOpenclawGlobalResult).mockResolvedValueOnce({
+      success: true,
+      data: { ok: false, code: 1, stdout: '', stderr: 'install failed' },
+      error: null,
+    })
 
     await expect(
       realSetupAdapter.installCapabilities(['engine'], (item) => {
@@ -41,9 +120,14 @@ describe('realSetupAdapter', () => {
     })
   })
 
-  it('detects memory capability from the native OpenClaw runtime', async () => {
+  it('detects memory capability from memory-powermem plugin status', async () => {
     vi.mocked(execCommand).mockImplementation(async (cmd, args) => {
       if (cmd === 'openclaw' && args.join(' ') === '--version') return 'OpenClaw 2026.3.11'
+      if (cmd === 'openclaw' && args.join(' ') === 'plugins list --json') {
+        return JSON.stringify({
+          plugins: [{ id: 'memory-powermem', status: 'loaded', version: '0.2.0' }],
+        })
+      }
       throw new Error('missing optional dependency')
     })
 
@@ -55,7 +139,7 @@ describe('realSetupAdapter', () => {
     expect(result.find((item) => item.id === 'memory')).toMatchObject({
       id: 'memory',
       status: 'installed',
-      version: '2026.3.11',
+      version: '0.2.0',
     })
   })
 
@@ -81,30 +165,6 @@ describe('realSetupAdapter', () => {
         { id: 'Qwen/Qwen3-30B-A3B', name: 'Qwen3 30B' },
         { id: 'Pro/deepseek-ai/DeepSeek-V3', name: 'DeepSeek V3 (Pro)' },
         { id: 'Pro/deepseek-ai/DeepSeek-R1', name: 'DeepSeek R1 (Pro)' },
-      ],
-    })
-  })
-
-  it('writes baidu ai studio as a custom openai-compatible provider', async () => {
-    vi.mocked(setConfigResult).mockResolvedValue({
-      success: true,
-      data: undefined,
-      error: null,
-    })
-
-    await expect(
-      realSetupAdapter.onboarding.setApiKey('baidu-aistudio', 'bce-test-token'),
-    ).resolves.toBeUndefined()
-
-    expect(setConfigResult).toHaveBeenCalledWith('models.providers.baidu-aistudio', {
-      apiKey: 'bce-test-token',
-      api: 'openai-completions',
-      baseUrl: 'https://aistudio.baidu.com/llm/lmapi/v3',
-      models: [
-        { id: 'deepseek-v3', name: 'DeepSeek V3' },
-        { id: 'deepseek-r1', name: 'DeepSeek R1' },
-        { id: 'ernie-4.5-turbo-128k-preview', name: 'ERNIE 4.5 Turbo' },
-        { id: 'ernie-3.5-8k', name: 'ERNIE 3.5 8K' },
       ],
     })
   })

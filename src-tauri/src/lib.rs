@@ -651,414 +651,729 @@ fn get_config_path() -> PathBuf {
     get_config_resolution().config_path
 }
 
-fn get_openclaw_memory_dir() -> PathBuf {
-    get_config_path()
-        .parent()
-        .unwrap_or(&PathBuf::from("."))
-        .join("memory")
-}
+const PADDLEOCR_TEXT_SKILL_ID: &str = "paddleocr-text-recognition";
+const PADDLEOCR_DOC_SKILL_ID: &str = "paddleocr-doc-parsing";
+const PADDLEOCR_SKILL_IDS: [&str; 2] = [PADDLEOCR_TEXT_SKILL_ID, PADDLEOCR_DOC_SKILL_ID];
+const PADDLEOCR_SAMPLE_IMAGE_BASE64: &str =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5nLJ8AAAAASUVORK5CYII=";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OpenclawMemoryFileEntry {
-    name: String,
-    relative_path: String,
-    absolute_path: String,
-    size: u64,
-    modified_at_ms: u64,
-    extension: String,
-    kind: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OpenclawMemoryFilesPayload {
-    root: String,
-    files: Vec<OpenclawMemoryFileEntry>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OpenclawMemorySearchHit {
-    id: String,
-    content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    score: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    path: Option<String>,
+struct PaddleocrSetupPayload {
+    module_id: String,
+    api_url: String,
+    access_token: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct OpenclawMemorySearchCapabilityPayload {
-    mode: String,
+struct PaddleocrModuleStatus {
+    configured: bool,
+    enabled: bool,
+    missing: bool,
+    api_url_configured: bool,
+    access_token_configured: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    detail: Option<String>,
+    api_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct OpenclawMemoryReindexPayload {
-    exit_code: i32,
-    stdout: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stderr: Option<String>,
+struct PaddleocrStatusPayload {
+    configured: bool,
+    enabled_modules: Vec<String>,
+    missing_modules: Vec<String>,
+    text_recognition: PaddleocrModuleStatus,
+    doc_parsing: PaddleocrModuleStatus,
 }
 
-fn classify_openclaw_memory_file(name: &str) -> &'static str {
-    let lower = name.to_ascii_lowercase();
-    if lower.ends_with(".sqlite") || lower.ends_with(".db") {
-        "sqlite"
-    } else if lower.ends_with(".wal") || lower.ends_with(".shm") || lower.ends_with(".journal") {
-        "journal"
-    } else if lower.ends_with(".json") {
-        "json"
-    } else if lower.ends_with(".txt") || lower.ends_with(".log") || lower.ends_with(".md") {
-        "text"
-    } else {
-        "other"
+struct BundledPaddleocrFile {
+    module_id: &'static str,
+    relative_path: &'static str,
+    contents: &'static str,
+}
+
+const BUNDLED_PADDLEOCR_FILES: &[BundledPaddleocrFile] = &[
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "SKILL.md",
+        contents: include_str!("../resources/paddleocr-skills/paddleocr-text-recognition/SKILL.md"),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "references/output_schema.md",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-text-recognition/references/output_schema.md"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "scripts/lib.py",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/lib.py"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "scripts/ocr_caller.py",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/ocr_caller.py"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "scripts/requirements.txt",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/requirements.txt"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "scripts/smoke_test.py",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/smoke_test.py"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "SKILL.md",
+        contents: include_str!("../resources/paddleocr-skills/paddleocr-doc-parsing/SKILL.md"),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "references/output_schema.md",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/references/output_schema.md"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "scripts/lib.py",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/lib.py"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "scripts/optimize_file.py",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/optimize_file.py"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "scripts/requirements.txt",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/requirements.txt"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "scripts/smoke_test.py",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/smoke_test.py"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "scripts/vl_caller.py",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/vl_caller.py"
+        ),
+    },
+];
+
+fn trim_trailing_slashes(value: &str) -> String {
+    value.trim_end_matches('/').to_string()
+}
+
+fn paddleocr_module_endpoint_suffix(module_id: &str) -> Result<&'static str, String> {
+    match module_id {
+        PADDLEOCR_TEXT_SKILL_ID => Ok("/ocr"),
+        PADDLEOCR_DOC_SKILL_ID => Ok("/layout-parsing"),
+        _ => Err("Unsupported PaddleOCR module.".to_string()),
     }
 }
 
-fn collect_openclaw_memory_files(
-    root: &Path,
-    dir: &Path,
-    out: &mut Vec<OpenclawMemoryFileEntry>,
-) -> Result<(), String> {
-    for entry in fs::read_dir(dir).map_err(|e| cmd_err_d("OPENCLAW_MEMORY_FILES_READ_FAILED", e))? {
-        let entry = entry.map_err(|e| cmd_err_d("OPENCLAW_MEMORY_FILES_READ_FAILED", e))?;
-        let path = entry.path();
-        let file_type = entry
-            .file_type()
-            .map_err(|e| cmd_err_d("OPENCLAW_MEMORY_FILES_READ_FAILED", e))?;
-        if file_type.is_dir() {
-            collect_openclaw_memory_files(root, &path, out)?;
-            continue;
-        }
-        if !file_type.is_file() {
-            continue;
-        }
-        let meta = entry
-            .metadata()
-            .map_err(|e| cmd_err_d("OPENCLAW_MEMORY_FILES_READ_FAILED", e))?;
-        let modified_at_ms = meta
-            .modified()
-            .ok()
-            .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|value| value.as_millis().min(u64::MAX as u128) as u64)
-            .unwrap_or(0);
-        let relative_path = path
-            .strip_prefix(root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .to_string();
-        let name = entry.file_name().to_string_lossy().to_string();
-        let extension = path
-            .extension()
-            .and_then(|value| value.to_str())
-            .unwrap_or("")
-            .to_string();
-        out.push(OpenclawMemoryFileEntry {
-            name: name.clone(),
-            relative_path,
-            absolute_path: path.to_string_lossy().to_string(),
-            size: meta.len(),
-            modified_at_ms,
-            extension,
-            kind: classify_openclaw_memory_file(&name).to_string(),
-        });
+fn paddleocr_module_api_env_key(module_id: &str) -> Result<&'static str, String> {
+    match module_id {
+        PADDLEOCR_TEXT_SKILL_ID => Ok("PADDLEOCR_OCR_API_URL"),
+        PADDLEOCR_DOC_SKILL_ID => Ok("PADDLEOCR_DOC_PARSING_API_URL"),
+        _ => Err("Unsupported PaddleOCR module.".to_string()),
     }
-    Ok(())
 }
 
-fn resolve_openclaw_memory_relative_path(relative_path: &str) -> Result<PathBuf, String> {
-    let trimmed = relative_path.trim();
+fn paddleocr_module_timeout_env_key(module_id: &str) -> Result<&'static str, String> {
+    match module_id {
+        PADDLEOCR_TEXT_SKILL_ID => Ok("PADDLEOCR_OCR_TIMEOUT"),
+        PADDLEOCR_DOC_SKILL_ID => Ok("PADDLEOCR_DOC_PARSING_TIMEOUT"),
+        _ => Err("Unsupported PaddleOCR module.".to_string()),
+    }
+}
+
+fn paddleocr_module_timeout_default(module_id: &str) -> Result<&'static str, String> {
+    match module_id {
+        PADDLEOCR_TEXT_SKILL_ID => Ok("120"),
+        PADDLEOCR_DOC_SKILL_ID => Ok("600"),
+        _ => Err("Unsupported PaddleOCR module.".to_string()),
+    }
+}
+
+fn paddleocr_validation_label(module_id: &str) -> Result<&'static str, String> {
+    match module_id {
+        PADDLEOCR_TEXT_SKILL_ID => Ok("PaddleOCR text recognition"),
+        PADDLEOCR_DOC_SKILL_ID => Ok("PaddleOCR document parsing"),
+        _ => Err("Unsupported PaddleOCR module.".to_string()),
+    }
+}
+
+fn normalize_paddleocr_api_url(module_id: &str, value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
     if trimmed.is_empty() {
-        return Err(cmd_err("OPENCLAW_MEMORY_FILE_REQUIRED"));
+        return Err("API endpoint is required.".to_string());
     }
-    let rel = PathBuf::from(trimmed);
-    if rel.is_absolute()
-        || rel
-            .components()
-            .any(|component| matches!(component, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_)))
-    {
-        return Err(cmd_err("OPENCLAW_MEMORY_FILE_INVALID"));
-    }
-    Ok(get_openclaw_memory_dir().join(rel))
-}
 
-fn extract_workspace_dirs_from_memory_status(
-    stdout: &str,
-    agent: Option<&str>,
-) -> Vec<PathBuf> {
-    let parsed = serde_json::from_str::<serde_json::Value>(stdout)
-        .unwrap_or_else(|_| serde_json::json!([]));
-    let mut dirs = Vec::new();
-    if let Some(entries) = parsed.as_array() {
-        for item in entries {
-            let agent_id = item
-                .get("agentId")
-                .and_then(|v| v.as_str())
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or("main");
-            if let Some(expected) = agent {
-                if agent_id != expected {
-                    continue;
-                }
-            }
-            if let Some(workspace_dir) = item
-                .get("status")
-                .and_then(|status| status.get("workspaceDir"))
-                .and_then(|value| value.as_str())
-                .filter(|value| !value.trim().is_empty())
-            {
-                dirs.push(PathBuf::from(workspace_dir));
-            }
-        }
-    }
-    if dirs.is_empty() {
-        let fallback = get_config_path()
-            .parent()
-            .unwrap_or(&PathBuf::from("."))
-            .join("workspace");
-        dirs.push(fallback);
-    }
-    dirs
-}
-
-fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let entries = match fs::read_dir(dir) {
-        Ok(value) => value,
-        Err(_) => return Ok(()),
-    };
-    for entry in entries {
-        let entry = entry.map_err(|e| cmd_err_d("OPENCLAW_MEMORY_FILES_READ_FAILED", e))?;
-        let path = entry.path();
-        let file_type = entry
-            .file_type()
-            .map_err(|e| cmd_err_d("OPENCLAW_MEMORY_FILES_READ_FAILED", e))?;
-        if file_type.is_dir() {
-            collect_markdown_files(&path, out)?;
-            continue;
-        }
-        if file_type.is_file()
-            && path
-                .extension()
-                .and_then(|value| value.to_str())
-                .map(|value| value.eq_ignore_ascii_case("md"))
-                .unwrap_or(false)
-        {
-            out.push(path);
-        }
-    }
-    Ok(())
-}
-
-fn count_occurrences(text: &str, query: &str) -> usize {
-    if query.is_empty() {
-        return 0;
-    }
-    let haystack = text.to_ascii_lowercase();
-    let needle = query.to_ascii_lowercase();
-    let mut offset = 0usize;
-    let mut count = 0usize;
-    while let Some(index) = haystack[offset..].find(&needle) {
-        count += 1;
-        offset += index + needle.len();
-        if offset >= haystack.len() {
-            break;
-        }
-    }
-    count
-}
-
-fn extract_search_snippet(text: &str, query: &str) -> String {
-    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if normalized.is_empty() {
-        return String::new();
-    }
-    let lower = normalized.to_ascii_lowercase();
-    let needle = query.to_ascii_lowercase();
-    if let Some(index) = lower.find(&needle) {
-        let start = index.saturating_sub(80);
-        let end = (index + needle.len() + 120).min(normalized.len());
-        normalized[start..end].to_string()
+    let normalized = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        trimmed.to_string()
     } else {
-        normalized.chars().take(240).collect()
-    }
-}
-
-fn has_fts_unavailable_error(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("fts5") && lower.contains("no such module")
-}
-
-fn has_structured_memory_search_payload(stdout: &str) -> bool {
-    let trimmed = stdout.trim();
-    if trimmed.is_empty() {
-        return false;
-    }
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
-        return false;
-    };
-    if value.is_array() {
-        return true;
-    }
-    value
-        .as_object()
-        .map(|record| {
-            ["hits", "results", "items", "memories", "matches"]
-                .iter()
-                .any(|key| record.get(*key).map(|value| value.is_array()).unwrap_or(false))
-        })
-        .unwrap_or(false)
-}
-
-fn resolve_openclaw_memory_search_capability_from_output(
-    code: i32,
-    stdout: &str,
-    stderr: &str,
-) -> OpenclawMemorySearchCapabilityPayload {
-    if code == 0 || has_structured_memory_search_payload(stdout) {
-        return OpenclawMemorySearchCapabilityPayload {
-            mode: "native".to_string(),
-            reason: None,
-            detail: None,
-        };
-    }
-
-    let detail = if stderr.trim().is_empty() {
-        stdout.trim()
-    } else {
-        stderr.trim()
+        format!("https://{trimmed}")
     };
 
-    if has_fts_unavailable_error(detail) {
-        return OpenclawMemorySearchCapabilityPayload {
-            mode: "fallback".to_string(),
-            reason: Some("fts5_unavailable".to_string()),
-            detail: Some(detail.to_string()),
-        };
+    if normalized.chars().any(char::is_whitespace) {
+        return Err("Enter a valid PaddleOCR API endpoint.".to_string());
     }
 
-    OpenclawMemorySearchCapabilityPayload {
-        mode: "native".to_string(),
-        reason: None,
-        detail: if detail.is_empty() {
-            None
-        } else {
-            Some(detail.to_string())
-        },
-    }
-}
-
-#[tauri::command]
-fn search_openclaw_memory_fallback(
-    query: String,
-    agent: Option<String>,
-    max_results: Option<usize>,
-) -> Result<Vec<OpenclawMemorySearchHit>, String> {
-    let trimmed = query.trim();
-    if trimmed.is_empty() {
-        return Ok(vec![]);
+    let Some((scheme, rest)) = normalized.split_once("://") else {
+        return Err("Enter a valid PaddleOCR API endpoint.".to_string());
+    };
+    if scheme != "http" && scheme != "https" {
+        return Err("Enter a valid PaddleOCR API endpoint.".to_string());
     }
 
-    let status_output = openclaw_cmd()
-        .args(["memory", "status", "--json"])
-        .output()
-        .map_err(|e| cmd_err_d("OPENCLAW_CMD_SPAWN_FAILED", e))?;
-    let status_stdout = String::from_utf8_lossy(&status_output.stdout).to_string();
-    let workspace_dirs = extract_workspace_dirs_from_memory_status(&status_stdout, agent.as_deref());
-    let mut markdown_files = Vec::new();
-    for workspace_dir in workspace_dirs {
-        let root_memory_file = workspace_dir.join("MEMORY.md");
-        if root_memory_file.is_file() {
-            markdown_files.push(root_memory_file);
-        }
-        collect_markdown_files(&workspace_dir.join("memory"), &mut markdown_files)?;
-    }
-
-    let limit = max_results.unwrap_or(20).clamp(1, 100);
-    let mut hits: Vec<(usize, OpenclawMemorySearchHit)> = Vec::new();
-    for file in markdown_files {
-        let Ok(content) = fs::read_to_string(&file) else {
-            continue;
-        };
-        let path_text = file.to_string_lossy().to_string();
-        let total_matches = count_occurrences(&content, trimmed) + count_occurrences(&path_text, trimmed);
-        if total_matches == 0 {
-            continue;
-        }
-        let snippet = extract_search_snippet(&content, trimmed);
-        hits.push((
-            total_matches,
-            OpenclawMemorySearchHit {
-                id: path_text.clone(),
-                content: if snippet.is_empty() { path_text.clone() } else { snippet },
-                score: Some(total_matches as f64),
-                path: Some(path_text),
-            },
+    let rest = rest.split('#').next().unwrap_or(rest);
+    let rest = rest.split('?').next().unwrap_or(rest);
+    let api_url = trim_trailing_slashes(&format!("{scheme}://{}", rest.trim_end_matches('/')));
+    let expected_suffix = paddleocr_module_endpoint_suffix(module_id)?;
+    if !api_url.ends_with(expected_suffix) {
+        return Err(format!(
+            "Enter the full PaddleOCR endpoint ending with {expected_suffix}."
         ));
     }
 
-    hits.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
-    Ok(hits
-        .into_iter()
-        .take(limit)
-        .map(|(_, hit)| hit)
-        .collect())
+    let host = api_url
+        .split_once("://")
+        .map(|(_, remainder)| remainder)
+        .unwrap_or("")
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .trim();
+    if host.is_empty() {
+        return Err("Enter a valid PaddleOCR API endpoint.".to_string());
+    }
+
+    Ok(api_url)
 }
 
-#[tauri::command]
-fn get_openclaw_memory_search_capability() -> Result<OpenclawMemorySearchCapabilityPayload, String> {
-    let output = openclaw_cmd()
-        .args([
-            "memory",
-            "search",
-            "--json",
-            "--max-results",
-            "1",
-            "--query",
-            "__clawmaster_probe__",
-        ])
-        .output()
-        .map_err(|e| cmd_err_d("OPENCLAW_CMD_SPAWN_FAILED", e))?;
+fn get_paddleocr_skills_dir() -> PathBuf {
+    get_config_resolution().data_dir.join("workspace").join("skills")
+}
 
-    Ok(resolve_openclaw_memory_search_capability_from_output(
-        output.status.code().unwrap_or(-1),
-        &String::from_utf8_lossy(&output.stdout),
-        &String::from_utf8_lossy(&output.stderr),
+fn get_paddleocr_skill_dir(skills_dir: &Path, module_id: &str) -> PathBuf {
+    skills_dir.join(module_id)
+}
+
+fn ensure_json_object(
+    value: &mut serde_json::Value,
+) -> &mut serde_json::Map<String, serde_json::Value> {
+    if !value.is_object() {
+        *value = serde_json::json!({});
+    }
+    value
+        .as_object_mut()
+        .expect("object should exist after normalization")
+}
+
+fn ensure_object_property<'a>(
+    map: &'a mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> &'a mut serde_json::Map<String, serde_json::Value> {
+    let entry = map
+        .entry(key.to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if !entry.is_object() {
+        *entry = serde_json::json!({});
+    }
+    entry
+        .as_object_mut()
+        .expect("object should exist after normalization")
+}
+
+fn load_config_json_value() -> Result<serde_json::Value, String> {
+    get_config().map(|config| config.data)
+}
+
+fn save_config_json_value(config: serde_json::Value) -> Result<(), String> {
+    save_config(config)
+}
+
+fn read_paddleocr_skill_entry<'a>(
+    config: &'a serde_json::Value,
+    module_id: &str,
+) -> Option<&'a serde_json::Map<String, serde_json::Value>> {
+    config
+        .get("skills")?
+        .as_object()?
+        .get("entries")?
+        .as_object()?
+        .get(module_id)?
+        .as_object()
+}
+
+fn read_paddleocr_api_url_from_entry(
+    entry: Option<&serde_json::Map<String, serde_json::Value>>,
+    module_id: &str,
+) -> Option<String> {
+    let entry = entry?;
+    if let Some(config) = entry.get("config").and_then(|value| value.as_object()) {
+        if let Some(api_url) = config
+            .get("apiUrl")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if let Ok(normalized) = normalize_paddleocr_api_url(module_id, api_url) {
+                return Some(normalized);
+            }
+        }
+    }
+
+    let env = entry.get("env").and_then(|value| value.as_object())?;
+    let env_key = paddleocr_module_api_env_key(module_id).ok()?;
+    let env_url = env.get(env_key).and_then(|value| value.as_str())?.trim();
+    if env_url.is_empty() {
+        return None;
+    }
+
+    normalize_paddleocr_api_url(module_id, env_url).ok()
+}
+
+fn paddleocr_has_access_token(
+    entry: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> bool {
+    let Some(entry) = entry else {
+        return false;
+    };
+
+    if entry
+        .get("apiKey")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        return true;
+    }
+
+    if entry
+        .get("config")
+        .and_then(|value| value.as_object())
+        .and_then(|config| config.get("accessToken"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        return true;
+    }
+
+    entry
+        .get("env")
+        .and_then(|value| value.as_object())
+        .and_then(|env| env.get("PADDLEOCR_ACCESS_TOKEN"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+}
+
+fn paddleocr_has_module_endpoint(
+    entry: Option<&serde_json::Map<String, serde_json::Value>>,
+    module_id: &str,
+) -> bool {
+    let Some(entry) = entry else {
+        return false;
+    };
+    let Some(env) = entry.get("env").and_then(|value| value.as_object()) else {
+        return false;
+    };
+    let Ok(key) = paddleocr_module_api_env_key(module_id) else {
+        return false;
+    };
+    env.get(key)
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+}
+
+fn build_paddleocr_module_status(
+    config: &serde_json::Value,
+    skills_dir: &Path,
+    module_id: &str,
+) -> PaddleocrModuleStatus {
+    let entry = read_paddleocr_skill_entry(config, module_id);
+    let enabled = entry
+        .and_then(|item| item.get("enabled"))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let missing = !get_paddleocr_skill_dir(skills_dir, module_id).exists();
+    let access_token_configured = paddleocr_has_access_token(entry);
+    let api_url = read_paddleocr_api_url_from_entry(entry, module_id);
+    let api_url_configured = api_url.is_some();
+
+    PaddleocrModuleStatus {
+        configured: enabled && !missing && access_token_configured && api_url_configured,
+        enabled,
+        missing,
+        api_url_configured,
+        access_token_configured,
+        api_url,
+    }
+}
+
+fn build_paddleocr_status(
+    config: &serde_json::Value,
+    skills_dir: &Path,
+) -> PaddleocrStatusPayload {
+    let text_recognition =
+        build_paddleocr_module_status(config, skills_dir, PADDLEOCR_TEXT_SKILL_ID);
+    let doc_parsing = build_paddleocr_module_status(config, skills_dir, PADDLEOCR_DOC_SKILL_ID);
+
+    let enabled_modules = PADDLEOCR_SKILL_IDS
+        .iter()
+        .filter_map(|module_id| {
+            let enabled = if *module_id == PADDLEOCR_TEXT_SKILL_ID {
+                text_recognition.enabled
+            } else {
+                doc_parsing.enabled
+            };
+            if enabled {
+                Some((*module_id).to_string())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let missing_modules = PADDLEOCR_SKILL_IDS
+        .iter()
+        .filter_map(|module_id| {
+            let missing = if *module_id == PADDLEOCR_TEXT_SKILL_ID {
+                text_recognition.missing
+            } else {
+                doc_parsing.missing
+            };
+            if missing {
+                Some((*module_id).to_string())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    PaddleocrStatusPayload {
+        configured: text_recognition.configured && doc_parsing.configured,
+        enabled_modules,
+        missing_modules,
+        text_recognition,
+        doc_parsing,
+    }
+}
+
+fn ensure_bundled_paddleocr_meta(skill_dir: &Path, module_id: &str) -> Result<(), String> {
+    let meta_path = skill_dir.join("_meta.json");
+    if meta_path.exists() {
+        return Ok(());
+    }
+
+    let content = serde_json::to_string_pretty(&serde_json::json!({
+        "slug": module_id,
+        "version": "bundled",
+        "source": "clawmaster-bundled",
+        "bundled": true
+    }))
+    .map_err(|e| format!("Failed to serialize bundled PaddleOCR metadata: {e}"))?;
+
+    fs::write(&meta_path, format!("{content}\n"))
+        .map_err(|e| format!("Failed to write bundled PaddleOCR metadata: {e}"))?;
+    Ok(())
+}
+
+fn ensure_bundled_paddleocr_modules(skills_dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(skills_dir)
+        .map_err(|e| format!("Failed to prepare the OpenClaw skills directory: {e}"))?;
+
+    for file in BUNDLED_PADDLEOCR_FILES {
+        let target_path = get_paddleocr_skill_dir(skills_dir, file.module_id)
+            .join(PathBuf::from(file.relative_path));
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Failed to prepare the bundled PaddleOCR module directory {}: {e}",
+                    parent.display()
+                )
+            })?;
+        }
+        if !target_path.exists() {
+            fs::write(&target_path, file.contents).map_err(|e| {
+                format!(
+                    "Failed to copy bundled PaddleOCR module file {}: {e}",
+                    target_path.display()
+                )
+            })?;
+        }
+    }
+
+    for module_id in PADDLEOCR_SKILL_IDS {
+        let skill_dir = get_paddleocr_skill_dir(skills_dir, module_id);
+        fs::create_dir_all(&skill_dir).map_err(|e| {
+            format!(
+                "Failed to prepare bundled PaddleOCR module directory {}: {e}",
+                skill_dir.display()
+            )
+        })?;
+        ensure_bundled_paddleocr_meta(&skill_dir, module_id)?;
+    }
+
+    Ok(())
+}
+
+fn paddleocr_error_detail(payload: Option<&serde_json::Value>, fallback: &str) -> String {
+    if let Some(detail) = payload
+        .and_then(|value| value.get("errorMsg"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return detail.to_string();
+    }
+
+    let trimmed = fallback.trim();
+    if trimmed.is_empty() {
+        "No response body".to_string()
+    } else {
+        shorten_chars(trimmed, 1000)
+    }
+}
+
+fn paddleocr_error_code(payload: Option<&serde_json::Value>) -> i64 {
+    let Some(payload) = payload else {
+        return 0;
+    };
+    let Some(value) = payload.get("errorCode") else {
+        return 0;
+    };
+    value
+        .as_i64()
+        .or_else(|| {
+            value
+                .as_u64()
+                .filter(|number| *number <= i64::MAX as u64)
+                .map(|number| number as i64)
+        })
+        .or_else(|| value.as_str().and_then(|text| text.trim().parse::<i64>().ok()))
+        .unwrap_or(0)
+}
+
+fn run_paddleocr_validation_request(
+    api_url: &str,
+    access_token: &str,
+) -> Result<(u16, String), String> {
+    const STATUS_MARKER: &str = "__CLAWMASTER_PADDLEOCR_STATUS__:";
+    let payload = serde_json::json!({
+        "file": PADDLEOCR_SAMPLE_IMAGE_BASE64,
+        "fileType": 1,
+        "visualize": false,
+        "useDocUnwarping": false,
+        "useDocOrientationClassify": false
+    })
+    .to_string();
+
+    let output = Command::new(resolve_system_command_path("curl"))
+        .args([
+            "-sS",
+            "--connect-timeout",
+            "10",
+            "--max-time",
+            "25",
+            "-X",
+            "POST",
+            api_url,
+            "-H",
+            &format!("Authorization: token {access_token}"),
+            "-H",
+            "Content-Type: application/json",
+            "-H",
+            "Client-Platform: clawmaster-bundled",
+            "-d",
+            &payload,
+            "-w",
+            &format!("\n{STATUS_MARKER}%{{http_code}}"),
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("PaddleOCR verification request could not start: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !output.status.success() {
+        let detail = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            format!("curl exited with {:?}", output.status.code())
+        };
+        return Err(format!("PaddleOCR verification request failed: {detail}"));
+    }
+
+    let Some((body, status_text)) = stdout.rsplit_once(STATUS_MARKER) else {
+        return Err("PaddleOCR verification returned an unreadable response.".to_string());
+    };
+    let status = status_text
+        .trim()
+        .parse::<u16>()
+        .map_err(|_| "PaddleOCR verification returned an invalid status code.".to_string())?;
+
+    Ok((
+        status,
+        body.trim_end_matches(|ch| ch == '\r' || ch == '\n')
+            .to_string(),
     ))
 }
 
-#[tauri::command]
-fn reindex_openclaw_memory() -> Result<OpenclawMemoryReindexPayload, String> {
-    let output = openclaw_cmd()
-        .args(["memory", "index", "--force", "--verbose"])
-        .output()
-        .map_err(|e| cmd_err_d("OPENCLAW_CMD_SPAWN_FAILED", e))?;
-    let exit_code = output.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+fn validate_single_paddleocr_endpoint(
+    module_id: &str,
+    api_url: &str,
+    access_token: &str,
+) -> Result<(), String> {
+    let label = paddleocr_validation_label(module_id)?;
+    let (status, raw_body) = run_paddleocr_validation_request(api_url, access_token)?;
+    let payload = serde_json::from_str::<serde_json::Value>(&raw_body).ok();
 
-    if !output.status.success() {
-        if stderr.trim().is_empty() {
-            return Err(cmd_err_d("OPENCLAW_MEMORY_REINDEX_FAILED", stdout.trim()));
-        }
-        return Err(cmd_err_stderr("OPENCLAW_MEMORY_REINDEX_FAILED", stderr.trim()));
+    if status != 200 {
+        let detail = paddleocr_error_detail(payload.as_ref(), &raw_body);
+        return Err(match status {
+            403 => format!("{label} rejected the access token (403)."),
+            429 => format!("{label} quota has been exceeded (429)."),
+            500..=599 => {
+                format!("{label} service is temporarily unavailable ({status}): {detail}")
+            }
+            _ => format!("{label} verification failed ({status}): {detail}"),
+        });
     }
 
-    Ok(OpenclawMemoryReindexPayload {
-        exit_code,
-        stdout,
-        stderr: if stderr.trim().is_empty() {
-            None
-        } else {
-            Some(stderr)
-        },
-    })
+    let api_error_code = paddleocr_error_code(payload.as_ref());
+    if api_error_code != 0 {
+        let detail = paddleocr_error_detail(payload.as_ref(), &raw_body);
+        return Err(format!("{label} verification failed: {detail}"));
+    }
+
+    Ok(())
+}
+
+fn validate_paddleocr_credentials(
+    module_id: &str,
+    api_url: &str,
+    access_token: &str,
+) -> Result<(), String> {
+    let token = access_token.trim();
+    if token.is_empty() {
+        return Err("Access Token is required.".to_string());
+    }
+
+    let api_url = normalize_paddleocr_api_url(module_id, api_url)?;
+    validate_single_paddleocr_endpoint(module_id, &api_url, token)?;
+    Ok(())
+}
+
+fn write_paddleocr_skill_entries(
+    config: &mut serde_json::Value,
+    module_id: &str,
+    api_url: &str,
+    access_token: &str,
+) -> Result<(), String> {
+    let root = ensure_json_object(config);
+    let skills = ensure_object_property(root, "skills");
+    let entries = ensure_object_property(skills, "entries");
+    let api_env_key = paddleocr_module_api_env_key(module_id)?;
+    let timeout_env_key = paddleocr_module_timeout_env_key(module_id)?;
+    let timeout_default = paddleocr_module_timeout_default(module_id)?;
+
+    let entry_value = entries
+        .entry(module_id.to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let entry = ensure_json_object(entry_value);
+    entry.insert("enabled".to_string(), serde_json::Value::Bool(true));
+    entry.insert(
+        "apiKey".to_string(),
+        serde_json::Value::String(access_token.to_string()),
+    );
+
+    let env = ensure_object_property(entry, "env");
+    env.insert(
+        "PADDLEOCR_ACCESS_TOKEN".to_string(),
+        serde_json::Value::String(access_token.to_string()),
+    );
+    env.insert(
+        api_env_key.to_string(),
+        serde_json::Value::String(api_url.to_string()),
+    );
+    env.insert(
+        timeout_env_key.to_string(),
+        serde_json::Value::String(timeout_default.to_string()),
+    );
+
+    let entry_config = ensure_object_property(entry, "config");
+    entry_config.insert(
+        "apiUrl".to_string(),
+        serde_json::Value::String(api_url.to_string()),
+    );
+    entry_config.insert(
+        "accessToken".to_string(),
+        serde_json::Value::String(access_token.to_string()),
+    );
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_paddleocr_status() -> Result<PaddleocrStatusPayload, String> {
+    let config = load_config_json_value()?;
+    Ok(build_paddleocr_status(&config, &get_paddleocr_skills_dir()))
+}
+
+#[tauri::command]
+fn setup_paddleocr(payload: PaddleocrSetupPayload) -> Result<PaddleocrStatusPayload, String> {
+    let access_token = payload.access_token.trim().to_string();
+    if access_token.is_empty() {
+        return Err("Access Token is required.".to_string());
+    }
+
+    let module_id = payload.module_id.trim();
+    let api_url = normalize_paddleocr_api_url(module_id, &payload.api_url)?;
+    validate_paddleocr_credentials(module_id, &api_url, &access_token)?;
+
+    let skills_dir = get_paddleocr_skills_dir();
+    ensure_bundled_paddleocr_modules(&skills_dir)?;
+
+    let mut config = load_config_json_value()?;
+    write_paddleocr_skill_entries(&mut config, module_id, &api_url, &access_token)?;
+    save_config_json_value(config)?;
+
+    let updated_config = load_config_json_value()?;
+    Ok(build_paddleocr_status(&updated_config, &skills_dir))
 }
 
 #[cfg(test)]
@@ -2320,30 +2635,6 @@ fn run_openclaw_command_captured(args: Vec<String>) -> Result<OpenclawCapturedOu
     })
 }
 
-#[tauri::command]
-fn list_openclaw_memory_files() -> Result<OpenclawMemoryFilesPayload, String> {
-    let root = get_openclaw_memory_dir();
-    if !root.is_dir() {
-        return Ok(OpenclawMemoryFilesPayload {
-            root: root.to_string_lossy().to_string(),
-            files: vec![],
-        });
-    }
-    let mut files = Vec::new();
-    collect_openclaw_memory_files(&root, &root, &mut files)?;
-    files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
-    Ok(OpenclawMemoryFilesPayload {
-        root: root.to_string_lossy().to_string(),
-        files,
-    })
-}
-
-#[tauri::command]
-fn delete_openclaw_memory_file(relative_path: String) -> Result<(), String> {
-    let target = resolve_openclaw_memory_relative_path(&relative_path)?;
-    fs::remove_file(target).map_err(|e| cmd_err_d("OPENCLAW_MEMORY_FILE_DELETE_FAILED", e))
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RunOpenclawStdinPayload {
@@ -2405,7 +2696,7 @@ fn run_clawprobe_command(args: Vec<String>) -> Result<String, String> {
 fn is_allowed_system_command(cmd: &str) -> bool {
     matches!(
         cmd,
-        "bash" | "clawhub" | "curl" | "mkdir" | "nohup" | "npm" | "ollama"
+        "bash" | "clawhub" | "curl" | "mkdir" | "nohup" | "npm" | "ollama" | "pip" | "python3"
     )
 }
 
@@ -2498,6 +2789,420 @@ fn run_system_command(cmd: String, args: Vec<String>) -> Result<String, String> 
     }
 }
 
+fn expand_powermem_env_path(raw: &str) -> PathBuf {
+    let t = raw.trim();
+    if let Some(rest) = t.strip_prefix("~/") {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(rest)
+    } else {
+        PathBuf::from(t)
+    }
+}
+
+fn json_str_trim(v: &serde_json::Value, key: &str) -> Option<String> {
+    v.get(key)?
+        .as_str()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+fn provider_api_key_json(cfg: &serde_json::Value) -> Option<String> {
+    json_str_trim(cfg, "apiKey")
+        .or_else(|| json_str_trim(cfg, "api_key"))
+        .or_else(|| json_str_trim(cfg, "token"))
+        .or_else(|| json_str_trim(cfg, "key"))
+}
+
+fn provider_looks_dashscope(id: &str, cfg: &serde_json::Value) -> bool {
+    let id_l = id.to_lowercase();
+    if id_l.contains("dashscope")
+        || id_l.contains("qwen")
+        || id_l.contains("tongyi")
+        || id_l.contains("bailian")
+        || id_l.contains("alibabacloud")
+        || id_l.contains("modelstudio")
+        || id.contains("百炼")
+    {
+        return true;
+    }
+    let base = cfg
+        .get("baseUrl")
+        .and_then(|b| b.as_str())
+        .unwrap_or("")
+        .to_lowercase();
+    base.contains("dashscope")
+        || base.contains("alibabacloud")
+        || base.contains("qwen")
+        || base.contains("tongyi")
+        || base.contains("bailian")
+}
+
+fn extract_powermem_dashscope_key(config: &serde_json::Value) -> Option<String> {
+    if let Some(entries) = config.get("plugins").and_then(|p| p.get("entries")) {
+        if let Some(ent) = entries.get("memory-powermem") {
+            if let Some(pcfg) = ent.get("config") {
+                if let Some(k) = provider_api_key_json(pcfg) {
+                    return Some(k);
+                }
+            }
+        }
+    }
+    let providers = config
+        .get("models")
+        .and_then(|m| m.get("providers"))
+        .and_then(|p| p.as_object())?;
+
+    let mut named_key: Option<String> = None;
+    let mut fallback_key: Option<String> = None;
+    for (id, pv) in providers {
+        let Some(key) = provider_api_key_json(pv) else {
+            continue;
+        };
+        if provider_looks_dashscope(id, pv) {
+            named_key = Some(key);
+            break;
+        }
+        if fallback_key.is_none() {
+            fallback_key = Some(key);
+        }
+    }
+    if let Some(k) = named_key {
+        return Some(k);
+    }
+    if let Some(primary) = config
+        .get("agents")
+        .and_then(|a| a.get("defaults"))
+        .and_then(|d| d.get("model"))
+        .and_then(|m| m.get("primary"))
+        .and_then(|p| p.as_str())
+    {
+        if let Some((prov, _)) = primary.split_once('/') {
+            let prov = prov.trim();
+            if !prov.is_empty() {
+                if let Some(pv) = providers.get(prov) {
+                    if let Some(k) = provider_api_key_json(pv) {
+                        return Some(k);
+                    }
+                }
+            }
+        }
+    }
+    fallback_key
+}
+
+fn format_powermem_dotenv_value(value: &str) -> String {
+    let needs_quote = value
+        .chars()
+        .any(|c| matches!(c, '\r' | '\n' | '#' | '\'' | '"' | '\\'))
+        || value != value.trim();
+    if needs_quote {
+        let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+        format!("\"{escaped}\"")
+    } else {
+        value.to_string()
+    }
+}
+
+const POWERMEM_ENV_TEMPLATE: &str = include_str!("../../packages/backend/src/powermem.env.example");
+
+fn replace_powermem_dotenv_line(content: &str, name: &str, rhs: &str) -> String {
+    let prefix = format!("{}=", name);
+    content
+        .lines()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with('#') {
+                return line.to_string();
+            }
+            if line.starts_with(&prefix) || trimmed.starts_with(&prefix) {
+                format!("{}={}", name, rhs)
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn merge_openclaw_key_into_powermem_template(template: &str, key: Option<&str>) -> String {
+    let header = "# Clawmaster: first-time .env from oceanbase/powermem `.env.example` (bundled).\n\
+                  # Upstream: https://github.com/oceanbase/powermem/blob/main/.env.example\n\
+                  # LLM / embedding / rerank / sparse / DASHSCOPE lines may be filled from openclaw.json when created.\n\
+                  # SQLITE_PATH is set to match OpenClaw gateway memory-powermem (powermem/data/powermem.db).\n\n";
+    let mut body = if let Some(k) = key.map(str::trim).filter(|s| !s.is_empty()) {
+        let v = format_powermem_dotenv_value(k);
+        let mut b = template.to_string();
+        for name in [
+            "LLM_API_KEY",
+            "EMBEDDING_API_KEY",
+            "RERANKER_API_KEY",
+            "SPARSE_EMBEDDER_API_KEY",
+        ] {
+            b = replace_powermem_dotenv_line(&b, name, &v);
+        }
+        let has_dashscope = b.lines().any(|line| {
+            let t = line.trim_start();
+            !t.starts_with('#') && t.starts_with("DASHSCOPE_API_KEY=")
+        });
+        if has_dashscope {
+            replace_powermem_dotenv_line(&b, "DASHSCOPE_API_KEY", &v)
+        } else {
+            format!("DASHSCOPE_API_KEY={}\n\n{}", v, b)
+        }
+    } else {
+        template.to_string()
+    };
+    if let Some(parent) = get_config_path().parent() {
+        let data = parent.join("powermem").join("data");
+        let _ = fs::create_dir_all(&data);
+        let db = data.join("powermem.db");
+        let v_sqlite = format_powermem_dotenv_value(&db.to_string_lossy());
+        body = replace_powermem_dotenv_line(&body, "SQLITE_PATH", &v_sqlite);
+    }
+    format!("{}{}", header, body)
+}
+
+/// If `<openclaw data>/powermem/.env` is missing, create it from bundled PowerMem `.env.example` (keys from openclaw.json when possible).
+fn ensure_powermem_dotenv_file() {
+    let config_path = get_config_path();
+    let Some(parent) = config_path.parent() else {
+        return;
+    };
+    let pm_dir = parent.join("powermem");
+    let env_path = pm_dir.join(".env");
+    if env_path.is_file() {
+        return;
+    }
+    let _ = fs::create_dir_all(&pm_dir);
+    let raw = fs::read_to_string(&config_path).unwrap_or_else(|_| "{}".to_string());
+    let config: serde_json::Value =
+        serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}));
+    let key = extract_powermem_dashscope_key(&config);
+    let body = merge_openclaw_key_into_powermem_template(POWERMEM_ENV_TEMPLATE, key.as_deref());
+    let out = if body.ends_with('\n') {
+        body
+    } else {
+        format!("{}\n", body)
+    };
+    let _ = fs::write(&env_path, out);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&env_path) {
+            let mut p = meta.permissions();
+            p.set_mode(0o600);
+            let _ = fs::set_permissions(&env_path, p);
+        }
+    }
+}
+
+/// Explicit `env_file` from plugin config, else default `<openclaw data>/powermem/.env` (created on first use when missing).
+fn resolve_powermem_env_file_path(env_file: Option<&str>) -> Option<PathBuf> {
+    if let Some(raw) = env_file.map(str::trim).filter(|s| !s.is_empty()) {
+        let p = expand_powermem_env_path(raw);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    ensure_powermem_dotenv_file();
+    let default_path = get_config_path().parent()?.join("powermem").join(".env");
+    if default_path.is_file() {
+        Some(default_path)
+    } else {
+        None
+    }
+}
+
+fn database_provider_from_dotenv_file(path: &Path) -> Option<String> {
+    let s = fs::read_to_string(path).ok()?;
+    for line in s.lines() {
+        let t = line.trim_start().trim_end();
+        if t.starts_with('#') || t.is_empty() {
+            continue;
+        }
+        let Some((k, v)) = t.split_once('=') else {
+            continue;
+        };
+        if !k.trim().eq_ignore_ascii_case("DATABASE_PROVIDER") {
+            continue;
+        }
+        let v = v.trim().trim_matches(|c| c == '"' || c == '\'');
+        return Some(v.to_lowercase());
+    }
+    None
+}
+
+fn should_inject_gateway_sqlite_path(env_file_resolved: Option<&Path>) -> bool {
+    let Some(p) = env_file_resolved.filter(|p| p.is_file()) else {
+        return true;
+    };
+    match database_provider_from_dotenv_file(p).as_deref() {
+        Some("oceanbase") | Some("postgres") => false,
+        _ => true,
+    }
+}
+
+fn pmem_args_with_env_file(mut args: Vec<String>, env_path: &Path) -> Vec<String> {
+    if args.windows(2).any(|w| w[0] == "--env-file") {
+        return args;
+    }
+    let s = env_path.to_string_lossy().to_string();
+    let mut out = vec!["--env-file".to_string(), s];
+    out.append(&mut args);
+    out
+}
+
+/// Run `pmem` / `powermem` CLI (PowerMem). `program` is usually `pmem` or an absolute path from plugin config.
+#[tauri::command]
+fn run_pmem_command(
+    program: String,
+    args: Vec<String>,
+    env_file: Option<String>,
+    api_key: Option<String>,
+) -> Result<String, String> {
+    let prog = program.trim();
+    if prog.is_empty() {
+        return Err("PMEM_EMPTY_PROGRAM".to_string());
+    }
+    let resolved = resolve_powermem_env_file_path(env_file.as_deref());
+    let final_args = match &resolved {
+        Some(p) => pmem_args_with_env_file(args, p),
+        None => args,
+    };
+    let mut cmd = Command::new(prog);
+    cmd.args(&final_args);
+    if let Some(ref p) = resolved {
+        cmd.env("POWERMEM_ENV_FILE", p.to_string_lossy().to_string());
+    }
+    if let Some(key) = api_key.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        cmd.env("DASHSCOPE_API_KEY", key);
+    }
+    if should_inject_gateway_sqlite_path(resolved.as_deref()) {
+        if let Some(parent) = get_config_path().parent() {
+            let data = parent.join("powermem").join("data");
+            let _ = fs::create_dir_all(&data);
+            cmd.env(
+                "SQLITE_PATH",
+                data.join("powermem.db").to_string_lossy().to_string(),
+            );
+        }
+    }
+    let output = cmd
+        .output()
+        .map_err(|e| cmd_err_d("PMEM_CMD_SPAWN_FAILED", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        Err(cmd_err_stderr("PMEM_CMD_FAILED", &stderr))
+    }
+}
+
+fn powermem_plugin_entry(config: &serde_json::Value) -> Option<&serde_json::Value> {
+    config
+        .get("plugins")
+        .and_then(|p| p.get("entries"))
+        .and_then(|e| e.get("memory-powermem"))
+}
+
+fn powermem_plugin_enabled(ent: &serde_json::Value) -> bool {
+    ent.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true)
+}
+
+fn powermem_mode_from_entry(ent: &serde_json::Value) -> String {
+    let cfg = ent.get("config").unwrap_or(&serde_json::Value::Null);
+    match cfg.get("mode").and_then(|m| m.as_str()) {
+        Some("http") => return "http".to_string(),
+        Some("cli") => return "cli".to_string(),
+        _ => {}
+    }
+    let base_url = cfg
+        .get("baseUrl")
+        .and_then(|b| b.as_str())
+        .map(|s| s.trim())
+        .unwrap_or("");
+    if !base_url.is_empty() {
+        "http".to_string()
+    } else {
+        "cli".to_string()
+    }
+}
+
+fn powermem_cli_env_raw_from_entry(ent: &serde_json::Value) -> Option<String> {
+    let cfg = ent.get("config").unwrap_or(&serde_json::Value::Null);
+    json_str_trim(cfg, "envFile").or_else(|| json_str_trim(cfg, "env_file"))
+}
+
+#[derive(Serialize)]
+struct PowermemEnvEditorPayload {
+    path: String,
+    content: String,
+}
+
+#[tauri::command]
+fn read_powermem_env_file() -> Result<PowermemEnvEditorPayload, String> {
+    let config_path = get_config_path();
+    let raw = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let config: serde_json::Value =
+        serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}));
+    let Some(ent) = powermem_plugin_entry(&config) else {
+        return Err("POWERMEM_NOT_CONFIGURED".to_string());
+    };
+    if !powermem_plugin_enabled(ent) {
+        return Err("POWERMEM_PLUGIN_DISABLED".to_string());
+    }
+    if powermem_mode_from_entry(ent) != "cli" {
+        return Err("POWERMEM_ENV_HTTP_MODE".to_string());
+    }
+    let env_raw = powermem_cli_env_raw_from_entry(ent);
+    let path_buf = resolve_powermem_env_file_path(env_raw.as_deref())
+        .ok_or_else(|| "POWERMEM_ENV_NO_PATH".to_string())?;
+    let path = path_buf.to_string_lossy().to_string();
+    let content = fs::read_to_string(&path_buf).unwrap_or_default();
+    Ok(PowermemEnvEditorPayload { path, content })
+}
+
+#[tauri::command]
+fn write_powermem_env_file(content: String) -> Result<(), String> {
+    const MAX_BYTES: usize = 256 * 1024;
+    if content.len() > MAX_BYTES {
+        return Err("POWERMEM_ENV_TOO_LARGE".to_string());
+    }
+    let config_path = get_config_path();
+    let raw = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let config: serde_json::Value =
+        serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}));
+    let Some(ent) = powermem_plugin_entry(&config) else {
+        return Err("POWERMEM_NOT_CONFIGURED".to_string());
+    };
+    if !powermem_plugin_enabled(ent) {
+        return Err("POWERMEM_PLUGIN_DISABLED".to_string());
+    }
+    if powermem_mode_from_entry(ent) != "cli" {
+        return Err("POWERMEM_ENV_HTTP_MODE".to_string());
+    }
+    let env_raw = powermem_cli_env_raw_from_entry(ent);
+    let path_buf = resolve_powermem_env_file_path(env_raw.as_deref())
+        .ok_or_else(|| "POWERMEM_ENV_NO_PATH".to_string())?;
+    if let Some(parent) = path_buf.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&path_buf, content).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&path_buf) {
+            let mut p = meta.permissions();
+            p.set_mode(0o600);
+            let _ = fs::set_permissions(&path_buf, p);
+        }
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2510,6 +3215,8 @@ pub fn run() {
             restart_gateway,
             get_config,
             save_config,
+            get_paddleocr_status,
+            setup_paddleocr,
             reset_openclaw_config,
             save_openclaw_profile,
             clear_openclaw_profile,
@@ -2528,14 +3235,12 @@ pub fn run() {
             get_logs,
             run_openclaw_command,
             run_openclaw_command_captured,
-            list_openclaw_memory_files,
-            delete_openclaw_memory_file,
-            get_openclaw_memory_search_capability,
-            reindex_openclaw_memory,
-            search_openclaw_memory_fallback,
             run_openclaw_command_stdin,
             run_clawprobe_command,
             run_system_command,
+            run_pmem_command,
+            read_powermem_env_file,
+            write_powermem_env_file,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
