@@ -24,10 +24,27 @@ vi.mock('@/shared/adapters/system', () => ({
   probeHttpStatusResult: vi.fn(),
 }))
 
+vi.mock('@/shared/adapters/npmOpenclaw', () => ({
+  installOpenclawGlobalResult: vi.fn(),
+}))
+
+vi.mock('@/shared/adapters/openclawBootstrap', () => ({
+  bootstrapAfterInstallResult: vi.fn(),
+  formatBootstrapSummary: vi.fn(() => 'bootstrap failed'),
+}))
+
+vi.mock('@/shared/adapters/paddleocr', () => ({
+  getPaddleOcrStatusResult: vi.fn(),
+  setupPaddleOcrResult: vi.fn(),
+}))
+
 import { execCommand } from '@/shared/adapters/platform'
 import { getConfigResult, resolvePluginRootResult, setConfigResult } from '@/shared/adapters/openclaw'
 import { installSkillResult } from '@/shared/adapters/clawhub'
 import { detectSystemResult, probeHttpStatusResult } from '@/shared/adapters/system'
+import { installOpenclawGlobalResult } from '@/shared/adapters/npmOpenclaw'
+import { bootstrapAfterInstallResult } from '@/shared/adapters/openclawBootstrap'
+import { getPaddleOcrStatusResult } from '@/shared/adapters/paddleocr'
 import { realSetupAdapter } from '../adapters'
 import type { InstallProgress } from '../types'
 
@@ -65,11 +82,55 @@ describe('realSetupAdapter', () => {
       data: undefined,
       error: null,
     })
+    vi.mocked(installOpenclawGlobalResult).mockReset()
+    vi.mocked(bootstrapAfterInstallResult).mockReset()
+    vi.mocked(getPaddleOcrStatusResult).mockReset()
+    vi.mocked(installOpenclawGlobalResult).mockResolvedValue({
+      success: true,
+      data: { ok: true, code: 0, stdout: 'installed', stderr: '' },
+      error: null,
+    })
+    vi.mocked(bootstrapAfterInstallResult).mockResolvedValue({
+      success: true,
+      data: {
+        doctorFix: { ok: true, code: 0, stdout: '', stderr: '' },
+        gatewayStart: { ok: true },
+      },
+      error: null,
+    })
+    vi.mocked(getPaddleOcrStatusResult).mockResolvedValue({
+      success: true,
+      data: {
+        configured: false,
+        enabledModules: [],
+        missingModules: [],
+        textRecognition: {
+          configured: false,
+          enabled: false,
+          missing: false,
+          apiUrlConfigured: false,
+          accessTokenConfigured: false,
+        },
+        docParsing: {
+          configured: false,
+          enabled: false,
+          missing: false,
+          apiUrlConfigured: false,
+          accessTokenConfigured: false,
+        },
+      },
+      error: null,
+    })
+    })
   })
 
   it('throws when a capability install fails', async () => {
     const progress: InstallProgress[] = []
-    vi.mocked(execCommand).mockRejectedValueOnce(new Error('install failed'))
+    vi.mocked(installOpenclawGlobalResult).mockResolvedValueOnce({
+      success: true,
+      data: { ok: false, code: 1, stdout: '', stderr: 'install failed' },
+      error: null,
+    })
 
     await expect(
       realSetupAdapter.installCapabilities(['engine'], (item) => {

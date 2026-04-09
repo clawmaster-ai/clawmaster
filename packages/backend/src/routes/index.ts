@@ -11,6 +11,7 @@ import { registerSettingsRoutes } from './settingsRoutes.js'
 import { registerClawprobeRoutes } from './clawprobeRoutes.js'
 import { registerLogsRoutes, attachLogsStreamServer as attachWs } from './logsRoutes.js'
 import { registerMemoryRoutes } from './memoryRoutes.js'
+import { registerPaddleOcrRoutes } from './paddleocrRoutes.js'
 import { registerExecRoutes } from './execRoutes.js'
 import { registerStorageRoutes } from './storageRoutes.js'
 import { registerMcpRoutes } from './mcpRoutes.js'
@@ -30,6 +31,7 @@ export function registerDomainRoutes(app: express.Express): void {
   registerMemoryRoutes(app)
   registerMcpRoutes(app)
   registerOllamaRoutes(app)
+  registerPaddleOcrRoutes(app)
   registerExecRoutes(app)
   registerStorageRoutes(app)
 }
