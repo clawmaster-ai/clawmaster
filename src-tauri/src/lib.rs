@@ -1059,6 +1059,7 @@ fn get_config_resolution() -> OpenclawConfigResolution {
                 .unwrap_or_else(|| join_posix(&wsl_home, ".openclaw"));
             let config_path = join_posix(&data_dir, "openclaw.json");
             let config_exists = wsl_file_exists(&distro, &config_path);
+            let override_active = profile_selection.kind != "default";
             return OpenclawConfigResolution {
                 config_path: PathBuf::from(config_path.clone()),
                 data_dir: PathBuf::from(data_dir.clone()),
@@ -1072,7 +1073,7 @@ fn get_config_resolution() -> OpenclawConfigResolution {
                     "default-home".to_string()
                 },
                 profile_selection,
-                override_active: profile_selection.kind != "default",
+                override_active,
                 config_path_candidates: vec![PathBuf::from(config_path.clone())],
                 existing_config_paths: if config_exists {
                     vec![PathBuf::from(config_path)]
