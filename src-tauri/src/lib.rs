@@ -251,9 +251,13 @@ fn get_clawmaster_runtime_selection() -> ClawmasterRuntimeSelection {
     let settings = read_clawmaster_settings();
     normalize_clawmaster_runtime_selection(
         settings.runtime.as_ref().map(|item| item.mode.clone()),
-        settings.runtime.as_ref().and_then(|item| item.wsl_distro.clone()),
+        settings
+            .runtime
+            .as_ref()
+            .and_then(|item| item.wsl_distro.clone()),
         settings.runtime.as_ref().and_then(|item| item.backend_port),
-        settings.runtime
+        settings
+            .runtime
             .as_ref()
             .and_then(|item| item.auto_start_backend),
     )
@@ -287,7 +291,9 @@ fn sanitize_profile_name(input: &str) -> Result<String, String> {
         return Err("Profile name is required".to_string());
     }
     if trimmed == "default" {
-        return Err("Use the default profile option instead of the reserved name \"default\"".to_string());
+        return Err(
+            "Use the default profile option instead of the reserved name \"default\"".to_string(),
+        );
     }
     if !trimmed
         .chars()
@@ -325,8 +331,14 @@ fn normalize_openclaw_profile_selection(
 fn get_openclaw_profile_selection() -> OpenclawProfileSelection {
     let settings = read_clawmaster_settings();
     normalize_openclaw_profile_selection(
-        settings.openclaw_profile.as_ref().map(|item| item.kind.clone()),
-        settings.openclaw_profile.as_ref().and_then(|item| item.name.clone()),
+        settings
+            .openclaw_profile
+            .as_ref()
+            .map(|item| item.kind.clone()),
+        settings
+            .openclaw_profile
+            .as_ref()
+            .and_then(|item| item.name.clone()),
     )
     .unwrap_or(OpenclawProfileSelection {
         kind: "default".to_string(),
@@ -453,11 +465,12 @@ fn seed_named_openclaw_profile_config(
         }
 
         let raw = match seed_mode {
-            "clone-current" => read_active_openclaw_text_file(&get_config_path())?
-                .ok_or_else(|| {
+            "clone-current" => {
+                read_active_openclaw_text_file(&get_config_path())?.ok_or_else(|| {
                     "Current OpenClaw config does not exist, so there is nothing to clone yet"
                         .to_string()
-                })?,
+                })?
+            }
             "import-config" => {
                 let source = seed_path.unwrap_or_default().trim();
                 if source.is_empty() {
@@ -496,8 +509,8 @@ fn seed_named_openclaw_profile_config(
 
     let source_path = resolve_openclaw_profile_seed_source_path(seed_mode, seed_path)?
         .ok_or_else(|| "OpenClaw profile seed source was not resolved".to_string())?;
-    let raw = fs::read_to_string(&source_path)
-        .map_err(|e| cmd_err_d("PROFILE_SEED_READ_FAILED", e))?;
+    let raw =
+        fs::read_to_string(&source_path).map_err(|e| cmd_err_d("PROFILE_SEED_READ_FAILED", e))?;
     let parsed: serde_json::Value = serde_json::from_str(&raw)
         .map_err(|_| "Imported OpenClaw config must be valid JSON".to_string())?;
 
@@ -793,9 +806,7 @@ fn parse_wsl_list_verbose(stdout: &str) -> Vec<RuntimeDistroInfo> {
         .filter(|line| !line.trim().is_empty())
         .filter(|line| !line.trim_start().to_ascii_uppercase().starts_with("NAME"))
         .filter_map(|line| {
-            let Ok(pattern) =
-                regex_like_parse_wsl_line(line)
-            else {
+            let Ok(pattern) = regex_like_parse_wsl_line(line) else {
                 return None;
             };
             Some(pattern)
@@ -826,9 +837,7 @@ fn regex_like_parse_wsl_line(line: &str) -> Result<RuntimeDistroInfo, ()> {
     if columns.len() < 3 {
         return Err(());
     }
-    let version = columns
-        .last()
-        .and_then(|value| value.parse::<u8>().ok());
+    let version = columns.last().and_then(|value| value.parse::<u8>().ok());
     let state = columns
         .get(columns.len().saturating_sub(2))
         .map(|value| (*value).to_string())
@@ -988,7 +997,11 @@ fn wsl_is_dir(distro: &str, path: &str) -> bool {
 
 #[cfg(target_os = "windows")]
 fn read_text_file_in_wsl(distro: &str, path: &str) -> Result<Option<String>, String> {
-    let output = run_wsl_shell(distro, &format!("cat {}", shell_escape_posix_arg(path)), None)?;
+    let output = run_wsl_shell(
+        distro,
+        &format!("cat {}", shell_escape_posix_arg(path)),
+        None,
+    )?;
     if output.code != 0 {
         return Ok(None);
     }
@@ -1361,21 +1374,23 @@ fn resolve_openclaw_memory_relative_path(relative_path: &str) -> Result<PathBuf,
     }
     let rel = PathBuf::from(trimmed);
     if rel.is_absolute()
-        || rel
-            .components()
-            .any(|component| matches!(component, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_)))
+        || rel.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        })
     {
         return Err(cmd_err("OPENCLAW_MEMORY_FILE_INVALID"));
     }
     Ok(get_openclaw_memory_dir().join(rel))
 }
 
-fn extract_workspace_dirs_from_memory_status(
-    stdout: &str,
-    agent: Option<&str>,
-) -> Vec<PathBuf> {
-    let parsed = serde_json::from_str::<serde_json::Value>(stdout)
-        .unwrap_or_else(|_| serde_json::json!([]));
+fn extract_workspace_dirs_from_memory_status(stdout: &str, agent: Option<&str>) -> Vec<PathBuf> {
+    let parsed =
+        serde_json::from_str::<serde_json::Value>(stdout).unwrap_or_else(|_| serde_json::json!([]));
     let mut dirs = Vec::new();
     if let Some(entries) = parsed.as_array() {
         for item in entries {
@@ -1492,7 +1507,12 @@ fn has_structured_memory_search_payload(stdout: &str) -> bool {
         .map(|record| {
             ["hits", "results", "items", "memories", "matches"]
                 .iter()
-                .any(|key| record.get(*key).map(|value| value.is_array()).unwrap_or(false))
+                .any(|key| {
+                    record
+                        .get(*key)
+                        .map(|value| value.is_array())
+                        .unwrap_or(false)
+                })
         })
         .unwrap_or(false)
 }
@@ -1551,7 +1571,8 @@ fn search_openclaw_memory_fallback(
         .output()
         .map_err(|e| cmd_err_d("OPENCLAW_CMD_SPAWN_FAILED", e))?;
     let status_stdout = String::from_utf8_lossy(&status_output.stdout).to_string();
-    let workspace_dirs = extract_workspace_dirs_from_memory_status(&status_stdout, agent.as_deref());
+    let workspace_dirs =
+        extract_workspace_dirs_from_memory_status(&status_stdout, agent.as_deref());
     let mut markdown_files = Vec::new();
     for workspace_dir in workspace_dirs {
         let root_memory_file = workspace_dir.join("MEMORY.md");
@@ -1568,7 +1589,8 @@ fn search_openclaw_memory_fallback(
             continue;
         };
         let path_text = file.to_string_lossy().to_string();
-        let total_matches = count_occurrences(&content, trimmed) + count_occurrences(&path_text, trimmed);
+        let total_matches =
+            count_occurrences(&content, trimmed) + count_occurrences(&path_text, trimmed);
         if total_matches == 0 {
             continue;
         }
@@ -1577,7 +1599,11 @@ fn search_openclaw_memory_fallback(
             total_matches,
             OpenclawMemorySearchHit {
                 id: path_text.clone(),
-                content: if snippet.is_empty() { path_text.clone() } else { snippet },
+                content: if snippet.is_empty() {
+                    path_text.clone()
+                } else {
+                    snippet
+                },
                 score: Some(total_matches as f64),
                 path: Some(path_text),
             },
@@ -1585,15 +1611,12 @@ fn search_openclaw_memory_fallback(
     }
 
     hits.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
-    Ok(hits
-        .into_iter()
-        .take(limit)
-        .map(|(_, hit)| hit)
-        .collect())
+    Ok(hits.into_iter().take(limit).map(|(_, hit)| hit).collect())
 }
 
 #[tauri::command]
-fn get_openclaw_memory_search_capability() -> Result<OpenclawMemorySearchCapabilityPayload, String> {
+fn get_openclaw_memory_search_capability() -> Result<OpenclawMemorySearchCapabilityPayload, String>
+{
     let output = openclaw_cmd()
         .args([
             "memory",
@@ -1628,7 +1651,10 @@ fn reindex_openclaw_memory() -> Result<OpenclawMemoryReindexPayload, String> {
         if stderr.trim().is_empty() {
             return Err(cmd_err_d("OPENCLAW_MEMORY_REINDEX_FAILED", stdout.trim()));
         }
-        return Err(cmd_err_stderr("OPENCLAW_MEMORY_REINDEX_FAILED", stderr.trim()));
+        return Err(cmd_err_stderr(
+            "OPENCLAW_MEMORY_REINDEX_FAILED",
+            stderr.trim(),
+        ));
     }
 
     Ok(OpenclawMemoryReindexPayload {
@@ -1686,13 +1712,14 @@ mod tests {
     fn windows_resolver_uses_roaming_when_home_config_is_missing() {
         let root = unique_test_dir("roaming-fallback");
         let home_candidate = root.join("home").join(".openclaw").join("openclaw.json");
-        let roaming_candidate = root
-            .join("roaming")
-            .join("openclaw")
-            .join("openclaw.json");
+        let roaming_candidate = root.join("roaming").join("openclaw").join("openclaw.json");
 
-        fs::create_dir_all(roaming_candidate.parent().expect("roaming parent should exist"))
-            .expect("should create roaming dir");
+        fs::create_dir_all(
+            roaming_candidate
+                .parent()
+                .expect("roaming parent should exist"),
+        )
+        .expect("should create roaming dir");
         fs::write(&roaming_candidate, b"{}").expect("should create roaming config");
 
         let resolved = resolve_config_path_from_candidates(&[
@@ -1725,7 +1752,10 @@ mod tests {
             name: None,
         };
 
-        assert_eq!(get_openclaw_profile_args(&selection), vec!["--dev".to_string()]);
+        assert_eq!(
+            get_openclaw_profile_args(&selection),
+            vec!["--dev".to_string()]
+        );
         assert_eq!(
             get_openclaw_profile_data_dir(&selection, Path::new("/Users/alice"))
                 .expect("dev dir should resolve"),
@@ -2255,8 +2285,7 @@ fn save_clawmaster_runtime(
     backend_port: Option<u16>,
     auto_start_backend: Option<bool>,
 ) -> Result<(), String> {
-    set_clawmaster_runtime_selection(mode, wsl_distro, backend_port, auto_start_backend)
-        .map(|_| ())
+    set_clawmaster_runtime_selection(mode, wsl_distro, backend_port, auto_start_backend).map(|_| ())
 }
 
 fn npm_root_g() -> Result<String, String> {
@@ -3106,7 +3135,10 @@ fn delete_openclaw_memory_file(relative_path: String) -> Result<(), String> {
     if let Some(distro) = active_wsl_distro() {
         let output = run_wsl_shell(
             &distro,
-            &format!("rm -f {}", shell_escape_posix_arg(&target.to_string_lossy())),
+            &format!(
+                "rm -f {}",
+                shell_escape_posix_arg(&target.to_string_lossy())
+            ),
             None,
         )?;
         if output.code == 0 {
