@@ -1,61 +1,28 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useLocation, Link } from 'react-router-dom'
+import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { changeLanguage } from '@/i18n'
 import type { GatewayStatus } from '@/lib/types'
 import { getGatewayStatusResult } from '@/shared/adapters/gateway'
+import { isWindowsHostPlatform } from '@/shared/hostPlatform'
 import { platformResults } from '@/shared/adapters/platformResults'
 import { getClawModules } from './moduleRegistry'
+import { CommandPalette, type CommandEntry } from './CommandPalette'
+import { getCommandDescriptors } from './commandRegistry'
+import { getCommandShortcutLabel, isAppleClientPlatform } from './commandShortcut'
+import { resolveIcon } from './iconRegistry'
+import { NAV_SECTIONS, PAGE_META } from './navigationMeta'
 import {
-  LayoutDashboard,
-  BarChart3,
-  Brain,
-  Radio,
-  MessageSquare,
-  MessageCircle,
-  Box,
-  Zap,
-  Users,
-  Settings2,
-  FileText,
-  ScrollText,
-  Wrench,
-  Plug,
   Shell,
   Sun,
   Moon,
   Menu,
+  Search,
   X,
-  HardDrive,
   ArrowUpCircle,
   type LucideIcon,
 } from 'lucide-react'
-
-// ─── Lucide icon registry ───
-
-const ICON_MAP: Record<string, LucideIcon> = {
-  'layout-dashboard': LayoutDashboard,
-  'bar-chart-3': BarChart3,
-  brain: Brain,
-  radio: Radio,
-  'message-square': MessageSquare,
-  'message-circle': MessageCircle,
-  box: Box,
-  zap: Zap,
-  users: Users,
-  'settings-2': Settings2,
-  'file-text': FileText,
-  'scroll-text': ScrollText,
-  wrench: Wrench,
-  plug: Plug,
-  shell: Shell,
-  'hard-drive': HardDrive,
-}
-
-function resolveIcon(name: string): LucideIcon {
-  return ICON_MAP[name] ?? Box
-}
 
 interface NavItem {
   path: string
@@ -63,56 +30,6 @@ interface NavItem {
   icon: LucideIcon
 }
 
-interface NavSection {
-  id: string
-  labelKey: string
-  descriptionKey: string
-  paths: string[]
-}
-
-const NAV_SECTIONS: NavSection[] = [
-  {
-    id: 'live',
-    labelKey: 'layout.section.live',
-    descriptionKey: 'layout.section.liveDesc',
-    paths: ['/', '/gateway', '/observe', '/sessions'],
-  },
-  {
-    id: 'workspace',
-    labelKey: 'layout.section.workspace',
-    descriptionKey: 'layout.section.workspaceDesc',
-    paths: ['/channels', '/models', '/agents', '/memory'],
-  },
-  {
-    id: 'extend',
-    labelKey: 'layout.section.extend',
-    descriptionKey: 'layout.section.extendDesc',
-    paths: ['/skills', '/plugins', '/mcp', '/docs'],
-  },
-  {
-    id: 'control',
-    labelKey: 'layout.section.control',
-    descriptionKey: 'layout.section.controlDesc',
-    paths: ['/config', '/settings'],
-  },
-]
-
-const PAGE_META: Record<string, { sectionId: string; descriptionKey: string }> = {
-  '/': { sectionId: 'live', descriptionKey: 'layout.page.dashboard' },
-  '/gateway': { sectionId: 'live', descriptionKey: 'layout.page.gateway' },
-  '/observe': { sectionId: 'live', descriptionKey: 'layout.page.observe' },
-  '/sessions': { sectionId: 'live', descriptionKey: 'layout.page.sessions' },
-  '/channels': { sectionId: 'workspace', descriptionKey: 'layout.page.channels' },
-  '/models': { sectionId: 'workspace', descriptionKey: 'layout.page.models' },
-  '/agents': { sectionId: 'workspace', descriptionKey: 'layout.page.agents' },
-  '/memory': { sectionId: 'workspace', descriptionKey: 'layout.page.memory' },
-  '/skills': { sectionId: 'extend', descriptionKey: 'layout.page.skills' },
-  '/plugins': { sectionId: 'extend', descriptionKey: 'layout.page.plugins' },
-  '/mcp': { sectionId: 'extend', descriptionKey: 'layout.page.mcp' },
-  '/docs': { sectionId: 'extend', descriptionKey: 'layout.page.docs' },
-  '/config': { sectionId: 'control', descriptionKey: 'layout.page.config' },
-  '/settings': { sectionId: 'control', descriptionKey: 'layout.page.settings' },
-}
 
 // ─── Dark mode ───
 
@@ -148,6 +65,42 @@ type UpdateBannerState =
   | { status: 'idle' | 'checking' | 'unavailable' | 'up-to-date' | 'error' }
   | { status: 'available'; currentVersion: string; latestVersion: string }
 
+const COMMAND_HINT_DISMISSED_KEY = 'clawmaster-command-palette-hint-dismissed'
+const HASH_SCROLL_OBSERVER_TIMEOUT_MS = 10_000
+
+function isEditableEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+
+  const editableRoot = target.closest('input, textarea, select, [contenteditable="true"]')
+  return Boolean(editableRoot)
+}
+
+function hasActiveModalDialog(): boolean {
+  return Boolean(document.querySelector('[role="dialog"][aria-modal="true"]'))
+}
+
+function isCommandPaletteTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(target.closest('.command-palette-panel'))
+}
+
+function isCommandPaletteShortcutKey(event: KeyboardEvent): boolean {
+  if (event.code) {
+    return event.code === 'KeyK'
+  }
+
+  return event.key.toLowerCase() === 'k'
+}
+
+function decodeHashTargetId(hashValue: string): string | null {
+  try {
+    const targetId = decodeURIComponent(hashValue.replace(/^#/, ''))
+    return targetId || null
+  } catch {
+    return null
+  }
+}
+
 function normalizeVersion(version: string | undefined): string {
   const raw = String(version ?? '').replace(/^v/i, '').trim()
   const match = raw.match(/\d+\.\d+\.\d+[\w.-]*/)
@@ -157,9 +110,15 @@ function normalizeVersion(version: string | undefined): string {
 export default function Layout({ children }: LayoutProps) {
   const { t, i18n } = useTranslation()
   const location = useLocation()
+  const navigate = useNavigate()
   const currentPath = location.pathname
   const [dark, setDark] = useState(isDark)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [commandHintVisible, setCommandHintVisible] = useState(() => (
+    typeof window !== 'undefined' && localStorage.getItem(COMMAND_HINT_DISMISSED_KEY) !== '1'
+  ))
+  const [hostPlatform, setHostPlatform] = useState<string | undefined>()
   const [gwStatus, setGwStatus] = useState<GatewayStatus | null>(null)
   const [updateBanner, setUpdateBanner] = useState<UpdateBannerState>({ status: 'idle' })
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
@@ -183,6 +142,10 @@ export default function Layout({ children }: LayoutProps) {
       setUpdateBanner({ status: 'checking' })
 
       const system = await platformResults.detectSystem()
+      const detectedHostPlatform = system.data?.runtime?.hostPlatform
+      if (detectedHostPlatform) {
+        setHostPlatform(detectedHostPlatform)
+      }
       const currentVersion = normalizeVersion(system.data?.openclaw.version)
       if (!system.success || !system.data?.openclaw.installed || !currentVersion) {
         if (!cancelled) setUpdateBanner({ status: 'unavailable' })
@@ -250,17 +213,158 @@ export default function Layout({ children }: LayoutProps) {
     setSidebarOpen(false)
   }, [currentPath])
 
+  const scrollToHashTarget = useCallback((hashValue: string) => {
+    const targetId = decodeHashTargetId(hashValue)
+    if (!targetId) return false
+
+    const target = document.getElementById(targetId)
+    if (!target) return false
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    return true
+  }, [])
+
+  useEffect(() => {
+    if (!location.hash) return undefined
+    if (!decodeHashTargetId(location.hash)) return undefined
+
+    let cancelled = false
+    let observer: MutationObserver | undefined
+    let timeoutHandle: number | undefined
+
+    function tryScroll() {
+      if (cancelled) return true
+      const found = scrollToHashTarget(location.hash)
+      if (found) {
+        observer?.disconnect()
+        if (typeof timeoutHandle === 'number') {
+          window.clearTimeout(timeoutHandle)
+        }
+      }
+      return found
+    }
+
+    if (tryScroll()) return undefined
+
+    observer = new MutationObserver(() => {
+      void tryScroll()
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    timeoutHandle = window.setTimeout(() => {
+      observer?.disconnect()
+    }, HASH_SCROLL_OBSERVER_TIMEOUT_MS)
+
+    return () => {
+      cancelled = true
+      if (typeof timeoutHandle === 'number') {
+        window.clearTimeout(timeoutHandle)
+      }
+      observer?.disconnect()
+    }
+  }, [location.hash, location.pathname, scrollToHashTarget])
+
   function toggleDarkMode() {
     const next = isDark() ? 'light' : 'dark'
     applyDarkMode(next)
     setDark(next === 'dark')
   }
 
+  function dismissCommandPaletteHint() {
+    setCommandHintVisible(false)
+    localStorage.setItem(COMMAND_HINT_DISMISSED_KEY, '1')
+  }
+
+  function openCommandPalette() {
+    setCommandPaletteOpen(true)
+    if (commandHintVisible) {
+      dismissCommandPaletteHint()
+    }
+  }
+
+  const runCommandTarget = useCallback((path: string, hash?: string) => {
+    const target = hash ? `${path}#${hash}` : path
+    if (currentPath === path && hash && location.hash === `#${hash}`) {
+      scrollToHashTarget(hash)
+      return
+    }
+
+    navigate(target)
+  }, [currentPath, location.hash, navigate, scrollToHashTarget])
+
+  const clientPlatform = typeof navigator === 'undefined'
+    ? undefined
+    : (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!isCommandPaletteShortcutKey(event)) return
+      if (isAppleClientPlatform(clientPlatform) ? !event.metaKey : !event.ctrlKey) return
+      if (isEditableEventTarget(event.target)) {
+        if (!isCommandPaletteTarget(event.target)) return
+        event.preventDefault()
+        return
+      }
+      event.preventDefault()
+      if (hasActiveModalDialog()) return
+      openCommandPalette()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [clientPlatform, commandHintVisible])
+
   const currentLabel = navItems.find((item) => item.path === currentPath)
   const pageTitle = currentLabel ? t(currentLabel.labelKey) : t('layout.appName')
   const currentMeta = PAGE_META[currentPath]
   const currentSection = navSections.find((section) => section.id === currentMeta?.sectionId) ?? navSections[0]
   const pageDescription = currentMeta ? t(currentMeta.descriptionKey) : t('layout.section.liveDesc')
+  const commandShortcut = getCommandShortcutLabel(clientPlatform)
+  const commandHostPlatform = isWindowsHostPlatform(hostPlatform) ? hostPlatform : undefined
+  const commandEntries = useMemo<CommandEntry[]>(() => {
+    return getCommandDescriptors(modules, { hostPlatform: commandHostPlatform }).map((command) => {
+      if (command.kind === 'action') {
+        return {
+          id: command.id,
+          kind: command.kind,
+          icon: command.icon,
+          title: t(dark ? 'layout.darkMode.toLight' : 'layout.darkMode.toDark'),
+          description: t(command.descriptionKey),
+          keywords: [
+            ...command.keywords,
+            t('command.action.toggleTheme'),
+            t('layout.darkMode.toDark'),
+            t('layout.darkMode.toLight'),
+          ],
+          badge: t('command.badge.action'),
+          execute: toggleDarkMode,
+        }
+      }
+
+      if (command.kind === 'section') {
+        return {
+          id: command.id,
+          kind: command.kind,
+          icon: command.icon,
+          title: t(command.labelKey),
+          description: t(command.descriptionKey),
+          keywords: command.keywords,
+          badge: t('command.badge.section'),
+          execute: () => runCommandTarget(command.path, command.hash),
+        }
+      }
+
+      return {
+        id: command.id,
+        kind: command.kind,
+        icon: command.icon,
+        title: t(command.labelKey),
+        description: t(command.descriptionKey),
+        keywords: command.keywords,
+        badge: t('command.badge.page'),
+        execute: () => runCommandTarget(command.path),
+      }
+    })
+  }, [commandHostPlatform, dark, modules, runCommandTarget, t])
 
   const sidebarContent = (
     <>
@@ -350,13 +454,23 @@ export default function Layout({ children }: LayoutProps) {
             <button onClick={() => setSidebarOpen(true)} className="app-icon-button lg:hidden">
               <Menu className="h-5 w-5" />
             </button>
-            <div className="app-topbar-copy">
+          <div className="app-topbar-copy">
               <p className="app-topbar-meta">{currentSection ? t(currentSection.labelKey) : t('layout.appName')}</p>
               <h2 className="app-topbar-title">{pageTitle}</h2>
               <p className="app-topbar-subtitle">{pageDescription}</p>
             </div>
           </div>
           <div className="app-topbar-controls">
+            <button
+              type="button"
+              onClick={openCommandPalette}
+              className="app-command-trigger"
+              title={t('command.openHint', { shortcut: commandShortcut })}
+            >
+              <Search className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{t('command.open')}</span>
+              <span className="app-command-trigger-shortcut">{commandShortcut}</span>
+            </button>
             <select
               value={i18n.language}
               onChange={(e) => changeLanguage(e.target.value)}
@@ -376,29 +490,48 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </header>
 
-        {updateBanner.status === 'available' && !updateBannerDismissed && (
+        {(updateBanner.status === 'available' && !updateBannerDismissed) || commandHintVisible ? (
           <div className="px-4 pt-3 lg:px-6">
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <ArrowUpCircle className="h-4 w-4 shrink-0 text-primary" />
-                <p className="min-w-0 text-foreground">
-                  {t('layout.update.available', { version: updateBanner.latestVersion })}
-                </p>
-              </div>
-              <Link to="/settings" className="button-secondary text-xs">
-                {t('layout.update.action')}
-              </Link>
-              <button
-                onClick={() => setUpdateBannerDismissed(true)}
-                className="app-icon-button"
-                aria-label={t('layout.update.dismiss')}
-                title={t('layout.update.dismiss')}
-              >
-                <X className="h-4 w-4" />
-              </button>
+            <div className="space-y-3">
+              {updateBanner.status === 'available' && !updateBannerDismissed && (
+                <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <ArrowUpCircle className="h-4 w-4 shrink-0 text-primary" />
+                    <p className="min-w-0 text-foreground">
+                      {t('layout.update.available', { version: updateBanner.latestVersion })}
+                    </p>
+                  </div>
+                  <Link to="/settings" className="button-secondary text-xs">
+                    {t('layout.update.action')}
+                  </Link>
+                  <button
+                    onClick={() => setUpdateBannerDismissed(true)}
+                    className="app-icon-button"
+                    aria-label={t('layout.update.dismiss')}
+                    title={t('layout.update.dismiss')}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+
+              {commandHintVisible && (
+                <div className="app-command-hint">
+                  <div className="app-command-hint-copy">
+                    <div className="app-command-hint-title-row">
+                      <Search className="h-4 w-4 shrink-0 text-primary" />
+                      <p className="app-command-hint-title">{t('command.discovery.title', { shortcut: commandShortcut })}</p>
+                    </div>
+                    <p className="app-command-hint-desc">{t('command.discovery.desc', { shortcut: commandShortcut })}</p>
+                  </div>
+                  <button type="button" onClick={dismissCommandPaletteHint} className="button-secondary text-xs">
+                    {t('command.discovery.dismiss')}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        ) : null}
 
         <main className="app-main">{children}</main>
 
@@ -415,6 +548,12 @@ export default function Layout({ children }: LayoutProps) {
           )}
         </footer>
       </div>
+
+      <CommandPalette
+        open={commandPaletteOpen}
+        commands={commandEntries}
+        onClose={() => setCommandPaletteOpen(false)}
+      />
     </div>
   )
 }
