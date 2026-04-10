@@ -180,7 +180,7 @@ describe('DashboardPage', () => {
     expect(capabilityHrefs).toContain('/capabilities#capability-connect-data')
     expect(capabilityHrefs).toContain('/capabilities#capability-automation')
     expect(capabilityHrefs).toContain('/capabilities#capability-enhance')
-    expect(capabilityHrefs).toContain('/capabilities#capability-status')
+    expect(capabilityHrefs).toContain('/capabilities#capability-runtime')
   })
 
   it('shows the no-channel placeholder when config has no channels', async () => {
@@ -245,5 +245,46 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByText('错误: backend unavailable')).toBeInTheDocument()
     })
+  })
+
+  it('treats disabled MCP-only setups as not yet connected or verified', async () => {
+    mockDetectSystem.mockResolvedValue({
+      nodejs: { installed: true, version: '20.11.1' },
+      npm: { installed: true, version: '10.8.1' },
+      openclaw: { installed: true, version: '2026.4.1', configPath: '/tmp/openclaw.json' },
+    })
+    mockGetGatewayStatus.mockResolvedValue({ running: true, port: 3010 })
+    mockGetConfig.mockResolvedValue({
+      gateway: { port: 3010, bind: '0.0.0.0', auth: { mode: 'token' } },
+      channels: {},
+      models: { providers: {} },
+      agents: { defaults: { model: { primary: '' }, workspace: '' }, list: [] },
+    })
+    mockListPlugins.mockResolvedValueOnce({ success: true, data: { plugins: [] } })
+    mockGetSkills.mockResolvedValueOnce({ success: true, data: [] })
+    mockGetMcpServers.mockResolvedValueOnce({
+      success: true,
+      data: {
+        deepwiki: {
+          enabled: false,
+          transport: 'stdio',
+          command: 'npx',
+          args: ['-y', 'deepwiki-mcp'],
+          env: {},
+        },
+      },
+    })
+
+    renderDashboard()
+
+    fireEvent.click(await screen.findByRole('button', { name: '打开 扩展助手能力 清单' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getAllByText('需处理').length).toBeGreaterThan(0)
+    expect(within(dialog).getAllByText('待确认').length).toBeGreaterThan(0)
+    const jumpLinks = within(dialog).getAllByRole('link', { name: '前往对应区块' })
+    const jumpHrefs = jumpLinks.map((link) => link.getAttribute('href'))
+    expect(jumpHrefs).toContain('/capabilities#capability-connect-data')
+    expect(jumpHrefs).toContain('/capabilities#capability-runtime')
   })
 })

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { changeLanguage } from '@/i18n'
 import CapabilitiesPage from '../CapabilitiesPage'
@@ -115,5 +115,101 @@ describe('CapabilitiesPage', () => {
     expect(within(connectCard!).getByRole('link', { name: 'Open MCP detail' })).toHaveAttribute('href', '/mcp')
     expect(within(automationCard!).getByRole('link', { name: 'Open plugin detail' })).toHaveAttribute('href', '/plugins')
     expect(within(enhanceCard!).getByRole('link', { name: 'Open skill detail' })).toHaveAttribute('href', '/skills')
+  })
+
+  it('marks failed capability sources as unknown instead of treating them as empty', async () => {
+    mockGetMcpServers.mockRejectedValueOnce(new Error('mcp unavailable'))
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Assistant Capabilities' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('1 capability sources failed to load')
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+
+    const connectCard = screen.getByRole('heading', { level: 3, name: 'Connect external data' }).closest('section')
+    const verifyCard = screen.getByRole('heading', { level: 3, name: 'Verify active capabilities' }).closest('section')
+
+    expect(connectCard).not.toBeNull()
+    expect(verifyCard).not.toBeNull()
+    expect(within(connectCard!).getByText('To confirm')).toBeInTheDocument()
+    expect(within(connectCard!).getByText('— active · — configured')).toBeInTheDocument()
+    expect(within(verifyCard!).getByText('To confirm')).toBeInTheDocument()
+    expect(within(verifyCard!).getByText('— active entries across — configured systems')).toBeInTheDocument()
+    expect(screen.getByText('—', { selector: '.metric-value' })).toBeInTheDocument()
+    expect(screen.getAllByText('— active · — configured').length).toBeGreaterThan(0)
+  })
+
+  it('counts the verify card in the attention metric when no capability is active', async () => {
+    mockListPlugins.mockResolvedValueOnce({
+      success: true,
+      data: {
+        plugins: [{ id: 'discord', name: 'Discord', status: 'disabled' }],
+      },
+    })
+    mockGetSkills.mockResolvedValueOnce({
+      success: true,
+      data: [
+        {
+          slug: 'clawvet',
+          skillKey: 'clawvet',
+          name: 'ClawVet',
+          description: '',
+          version: '1.0.0',
+          disabled: true,
+          eligible: true,
+        },
+      ],
+    })
+    mockGetMcpServers.mockResolvedValueOnce({
+      success: true,
+      data: {
+        deepwiki: {
+          enabled: false,
+          transport: 'stdio',
+          command: 'npx',
+          args: ['-y', 'deepwiki-mcp'],
+          env: {},
+        },
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Assistant Capabilities' })).toBeInTheDocument()
+    expect(screen.getByText('0 active entries across 3 configured systems')).toBeInTheDocument()
+    expect(screen.getByText('4 areas need review')).toBeInTheDocument()
+  })
+
+  it('keeps last successful summaries visible after a refresh error', async () => {
+    mockGetMcpServers
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          context7: {
+            enabled: true,
+            transport: 'stdio',
+            command: 'npx',
+            args: ['-y', '@upstash/context7-mcp'],
+            env: {},
+          },
+        },
+      })
+      .mockRejectedValueOnce(new Error('mcp refresh failed'))
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Assistant Capabilities' })).toBeInTheDocument()
+    expect(screen.getAllByText('1 active · 1 configured').length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('1 capability sources failed to load')
+    })
+
+    expect(screen.getAllByText('1 active · 1 configured').length).toBeGreaterThan(0)
+    const connectCard = screen.getByRole('heading', { level: 3, name: 'Connect external data' }).closest('section')
+    expect(connectCard).not.toBeNull()
+    expect(within(connectCard!).queryByText('To confirm')).not.toBeInTheDocument()
   })
 })

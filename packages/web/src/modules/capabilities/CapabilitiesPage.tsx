@@ -29,7 +29,7 @@ import {
 } from '@/shared/capabilitySummary'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 
-type CapabilityScenarioTone = 'ready' | 'attention' | 'loading'
+type CapabilityScenarioTone = 'ready' | 'attention' | 'unknown' | 'loading'
 
 export default function CapabilitiesPage() {
   const { t } = useTranslation()
@@ -58,6 +58,9 @@ export default function CapabilitiesPage() {
   } = useAdapterCall(fetchMcp)
 
   const loading = pluginsLoading || skillsLoading || mcpLoading
+  const pluginsKnown = pluginsPayload != null
+  const skillsKnown = skills != null
+  const mcpKnown = mcpServers != null
   const skillList = skills ?? []
   const pluginList = pluginsPayload?.plugins ?? []
   const mcpMap = mcpServers ?? {}
@@ -70,8 +73,8 @@ export default function CapabilitiesPage() {
   const enabledSkillCount = getEnabledSkillCount(skillList)
   const readySkillCount = getReadySkillCount(skillList)
   const activeCapabilityCount = enabledMcpCount + enabledPluginCount + enabledSkillCount
-  const attentionCount = [enabledMcpCount === 0, enabledPluginCount === 0, enabledSkillCount === 0].filter(Boolean).length
   const runtimeSurfaceCount = [installedMcpCount > 0, installedPluginCount > 0, installedSkillCount > 0].filter(Boolean).length
+  const hasUnknownSources = !pluginsKnown || !skillsKnown || !mcpKnown
 
   const loadErrors = [pluginsError, skillsError, mcpError].filter(Boolean)
 
@@ -107,15 +110,74 @@ export default function CapabilitiesPage() {
     await Promise.all([refetchPlugins(), refetchSkills(), refetchMcp()])
   }
 
+  const connectTone: CapabilityScenarioTone = loading
+    ? 'loading'
+    : mcpKnown
+      ? enabledMcpCount > 0
+        ? 'ready'
+        : 'attention'
+      : 'unknown'
+  const automationTone: CapabilityScenarioTone = loading
+    ? 'loading'
+    : pluginsKnown
+      ? enabledPluginCount > 0
+        ? 'ready'
+        : 'attention'
+      : 'unknown'
+  const enhanceTone: CapabilityScenarioTone = loading
+    ? 'loading'
+    : skillsKnown
+      ? enabledSkillCount > 0
+        ? 'ready'
+        : 'attention'
+      : 'unknown'
+  const verifyTone: CapabilityScenarioTone = loading
+    ? 'loading'
+    : hasUnknownSources
+      ? 'unknown'
+      : activeCapabilityCount > 0
+        ? 'ready'
+        : 'attention'
+
+  const attentionCount = [connectTone, automationTone, enhanceTone, verifyTone].filter((tone) => tone === 'attention').length
+  const activeCapabilityDisplay = hasUnknownSources && activeCapabilityCount === 0 ? '—' : String(activeCapabilityCount)
+  const attentionDisplay = hasUnknownSources && attentionCount === 0 ? '—' : String(attentionCount)
+  const runtimeSurfaceDisplay = hasUnknownSources && runtimeSurfaceCount === 0 ? '—' : String(runtimeSurfaceCount)
+  const readySkillDisplay = skillsKnown ? String(readySkillCount) : '—'
+  const runtimeMcpDisplay = mcpKnown ? String(enabledMcpCount) : '—'
+  const runtimePluginDisplay = pluginsKnown ? String(enabledPluginCount) : '—'
+  const runtimeSkillDisplay = skillsKnown ? String(enabledSkillCount) : '—'
+  const connectStat = mcpKnown
+    ? t('capabilities.connect.stat', { enabled: enabledMcpCount, total: installedMcpCount })
+    : t('capabilities.connect.stat', { enabled: '—', total: '—' })
+  const automationStat = pluginsKnown
+    ? t('capabilities.automation.stat', { enabled: enabledPluginCount, total: installedPluginCount })
+    : t('capabilities.automation.stat', { enabled: '—', total: '—' })
+  const enhanceStat = skillsKnown
+    ? t('capabilities.enhance.stat', { enabled: enabledSkillCount, ready: readySkillCount })
+    : t('capabilities.enhance.stat', { enabled: '—', ready: '—' })
+  const verifyStat = hasUnknownSources
+    ? t('capabilities.verify.stat', { total: '—', systems: '—' })
+    : t('capabilities.verify.stat', { total: activeCapabilityCount, systems: runtimeSurfaceCount })
+  const detailMcpSummary = mcpKnown
+    ? t('capabilities.detailMcpSummary', { enabled: enabledMcpCount, total: installedMcpCount })
+    : t('capabilities.detailMcpSummary', { enabled: '—', total: '—' })
+  const detailPluginsSummary = pluginsKnown
+    ? t('capabilities.detailPluginsSummary', { enabled: enabledPluginCount, total: installedPluginCount })
+    : t('capabilities.detailPluginsSummary', { enabled: '—', total: '—' })
+  const detailSkillsSummary = skillsKnown
+    ? t('capabilities.detailSkillsSummary', { enabled: enabledSkillCount, ready: readySkillCount })
+    : t('capabilities.detailSkillsSummary', { enabled: '—', ready: '—' })
+
   const scenarios = [
     {
       id: 'capability-connect-data',
       icon: Network,
-      tone: loading ? 'loading' : enabledMcpCount > 0 ? 'ready' : 'attention',
+      tone: connectTone,
       panelClass: 'border-sky-500/20 bg-[linear-gradient(135deg,rgba(14,165,233,0.10),rgba(255,255,255,0)_58%)]',
       title: t('capabilities.connect.title'),
       description: t('capabilities.connect.description'),
-      stat: t('capabilities.connect.stat', { enabled: enabledMcpCount, total: installedMcpCount }),
+      stat: connectStat,
       items: activeMcpIds.length > 0 ? activeMcpIds : FEATURED_MCP_SERVERS.slice(0, 4).map((server) => server.name),
       itemsLabel: activeMcpIds.length > 0 ? t('capabilities.activeNow') : t('capabilities.featuredStarts'),
       ctaTo: '/mcp#mcp-import',
@@ -126,11 +188,11 @@ export default function CapabilitiesPage() {
     {
       id: 'capability-automation',
       icon: Boxes,
-      tone: loading ? 'loading' : enabledPluginCount > 0 ? 'ready' : 'attention',
+      tone: automationTone,
       panelClass: 'border-amber-500/20 bg-[linear-gradient(135deg,rgba(245,158,11,0.12),rgba(255,255,255,0)_58%)]',
       title: t('capabilities.automation.title'),
       description: t('capabilities.automation.description'),
-      stat: t('capabilities.automation.stat', { enabled: enabledPluginCount, total: installedPluginCount }),
+      stat: automationStat,
       items: activePluginNames.length > 0
         ? activePluginNames
         : [
@@ -147,11 +209,11 @@ export default function CapabilitiesPage() {
     {
       id: 'capability-enhance',
       icon: Brain,
-      tone: loading ? 'loading' : enabledSkillCount > 0 ? 'ready' : 'attention',
+      tone: enhanceTone,
       panelClass: 'border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(255,255,255,0)_58%)]',
       title: t('capabilities.enhance.title'),
       description: t('capabilities.enhance.description'),
-      stat: t('capabilities.enhance.stat', { enabled: enabledSkillCount, ready: readySkillCount }),
+      stat: enhanceStat,
       items: activeSkillNames.length > 0 ? activeSkillNames : FEATURED_SKILLS.slice(0, 4).map((skill) => skill.skillKey ?? skill.name),
       itemsLabel: activeSkillNames.length > 0 ? t('capabilities.activeNow') : t('capabilities.featuredStarts'),
       ctaTo: '/skills#skills-featured',
@@ -162,11 +224,11 @@ export default function CapabilitiesPage() {
     {
       id: 'capability-status',
       icon: ShieldCheck,
-      tone: loading ? 'loading' : activeCapabilityCount > 0 ? 'ready' : 'attention',
+      tone: verifyTone,
       panelClass: 'border-violet-500/20 bg-[linear-gradient(135deg,rgba(139,92,246,0.12),rgba(255,255,255,0)_58%)]',
       title: t('capabilities.verify.title'),
       description: t('capabilities.verify.description'),
-      stat: t('capabilities.verify.stat', { total: activeCapabilityCount, systems: runtimeSurfaceCount }),
+      stat: verifyStat,
       items: [
         t('capabilities.verify.itemMcp', { count: enabledMcpCount }),
         t('capabilities.verify.itemPlugins', { count: enabledPluginCount }),
@@ -186,8 +248,8 @@ export default function CapabilitiesPage() {
         <div className="page-header-copy">
           <div className="page-header-meta">
             <span>{t('capabilities.kicker')}</span>
-            <span>{t('capabilities.headerActive', { count: activeCapabilityCount })}</span>
-            <span>{t('capabilities.headerAttention', { count: attentionCount })}</span>
+            <span>{t('capabilities.headerActive', { count: activeCapabilityDisplay })}</span>
+            <span>{t('capabilities.headerAttention', { count: attentionDisplay })}</span>
           </div>
           <h1 className="page-title">{t('capabilities.title')}</h1>
           <p className="page-subtitle">{t('capabilities.subtitle')}</p>
@@ -213,25 +275,25 @@ export default function CapabilitiesPage() {
       <div className="metric-grid">
         <MetricCard
           label={t('capabilities.metrics.active')}
-          value={String(activeCapabilityCount)}
+          value={activeCapabilityDisplay}
           meta={t('capabilities.metrics.activeMeta')}
           loading={loading}
         />
         <MetricCard
           label={t('capabilities.metrics.attention')}
-          value={String(attentionCount)}
+          value={attentionDisplay}
           meta={t('capabilities.metrics.attentionMeta')}
           loading={loading}
         />
         <MetricCard
           label={t('capabilities.metrics.runtime')}
-          value={String(runtimeSurfaceCount)}
+          value={runtimeSurfaceDisplay}
           meta={t('capabilities.metrics.runtimeMeta')}
           loading={loading}
         />
         <MetricCard
           label={t('capabilities.metrics.ready')}
-          value={String(readySkillCount)}
+          value={readySkillDisplay}
           meta={t('capabilities.metrics.readyMeta')}
           loading={loading}
         />
@@ -252,6 +314,7 @@ export default function CapabilitiesPage() {
               {...scenario}
               readyLabel={t('dashboard.task.statusReady')}
               attentionLabel={t('dashboard.task.statusAttention')}
+              unknownLabel={t('dashboard.task.statusUnknown')}
             />
           ))}
         </div>
@@ -277,9 +340,9 @@ export default function CapabilitiesPage() {
               </div>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <RuntimePill label={t('nav.mcp')} value={String(enabledMcpCount)} loading={loading} />
-              <RuntimePill label={t('nav.plugins')} value={String(enabledPluginCount)} loading={loading} />
-              <RuntimePill label={t('nav.skills')} value={String(enabledSkillCount)} loading={loading} />
+              <RuntimePill label={t('nav.mcp')} value={runtimeMcpDisplay} loading={loading} />
+              <RuntimePill label={t('nav.plugins')} value={runtimePluginDisplay} loading={loading} />
+              <RuntimePill label={t('nav.skills')} value={runtimeSkillDisplay} loading={loading} />
             </div>
             <div className="mt-5 space-y-3">
               <SignalStrip
@@ -314,7 +377,7 @@ export default function CapabilitiesPage() {
               icon={Database}
               title={t('nav.mcp')}
               description={t('capabilities.detailMcpDesc')}
-              summary={t('capabilities.detailMcpSummary', { enabled: enabledMcpCount, total: installedMcpCount })}
+              summary={detailMcpSummary}
               to="/mcp"
               cta={t('capabilities.detail.openMcp')}
               loading={loading}
@@ -323,7 +386,7 @@ export default function CapabilitiesPage() {
               icon={Wrench}
               title={t('nav.plugins')}
               description={t('capabilities.detailPluginsDesc')}
-              summary={t('capabilities.detailPluginsSummary', { enabled: enabledPluginCount, total: installedPluginCount })}
+              summary={detailPluginsSummary}
               to="/plugins"
               cta={t('capabilities.detail.openPlugins')}
               loading={loading}
@@ -332,7 +395,7 @@ export default function CapabilitiesPage() {
               icon={Brain}
               title={t('nav.skills')}
               description={t('capabilities.detailSkillsDesc')}
-              summary={t('capabilities.detailSkillsSummary', { enabled: enabledSkillCount, ready: readySkillCount })}
+              summary={detailSkillsSummary}
               to="/skills"
               cta={t('capabilities.detail.openSkills')}
               loading={loading}
@@ -391,6 +454,7 @@ interface ScenarioCardProps {
   detailLabel: string
   readyLabel?: string
   attentionLabel?: string
+  unknownLabel?: string
 }
 
 function ScenarioCard({
@@ -409,6 +473,7 @@ function ScenarioCard({
   detailLabel,
   readyLabel = 'Ready',
   attentionLabel = 'Needs attention',
+  unknownLabel = 'Unknown',
 }: ScenarioCardProps) {
   return (
     <section id={id} className={`rounded-[1.6rem] border p-5 shadow-sm ${panelClass}`}>
@@ -422,7 +487,7 @@ function ScenarioCard({
             <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
           </div>
         </div>
-        <ScenarioToneBadge tone={tone} readyLabel={readyLabel} attentionLabel={attentionLabel} />
+        <ScenarioToneBadge tone={tone} readyLabel={readyLabel} attentionLabel={attentionLabel} unknownLabel={unknownLabel} />
       </div>
       <div className="mt-4 rounded-[1.2rem] border border-border/70 bg-background/80 px-4 py-3 text-sm font-medium text-foreground">
         {tone === 'loading' ? <span className="block h-5 w-40 animate-pulse rounded-md bg-primary/10" /> : stat}
@@ -435,7 +500,10 @@ function ScenarioCard({
                 <span key={index} className="block h-7 w-24 animate-pulse rounded-full bg-primary/10" />
               ))
             : items.map((item) => (
-                <span key={item} className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
+                <span
+                  key={item}
+                  className="inline-flex max-w-full items-center rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground whitespace-nowrap"
+                >
                   {item}
                 </span>
               ))}
@@ -458,14 +526,16 @@ function ScenarioToneBadge({
   tone,
   readyLabel,
   attentionLabel,
+  unknownLabel,
 }: {
   tone: CapabilityScenarioTone
   readyLabel: string
   attentionLabel: string
+  unknownLabel: string
 }) {
   if (tone === 'loading') {
     return (
-      <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
+      <span className="inline-flex items-center rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground whitespace-nowrap">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
       </span>
     )
@@ -473,13 +543,15 @@ function ScenarioToneBadge({
 
   return (
     <span
-      className={`rounded-full border px-3 py-1 text-xs font-medium ${
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium whitespace-nowrap ${
         tone === 'ready'
           ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-          : 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+          : tone === 'attention'
+            ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+            : 'border-border/70 bg-background/80 text-muted-foreground'
       }`}
     >
-      {tone === 'ready' ? readyLabel : attentionLabel}
+      {tone === 'ready' ? readyLabel : tone === 'attention' ? attentionLabel : unknownLabel}
     </span>
   )
 }
@@ -524,7 +596,10 @@ function SignalStrip({
               <span key={index} className="block h-7 w-24 animate-pulse rounded-full bg-primary/10" />
             ))
           : values.map((item) => (
-              <span key={item} className="rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground">
+              <span
+                key={item}
+                className="inline-flex max-w-full items-center rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground whitespace-nowrap"
+              >
                 {item}
               </span>
             ))}

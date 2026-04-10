@@ -44,7 +44,7 @@ const CURATED_SECTION_COMMANDS: SectionCommandDescriptor[] = [
     kind: 'section',
     icon: 'sparkles',
     path: '/capabilities',
-    hash: 'capability-status',
+    hash: 'capability-runtime',
     labelKey: 'command.jump.capabilityStatus',
     descriptionKey: 'command.jump.capabilityStatusDesc',
     keywords: ['capabilities', 'capability center', 'extensions', 'status', 'verify'],

@@ -30,9 +30,9 @@ import type {
 import type { ClawprobeStatusJson } from '@/types/clawprobe'
 import { getMcpServers, type McpServersMap } from '@/shared/adapters/mcp'
 import {
+  getEnabledMcpCount,
   getEnabledPluginCount,
   getEnabledSkillCount,
-  getInstalledMcpCount,
 } from '@/shared/capabilitySummary'
 import { buildGatewayUrl } from '@/shared/gatewayUrl'
 
@@ -151,9 +151,9 @@ export default function Dashboard() {
   const providerCount = Object.keys(config?.models?.providers || {}).length
   const defaultModel = config?.agents?.defaults?.model?.primary || ''
   const feishuAccounts = getChannelAccountCount(config, 'feishu')
+  const enabledMcpCount = getEnabledMcpCount(mcpServers)
   const enabledPluginCount = getEnabledPluginCount(pluginsPayload)
   const enabledSkillCount = getEnabledSkillCount(skills)
-  const installedMcpCount = getInstalledMcpCount(mcpServers)
 
   const taskCards: TaskCardConfig[] = [
     {
@@ -316,7 +316,7 @@ export default function Dashboard() {
           label: t('dashboard.task.extend.step1'),
           to: '/capabilities#capability-connect-data',
           hint: t('dashboard.task.gotoSection', { page: t('nav.capabilities'), section: t('capabilities.connect.title') }),
-          status: taskSignalsLoading ? 'loading' : installedMcpCount > 0 ? 'ready' : 'attention',
+          status: taskSignalsLoading ? 'loading' : enabledMcpCount > 0 ? 'ready' : 'attention',
         },
         {
           id: 'capability-actions',
@@ -335,11 +335,11 @@ export default function Dashboard() {
         {
           id: 'capability-verify',
           label: t('dashboard.task.extend.step4'),
-          to: '/capabilities#capability-status',
-          hint: t('dashboard.task.gotoSection', { page: t('nav.capabilities'), section: t('capabilities.verify.title') }),
+          to: '/capabilities#capability-runtime',
+          hint: t('dashboard.task.gotoSection', { page: t('nav.capabilities'), section: t('capabilities.runtimeTitle') }),
           status: taskSignalsLoading
             ? 'loading'
-            : installedMcpCount + enabledPluginCount + enabledSkillCount > 0
+            : enabledMcpCount + enabledPluginCount + enabledSkillCount > 0
               ? 'ready'
               : 'unknown',
         },
@@ -754,7 +754,7 @@ function TaskEntryCard({
             <p className="mt-1 text-sm leading-6 text-muted-foreground">{task.outcome}</p>
           </div>
         </div>
-        <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
+        <span className="inline-flex items-center rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground whitespace-nowrap">
           {t('dashboard.task.readyCount', { ready: summary.ready, total: summary.total })}
         </span>
       </div>
@@ -877,7 +877,7 @@ function TaskChecklistDrawer({
                       </div>
                     </div>
                   </div>
-                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${taskStatusToneClass(item.status)}`}>
+                  <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${taskStatusToneClass(item.status)}`}>
                     {taskStatusLabel(t, item.status)}
                   </span>
                 </div>
