@@ -424,9 +424,11 @@ describe('UpdateSection', () => {
 
     expect(localData.getByText('Ready')).toBeInTheDocument()
     expect(localData.getAllByText('Fallback store').length).toBeGreaterThan(0)
+    expect(localData.getByText('ClawMaster will keep working through a file-backed fallback until SeekDB embedded is available.')).toBeInTheDocument()
     expect(localData.getByText('This foundation uses JavaScript/TypeScript runtime paths only; no Python package or Python-based skill is required.')).toBeInTheDocument()
     expect(localData.getByText('/home/.clawmaster/data/default/fallback')).toBeInTheDocument()
     expect(localData.getAllByText('12')).toHaveLength(2)
+    expect(localData.queryByText('SeekDB embedded can run for this runtime target.')).not.toBeInTheDocument()
   })
 
   it('shows fallback summary and unsupported target guidance when embedded support is unavailable', async () => {

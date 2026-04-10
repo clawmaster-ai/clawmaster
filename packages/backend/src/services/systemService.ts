@@ -15,6 +15,13 @@ import {
 
 const execAsync = promisify(exec)
 
+export function getLocalDataBackendNodeRuntime() {
+  return {
+    installed: true,
+    version: process.version,
+  }
+}
+
 async function checkCmd(cmd: string, args: string[], useWsl: boolean, distro: string | null): Promise<string | null> {
   try {
     if (useWsl && distro) {
@@ -87,13 +94,14 @@ export async function detectSystemInfo() {
     }
     openclaw = { ...openclaw, installed: true, version }
   }
+  const localDataNode = getLocalDataBackendNodeRuntime()
   const storage = resolveLocalDataStatus({
     runtimeSelection,
     profileSelection: resolution.profileSelection,
     hostPlatform: process.platform,
     hostArch: process.arch,
-    nodeInstalled: nodejs.installed,
-    nodeVersion: nodejs.version,
+    nodeInstalled: localDataNode.installed,
+    nodeVersion: localDataNode.version,
     selectedWslDistro: selectedDistro,
     wslHomeDir,
   })

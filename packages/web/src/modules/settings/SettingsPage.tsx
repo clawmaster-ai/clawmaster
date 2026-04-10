@@ -73,7 +73,7 @@ function localDataStateClass(state: LocalDataInfo['state']): string {
 
 function localDataSummaryLabelKey(info: LocalDataInfo): string {
   if (info.state === 'blocked') return 'settings.localDataBlockedSummary'
-  if (info.state === 'ready' && info.supportsEmbedded) return 'settings.localDataReadySummary'
+  if (info.state === 'ready' && info.engine === 'seekdb-embedded') return 'settings.localDataReadySummary'
   return 'settings.localDataFallbackSummary'
 }
 
