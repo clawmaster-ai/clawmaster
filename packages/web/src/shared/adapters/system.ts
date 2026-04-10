@@ -22,6 +22,19 @@ export interface ClawmasterRuntimeInput {
   autoStartBackend?: boolean
 }
 
+export interface HttpProbeInput {
+  url: string
+  method?: 'GET' | 'POST'
+  headers?: Record<string, string>
+  body?: string
+  timeoutMs?: number
+}
+
+export interface HttpProbeOutput {
+  ok: boolean
+  status: number
+}
+
 export async function detectSystemResult(): Promise<AdapterResult<SystemInfo>> {
   if (getIsTauri()) {
     return fromPromise(() => tauriInvoke<SystemInfo>('detect_system'))
@@ -80,5 +93,36 @@ export async function saveClawmasterRuntimeResult(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(runtime),
+  })
+}
+
+export async function probeHttpStatusResult(
+  input: HttpProbeInput
+): Promise<AdapterResult<HttpProbeOutput>> {
+  if (getIsTauri()) {
+    return fromPromise(async () => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 5000)
+      try {
+        const response = await fetch(input.url, {
+          method: input.method === 'POST' ? 'POST' : 'GET',
+          headers: input.headers,
+          body: input.method === 'POST' ? input.body : undefined,
+          redirect: 'manual',
+          signal: controller.signal,
+        })
+        return {
+          ok: response.ok,
+          status: response.status,
+        }
+      } finally {
+        clearTimeout(timer)
+      }
+    })
+  }
+  return webFetchJson<HttpProbeOutput>('/api/system/probe-http', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   })
 }

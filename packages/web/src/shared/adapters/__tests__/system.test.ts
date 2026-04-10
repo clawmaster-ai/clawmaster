@@ -71,4 +71,26 @@ describe('system adapters', () => {
       }),
     })
   })
+
+  it('posts an HTTP probe in web mode', async () => {
+    const { webFetchJson } = await import('../webHttp')
+    const { probeHttpStatusResult } = await import('../system')
+    vi.mocked(webFetchJson).mockResolvedValue({ success: true, data: { ok: true, status: 200 }, error: null })
+
+    await probeHttpStatusResult({
+      url: 'https://api.example.com/health',
+      method: 'GET',
+      timeoutMs: 3000,
+    })
+
+    expect(webFetchJson).toHaveBeenCalledWith('/api/system/probe-http', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://api.example.com/health',
+        method: 'GET',
+        timeoutMs: 3000,
+      }),
+    })
+  })
 })
