@@ -3,28 +3,33 @@ import { detectOllama, isOllamaRunning, listModels, pullModel, deleteModel, getO
 
 vi.mock('../platform', () => ({
   execCommand: vi.fn(),
+  getIsTauri: vi.fn(() => false),
+}))
+
+vi.mock('../webHttp', () => ({
+  webFetchJson: vi.fn(),
 }))
 
 describe('ollama adapter', () => {
-  async function mockExec(output: string) {
-    const { execCommand } = await import('../platform')
-    vi.mocked(execCommand).mockResolvedValue(output)
+  async function mockWebFetch<T>(payload: T) {
+    const { webFetchJson } = await import('../webHttp')
+    vi.mocked(webFetchJson).mockResolvedValue({ success: true, data: payload, error: null })
   }
 
-  async function mockExecFail(msg: string) {
-    const { execCommand } = await import('../platform')
-    vi.mocked(execCommand).mockRejectedValue(new Error(msg))
+  async function mockWebFetchFail(msg: string) {
+    const { webFetchJson } = await import('../webHttp')
+    vi.mocked(webFetchJson).mockResolvedValue({ success: false, data: undefined, error: msg })
   }
 
-  async function mockExecSequence(...outputs: Array<string | Error>) {
-    const { execCommand } = await import('../platform')
-    const fn = vi.mocked(execCommand)
+  async function mockWebFetchSequence(...outputs: Array<unknown | Error>) {
+    const { webFetchJson } = await import('../webHttp')
+    const fn = vi.mocked(webFetchJson)
     fn.mockReset()
     for (const out of outputs) {
       if (out instanceof Error) {
-        fn.mockRejectedValueOnce(out)
+        fn.mockResolvedValueOnce({ success: false, data: undefined, error: out.message })
       } else {
-        fn.mockResolvedValueOnce(out)
+        fn.mockResolvedValueOnce({ success: true, data: out, error: null })
       }
     }
   }
@@ -35,7 +40,7 @@ describe('ollama adapter', () => {
 
   describe('detectOllama', () => {
     it('detects installed ollama', async () => {
-      await mockExec('ollama version is 0.19.0')
+      await mockWebFetch({ installed: true, version: '0.19.0' })
       const result = await detectOllama()
       expect(result.success).toBe(true)
       expect(result.data!.installed).toBe(true)
@@ -43,7 +48,7 @@ describe('ollama adapter', () => {
     })
 
     it('returns not installed when command fails', async () => {
-      await mockExecFail('command not found: ollama')
+      await mockWebFetchFail('command not found: ollama')
       const result = await detectOllama()
       expect(result.success).toBe(true)
       expect(result.data!.installed).toBe(false)
@@ -52,17 +57,16 @@ describe('ollama adapter', () => {
 
   describe('isOllamaRunning', () => {
     it('returns true when server responds', async () => {
-      await mockExec('{"models":[]}')
+      await mockWebFetch({ running: true })
       const result = await isOllamaRunning()
       expect(result.success).toBe(true)
       expect(result.data).toBe(true)
     })
 
     it('returns false when server unreachable', async () => {
-      await mockExecFail('connection refused')
+      await mockWebFetchFail('connection refused')
       const result = await isOllamaRunning()
-      expect(result.success).toBe(true)
-      expect(result.data).toBe(false)
+      expect(result.success).toBe(false)
     })
   })
 
@@ -74,7 +78,10 @@ describe('ollama adapter', () => {
           { name: 'qwen2.5:0.5b', size: 398000000, modified_at: '2026-03-30T00:00:00Z', digest: 'def456' },
         ],
       }
-      await mockExec(JSON.stringify(response))
+      await mockWebFetch([
+        { name: 'llama3.2:latest', size: 2000000000, modifiedAt: '2026-03-30T00:00:00Z', digest: 'abc123' },
+        { name: 'qwen2.5:0.5b', size: 398000000, modifiedAt: '2026-03-30T00:00:00Z', digest: 'def456' },
+      ])
       const result = await listModels()
       expect(result.success).toBe(true)
       expect(result.data).toHaveLength(2)
@@ -83,14 +90,14 @@ describe('ollama adapter', () => {
     })
 
     it('returns empty when no models', async () => {
-      await mockExec(JSON.stringify({ models: [] }))
+      await mockWebFetch([])
       const result = await listModels()
       expect(result.success).toBe(true)
       expect(result.data).toHaveLength(0)
     })
 
     it('returns error when server not running', async () => {
-      await mockExecFail('connection refused')
+      await mockWebFetchFail('connection refused')
       const result = await listModels()
       expect(result.success).toBe(false)
     })
@@ -98,8 +105,10 @@ describe('ollama adapter', () => {
 
   describe('pullModel', () => {
     it('pulls model successfully', async () => {
-      // resolveOllamaBin needs ollama --version to succeed first
-      await mockExecSequence('ollama version is 0.19.0', 'pulling manifest... success')
+      await mockWebFetchSequence(
+        { installed: true, version: '0.19.0' },
+        { status: 'pulling manifest... success' }
+      )
       const result = await pullModel('llama3.2')
       expect(result.success).toBe(true)
       expect(result.data).toContain('success')
@@ -108,7 +117,10 @@ describe('ollama adapter', () => {
 
   describe('deleteModel', () => {
     it('deletes model successfully', async () => {
-      await mockExecSequence('ollama version is 0.19.0', 'deleted llama3.2')
+      await mockWebFetchSequence(
+        { installed: true, version: '0.19.0' },
+        { status: 'deleted llama3.2' }
+      )
       const result = await deleteModel('llama3.2')
       expect(result.success).toBe(true)
     })
@@ -116,17 +128,12 @@ describe('ollama adapter', () => {
 
   describe('getOllamaStatus', () => {
     it('returns full status when running with models', async () => {
-      const tagsResponse = JSON.stringify({
-        models: [{ name: 'qwen2.5:0.5b', size: 398000000, modified_at: '2026-03-30', digest: 'abc' }],
+      await mockWebFetch({
+        installed: true,
+        version: '0.19.0',
+        running: true,
+        models: [{ name: 'qwen2.5:0.5b', size: 398000000, modifiedAt: '2026-03-30', digest: 'abc' }],
       })
-      // First call: resolveOllamaBin -> ollama --version
-      // Second call: ollama --version (for status)
-      // Third call: curl /api/tags
-      await mockExecSequence(
-        'ollama version is 0.19.0',
-        'ollama version is 0.19.0',
-        tagsResponse,
-      )
       const result = await getOllamaStatus()
       expect(result.success).toBe(true)
       expect(result.data!.installed).toBe(true)
@@ -136,11 +143,12 @@ describe('ollama adapter', () => {
     })
 
     it('returns installed but not running', async () => {
-      await mockExecSequence(
-        'ollama version is 0.19.0',
-        'ollama version is 0.19.0',
-        new Error('connection refused'),
-      )
+      await mockWebFetch({
+        installed: true,
+        version: '0.19.0',
+        running: false,
+        models: [],
+      })
       const result = await getOllamaStatus()
       expect(result.success).toBe(true)
       expect(result.data!.installed).toBe(true)
