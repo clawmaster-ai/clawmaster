@@ -71,6 +71,17 @@ function localDataStateClass(state: LocalDataInfo['state']): string {
   return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
 }
 
+function localDataSummaryLabelKey(info: LocalDataInfo): string {
+  if (info.state === 'blocked') return 'settings.localDataBlockedSummary'
+  if (info.state === 'ready' && info.supportsEmbedded) return 'settings.localDataReadySummary'
+  return 'settings.localDataFallbackSummary'
+}
+
+function localDataEffectiveReasonLabelKey(info: LocalDataInfo): string | null {
+  return localDataReasonLabelKey(info.reasonCode)
+    ?? (!info.supportsEmbedded ? 'settings.localDataReasonUnsupportedPlatform' : null)
+}
+
 export default function Settings() {
   const { t, i18n } = useTranslation()
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
@@ -777,15 +788,11 @@ export default function Settings() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">
-                    {localData.state === 'ready'
-                      ? t('settings.localDataReadySummary')
-                      : localData.state === 'blocked'
-                        ? t('settings.localDataBlockedSummary')
-                        : t('settings.localDataFallbackSummary')}
+                    {t(localDataSummaryLabelKey(localData))}
                   </p>
-                  {localDataReasonLabelKey(localData.reasonCode) ? (
+                  {localDataEffectiveReasonLabelKey(localData) ? (
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {t(localDataReasonLabelKey(localData.reasonCode)!)}
+                      {t(localDataEffectiveReasonLabelKey(localData)!)}
                     </p>
                   ) : (
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">

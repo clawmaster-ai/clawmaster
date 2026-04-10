@@ -146,6 +146,54 @@ describe('DocsPage', () => {
     })
   })
 
+  it('retries local docs indexing after a transient write failure on a later query', async () => {
+    mockUpsertLocalDataDocuments
+      .mockResolvedValueOnce({ success: false, error: 'backend booting' })
+      .mockResolvedValueOnce({ success: true, data: { documentCount: 14 }, error: null })
+    mockSearchLocalData.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'docs:guide:quickstart',
+          module: 'docs',
+          sourceType: 'guide',
+          title: 'Quick Start',
+          content: 'Install OpenClaw and start the gateway.',
+          tags: ['install', 'setup', 'gateway'],
+          metadata: {},
+          updatedAt: '2026-04-10T00:00:00.000Z',
+          score: 88,
+          snippet: 'Install OpenClaw and start the gateway.',
+        },
+      ],
+      error: null,
+    })
+
+    render(
+      <MemoryRouter>
+        <DocsPage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('Search guides, commands, and troubleshooting...'), {
+      target: { value: 'gateway' },
+    })
+
+    await waitFor(() => {
+      expect(mockUpsertLocalDataDocuments).toHaveBeenCalledTimes(1)
+    })
+    expect(mockSearchLocalData).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByPlaceholderText('Search guides, commands, and troubleshooting...'), {
+      target: { value: 'gateway setup' },
+    })
+
+    await waitFor(() => {
+      expect(mockUpsertLocalDataDocuments).toHaveBeenCalledTimes(2)
+      expect(mockSearchLocalData).toHaveBeenCalledWith({ query: 'gateway setup', module: 'docs', limit: 8 })
+    })
+  })
+
   it('shows the local empty state when no built-in results match the query', async () => {
     render(
       <MemoryRouter>

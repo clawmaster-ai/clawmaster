@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -131,8 +131,9 @@ export default function DocsPage() {
   const [liveSearched, setLiveSearched] = useState(false)
   const [indexedResults, setIndexedResults] = useState<LocalDataSearchResult[]>([])
   const [indexedSearching, setIndexedSearching] = useState(false)
-  const [localDataIndexState, setLocalDataIndexState] = useState<'pending' | 'ready' | 'failed'>('pending')
   const [feedback, setFeedback] = useState<FeedbackState>(null)
+  const localDataIndexStateRef = useRef<'idle' | 'pending' | 'ready' | 'failed'>('idle')
+  const localDataIndexPromiseRef = useRef<Promise<boolean> | null>(null)
 
   const scenarios = useMemo<ResourceCardData[]>(
     () => [
@@ -361,64 +362,83 @@ export default function DocsPage() {
     return [...resourceDocs, ...commandDocs]
   }, [commands, guides, scenarios, troubleshooting])
 
+  const ensureLocalDataIndexed = useCallback((retryOnFailed: boolean): Promise<boolean> => {
+    const currentState = localDataIndexStateRef.current
+    if (currentState === 'ready') {
+      return Promise.resolve(true)
+    }
+    if (currentState === 'failed' && !retryOnFailed) {
+      return Promise.resolve(false)
+    }
+    if (localDataIndexPromiseRef.current) {
+      return localDataIndexPromiseRef.current
+    }
+
+    localDataIndexStateRef.current = 'pending'
+
+    let promise: Promise<boolean>
+    promise = upsertLocalDataDocumentsResult(localDataDocuments, {
+      replace: { module: 'docs' },
+    })
+      .then((result) => {
+        const nextState = result.success ? 'ready' : 'failed'
+        localDataIndexStateRef.current = nextState
+        return result.success
+      })
+      .catch(() => {
+        localDataIndexStateRef.current = 'failed'
+        return false
+      })
+      .finally(() => {
+        if (localDataIndexPromiseRef.current === promise) {
+          localDataIndexPromiseRef.current = null
+        }
+      })
+
+    localDataIndexPromiseRef.current = promise
+    return promise
+  }, [localDataDocuments])
+
   useEffect(() => {
     setLiveResults([])
     setLiveSearched(false)
   }, [query])
 
   useEffect(() => {
-    let cancelled = false
-    setLocalDataIndexState('pending')
-    void upsertLocalDataDocumentsResult(localDataDocuments, {
-      replace: { module: 'docs' },
-    })
-      .then((result) => {
-        if (!cancelled) {
-          setLocalDataIndexState(result.success ? 'ready' : 'failed')
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLocalDataIndexState('failed')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [localDataDocuments])
+    localDataIndexPromiseRef.current = null
+    localDataIndexStateRef.current = 'idle'
+    void ensureLocalDataIndexed(false)
+  }, [ensureLocalDataIndexed, localDataDocuments])
 
   useEffect(() => {
     const trimmed = query.trim()
     let cancelled = false
-    if (!trimmed) {
-      setIndexedResults([])
-      setIndexedSearching(false)
-      return
-    }
-    if (localDataIndexState === 'pending') {
-      setIndexedResults([])
-      setIndexedSearching(true)
-      return
-    }
-    if (localDataIndexState === 'failed') {
-      setIndexedResults([])
-      setIndexedSearching(false)
-      return
-    }
+    void (async () => {
+      if (!trimmed) {
+        setIndexedResults([])
+        setIndexedSearching(false)
+        return
+      }
 
-    setIndexedSearching(true)
-    void searchLocalDataResult({ query: trimmed, module: 'docs', limit: 8 })
-      .then((result) => {
-        if (!cancelled) {
-          setIndexedResults(result.success && result.data ? result.data : [])
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIndexedSearching(false)
-      })
+      setIndexedSearching(true)
+      const indexed = await ensureLocalDataIndexed(true)
+      if (cancelled) return
+      if (!indexed) {
+        setIndexedResults([])
+        setIndexedSearching(false)
+        return
+      }
+
+      const result = await searchLocalDataResult({ query: trimmed, module: 'docs', limit: 8 })
+      if (cancelled) return
+      setIndexedResults(result.success && result.data ? result.data : [])
+      setIndexedSearching(false)
+    })()
 
     return () => {
       cancelled = true
     }
-  }, [localDataIndexState, query])
+  }, [ensureLocalDataIndexed, query])
 
   const filteredScenarios = scenarios.filter((item) =>
     matchesQuery(query, [item.title, item.description, item.meta, ...item.searchTerms]),

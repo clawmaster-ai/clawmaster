@@ -429,6 +429,36 @@ describe('UpdateSection', () => {
     expect(localData.getAllByText('12')).toHaveLength(2)
   })
 
+  it('shows fallback summary and unsupported target guidance when embedded support is unavailable', async () => {
+    vi.mocked(platform.detectSystem).mockResolvedValueOnce(makeSystemInfo({
+      storage: {
+        state: 'ready',
+        engine: 'fallback',
+        profileKey: 'default',
+        dataRoot: 'C:\\Users\\alice\\.clawmaster\\data\\default',
+        engineRoot: 'C:\\Users\\alice\\.clawmaster\\data\\default\\fallback',
+        supportsEmbedded: false,
+        targetPlatform: 'win32',
+        targetArch: 'x64',
+        reasonCode: null,
+      },
+      runtime: {
+        hostPlatform: 'win32',
+      },
+    }))
+
+    renderSettings()
+
+    const heading = await screen.findByText('Local Data')
+    const section = heading.closest('section')
+    expect(section).not.toBeNull()
+    const localData = within(section!)
+
+    expect(localData.getByText('ClawMaster will keep working through a file-backed fallback until SeekDB embedded is available.')).toBeInTheDocument()
+    expect(localData.getByText('SeekDB embedded bindings are not available on this target yet. Use WSL2, server mode later, or fallback storage.')).toBeInTheDocument()
+    expect(localData.queryByText('SeekDB embedded can run for this runtime target.')).not.toBeInTheDocument()
+  })
+
   it('clears stale local data stats when a refresh fails', async () => {
     mockGetLocalDataStats
       .mockResolvedValueOnce({
