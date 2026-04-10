@@ -72,9 +72,14 @@ function localDataStateClass(state: LocalDataInfo['state']): string {
 }
 
 function localDataSummaryLabelKey(info: LocalDataInfo): string {
-  if (info.state === 'blocked') return 'settings.localDataBlockedSummary'
-  if (info.state === 'ready' && info.engine === 'seekdb-embedded') return 'settings.localDataReadySummary'
-  return 'settings.localDataFallbackSummary'
+  switch (info.engine) {
+    case 'seekdb-embedded':
+      return info.state === 'blocked' ? 'settings.localDataBlockedSummary' : 'settings.localDataReadySummary'
+    case 'fallback':
+      return 'settings.localDataFallbackSummary'
+    default:
+      return 'settings.localDataBlockedSummary'
+  }
 }
 
 function localDataEffectiveReasonLabelKey(info: LocalDataInfo): string | null {

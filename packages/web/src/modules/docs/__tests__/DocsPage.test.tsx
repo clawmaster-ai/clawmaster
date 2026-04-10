@@ -146,6 +146,50 @@ describe('DocsPage', () => {
     })
   })
 
+  it('waits for the latest docs reindex when localized docs change mid-flight', async () => {
+    const firstUpsert = deferred<{ success: true; data: { documentCount: number }; error: null }>()
+    const secondUpsert = deferred<{ success: true; data: { documentCount: number }; error: null }>()
+    mockUpsertLocalDataDocuments
+      .mockReturnValueOnce(firstUpsert.promise)
+      .mockReturnValueOnce(secondUpsert.promise)
+
+    render(
+      <MemoryRouter>
+        <DocsPage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(mockUpsertLocalDataDocuments).toHaveBeenCalledTimes(1)
+    })
+
+    await act(async () => {
+      await changeLanguage('ja')
+    })
+
+    await waitFor(() => {
+      expect(mockUpsertLocalDataDocuments).toHaveBeenCalledTimes(2)
+    })
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'gateway setup' },
+    })
+
+    await act(async () => {
+      firstUpsert.resolve({ success: true, data: { documentCount: 14 }, error: null })
+    })
+
+    expect(mockSearchLocalData).not.toHaveBeenCalled()
+
+    await act(async () => {
+      secondUpsert.resolve({ success: true, data: { documentCount: 14 }, error: null })
+    })
+
+    await waitFor(() => {
+      expect(mockSearchLocalData).toHaveBeenCalledWith({ query: 'gateway setup', module: 'docs', limit: 8 })
+    })
+  })
+
   it('retries local docs indexing after a transient write failure on a later query', async () => {
     mockUpsertLocalDataDocuments
       .mockResolvedValueOnce({ success: false, error: 'backend booting' })

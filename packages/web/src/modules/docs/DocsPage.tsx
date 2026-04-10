@@ -134,6 +134,9 @@ export default function DocsPage() {
   const [feedback, setFeedback] = useState<FeedbackState>(null)
   const localDataIndexStateRef = useRef<'idle' | 'pending' | 'ready' | 'failed'>('idle')
   const localDataIndexPromiseRef = useRef<Promise<boolean> | null>(null)
+  const localDataIndexGenerationRef = useRef(0)
+  const localDataIndexedGenerationRef = useRef<number | null>(null)
+  const localDataFailedGenerationRef = useRef<number | null>(null)
 
   const scenarios = useMemo<ResourceCardData[]>(
     () => [
@@ -363,30 +366,45 @@ export default function DocsPage() {
   }, [commands, guides, scenarios, troubleshooting])
 
   const ensureLocalDataIndexed = useCallback((retryOnFailed: boolean): Promise<boolean> => {
+    const generation = localDataIndexGenerationRef.current
     const currentState = localDataIndexStateRef.current
-    if (currentState === 'ready') {
-      return Promise.resolve(true)
-    }
-    if (currentState === 'failed' && !retryOnFailed) {
-      return Promise.resolve(false)
-    }
     if (localDataIndexPromiseRef.current) {
       return localDataIndexPromiseRef.current
     }
+    if (currentState === 'ready' && localDataIndexedGenerationRef.current === generation) {
+      return Promise.resolve(true)
+    }
+    if (currentState === 'failed' && localDataFailedGenerationRef.current === generation && !retryOnFailed) {
+      return Promise.resolve(false)
+    }
 
     localDataIndexStateRef.current = 'pending'
+    localDataIndexedGenerationRef.current = null
+    localDataFailedGenerationRef.current = null
 
     let promise: Promise<boolean>
     promise = upsertLocalDataDocumentsResult(localDataDocuments, {
       replace: { module: 'docs' },
     })
       .then((result) => {
+        const isCurrent =
+          localDataIndexPromiseRef.current === promise &&
+          localDataIndexGenerationRef.current === generation
+        if (!isCurrent) return false
         const nextState = result.success ? 'ready' : 'failed'
         localDataIndexStateRef.current = nextState
+        localDataIndexedGenerationRef.current = result.success ? generation : null
+        localDataFailedGenerationRef.current = result.success ? null : generation
         return result.success
       })
       .catch(() => {
+        const isCurrent =
+          localDataIndexPromiseRef.current === promise &&
+          localDataIndexGenerationRef.current === generation
+        if (!isCurrent) return false
         localDataIndexStateRef.current = 'failed'
+        localDataIndexedGenerationRef.current = null
+        localDataFailedGenerationRef.current = generation
         return false
       })
       .finally(() => {
@@ -405,8 +423,11 @@ export default function DocsPage() {
   }, [query])
 
   useEffect(() => {
+    localDataIndexGenerationRef.current += 1
     localDataIndexPromiseRef.current = null
     localDataIndexStateRef.current = 'idle'
+    localDataIndexedGenerationRef.current = null
+    localDataFailedGenerationRef.current = null
     void ensureLocalDataIndexed(false)
   }, [ensureLocalDataIndexed, localDataDocuments])
 

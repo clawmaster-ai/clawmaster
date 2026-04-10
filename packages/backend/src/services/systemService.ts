@@ -22,6 +22,17 @@ export function getLocalDataBackendNodeRuntime() {
   }
 }
 
+export function resolveBackendLocalDataStatus(
+  args: Omit<Parameters<typeof resolveLocalDataStatus>[0], 'nodeInstalled' | 'nodeVersion'>,
+) {
+  const backendNode = getLocalDataBackendNodeRuntime()
+  return resolveLocalDataStatus({
+    ...args,
+    nodeInstalled: backendNode.installed,
+    nodeVersion: backendNode.version,
+  })
+}
+
 async function checkCmd(cmd: string, args: string[], useWsl: boolean, distro: string | null): Promise<string | null> {
   try {
     if (useWsl && distro) {
@@ -94,14 +105,13 @@ export async function detectSystemInfo() {
     }
     openclaw = { ...openclaw, installed: true, version }
   }
-  const localDataNode = getLocalDataBackendNodeRuntime()
-  const storage = resolveLocalDataStatus({
+  // In web mode Local Data is served by this backend process, so status must reflect
+  // the backend Node runtime rather than the selected OpenClaw runtime inside WSL.
+  const storage = resolveBackendLocalDataStatus({
     runtimeSelection,
     profileSelection: resolution.profileSelection,
     hostPlatform: process.platform,
     hostArch: process.arch,
-    nodeInstalled: localDataNode.installed,
-    nodeVersion: localDataNode.version,
     selectedWslDistro: selectedDistro,
     wslHomeDir,
   })
