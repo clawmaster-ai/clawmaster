@@ -492,6 +492,7 @@ export default {
   "settings.localDataRebuildSuccess": "本地数据索引已重建。",
   "settings.localDataResetSuccess": "本地数据存储已重置。",
   "settings.localDataResetConfirm": "确定要重置本地数据回退存储吗？模块加载后会重新构建索引数据。",
+  "settings.localDataDesktopPending": "桌面端本地数据管理在 Node 存储 worker 可用前仅提供只读状态。",
   "settings.update": "更新",
   "settings.checkUpdate": "检查更新",
   "settings.checking": "正在检查更新...",

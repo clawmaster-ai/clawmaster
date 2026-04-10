@@ -112,6 +112,7 @@ export default function Settings() {
       setRuntimeMode(info.runtime?.mode ?? 'native')
       setRuntimeDistro(info.runtime?.selectedDistro ?? '')
       setRuntimeError(null)
+      setLocalDataStats(null)
       void loadLocalDataStats()
     } catch (err) {
       console.error('Failed to load system info:', err)
@@ -124,6 +125,8 @@ export default function Settings() {
     const result = await getLocalDataStatsResult()
     if (result.success && result.data) {
       setLocalDataStats(result.data)
+    } else {
+      setLocalDataStats(null)
     }
   }
 
@@ -236,6 +239,7 @@ export default function Settings() {
   const resolvedRuntimeMode = systemInfo?.runtime?.mode ?? 'native'
   const resolvedRuntimeDistro = systemInfo?.runtime?.selectedDistro ?? ''
   const isWindowsHost = isWindowsHostPlatform(systemInfo?.runtime?.hostPlatform)
+  const localDataActionsDisabled = localDataBusy || localData?.state === 'blocked' || isTauri()
   const diagnosticsSheetConfig = logsOpen === 'gateway'
     ? {
         title: t('logs.gatewayTitle'),
@@ -822,7 +826,7 @@ export default function Settings() {
                 <button
                   type="button"
                   onClick={() => void rebuildLocalData()}
-                  disabled={localDataBusy || localData.state === 'blocked'}
+                  disabled={localDataActionsDisabled}
                   className="button-secondary"
                 >
                   {localDataBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -831,12 +835,17 @@ export default function Settings() {
                 <button
                   type="button"
                   onClick={() => setConfirmAction('local-data-reset')}
-                  disabled={localDataBusy || localData.state === 'blocked'}
+                  disabled={localDataActionsDisabled}
                   className="button-danger"
                 >
                   {t('settings.localDataReset')}
                 </button>
               </div>
+              {isTauri() ? (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {t('settings.localDataDesktopPending')}
+                </p>
+              ) : null}
             </div>
 
             <div className="rounded-[1.75rem] border border-border/80 bg-muted/40 p-5">

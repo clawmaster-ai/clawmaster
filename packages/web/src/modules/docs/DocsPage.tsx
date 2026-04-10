@@ -131,6 +131,7 @@ export default function DocsPage() {
   const [liveSearched, setLiveSearched] = useState(false)
   const [indexedResults, setIndexedResults] = useState<LocalDataSearchResult[]>([])
   const [indexedSearching, setIndexedSearching] = useState(false)
+  const [localDataIndexState, setLocalDataIndexState] = useState<'pending' | 'ready' | 'failed'>('pending')
   const [feedback, setFeedback] = useState<FeedbackState>(null)
 
   const scenarios = useMemo<ResourceCardData[]>(
@@ -366,13 +367,36 @@ export default function DocsPage() {
   }, [query])
 
   useEffect(() => {
+    let cancelled = false
+    setLocalDataIndexState('pending')
     void upsertLocalDataDocumentsResult(localDataDocuments)
+      .then((result) => {
+        if (!cancelled) {
+          setLocalDataIndexState(result.success ? 'ready' : 'failed')
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLocalDataIndexState('failed')
+      })
+    return () => {
+      cancelled = true
+    }
   }, [localDataDocuments])
 
   useEffect(() => {
     const trimmed = query.trim()
     let cancelled = false
     if (!trimmed) {
+      setIndexedResults([])
+      setIndexedSearching(false)
+      return
+    }
+    if (localDataIndexState === 'pending') {
+      setIndexedResults([])
+      setIndexedSearching(true)
+      return
+    }
+    if (localDataIndexState === 'failed') {
       setIndexedResults([])
       setIndexedSearching(false)
       return
@@ -392,7 +416,7 @@ export default function DocsPage() {
     return () => {
       cancelled = true
     }
-  }, [query])
+  }, [localDataIndexState, query])
 
   const filteredScenarios = scenarios.filter((item) =>
     matchesQuery(query, [item.title, item.description, item.meta, ...item.searchTerms]),

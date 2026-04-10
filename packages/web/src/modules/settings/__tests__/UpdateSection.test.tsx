@@ -119,6 +119,7 @@ vi.mock('react-i18next', () => ({
         'settings.localDataRebuildSuccess': 'Local Data index rebuilt.',
         'settings.localDataResetSuccess': 'Local Data store reset.',
         'settings.localDataResetConfirm': 'Reset Local Data fallback store? Indexed data will be rebuilt by modules as they load.',
+        'settings.localDataDesktopPending': 'Desktop Local Data management is read-only until the Node storage worker is available.',
         'logs.settingsTitle': 'Diagnostics',
         'logs.settingsDescription': 'Use this hub when you need a broader diagnostics view after checking contextual module logs.',
         'logs.openRecent': 'View Recent Logs',
@@ -179,6 +180,7 @@ const mockGetLogsResult = vi.fn()
 const mockGetLocalDataStats = vi.fn()
 const mockRebuildLocalData = vi.fn()
 const mockResetLocalData = vi.fn()
+const mockIsTauri = vi.fn()
 
 vi.mock('@/shared/adapters/platformResults', () => ({
   platformResults: {
@@ -200,6 +202,10 @@ vi.mock('@/shared/adapters/storage', () => ({
   getLocalDataStatsResult: (...args: any[]) => mockGetLocalDataStats(...args),
   rebuildLocalDataResult: (...args: any[]) => mockRebuildLocalData(...args),
   resetLocalDataResult: (...args: any[]) => mockResetLocalData(...args),
+}))
+
+vi.mock('@/shared/adapters/platform', () => ({
+  isTauri: (...args: any[]) => mockIsTauri(...args),
 }))
 
 vi.mock('@/adapters', () => ({
@@ -261,6 +267,7 @@ function renderSettings() {
 describe('UpdateSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockIsTauri.mockReturnValue(false)
     mockBootstrap.mockResolvedValue({ success: true })
     mockSaveProfile.mockResolvedValue({ success: true, data: undefined, error: null })
     mockClearProfile.mockResolvedValue({ success: true, data: undefined, error: null })
@@ -403,6 +410,66 @@ describe('UpdateSection', () => {
     expect(localData.getByText('This foundation uses JavaScript/TypeScript runtime paths only; no Python package or Python-based skill is required.')).toBeInTheDocument()
     expect(localData.getByText('/home/.clawmaster/data/default/fallback')).toBeInTheDocument()
     expect(localData.getAllByText('12')).toHaveLength(2)
+  })
+
+  it('clears stale local data stats when a refresh fails', async () => {
+    mockGetLocalDataStats
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          engine: 'fallback',
+          state: 'ready',
+          profileKey: 'default',
+          dataRoot: '/home/.clawmaster/data/default',
+          engineRoot: '/home/.clawmaster/data/default/fallback',
+          documentCount: 12,
+          moduleCounts: { docs: 12 },
+          schemaVersion: 1,
+          updatedAt: '2026-04-10T00:00:00.000Z',
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        success: false,
+        error: 'WSL2 runtime is unavailable',
+      })
+
+    renderSettings()
+
+    const heading = await screen.findByText('Local Data')
+    let section = heading.closest('section')
+    expect(section).not.toBeNull()
+    expect(within(section!).getAllByText('12')).toHaveLength(2)
+
+    const profileSection = screen.getByText('OpenClaw profile').closest('section')
+    expect(profileSection).not.toBeNull()
+    const profile = within(profileSection!)
+    fireEvent.click(profile.getByRole('button', { name: /Dev/ }))
+    fireEvent.click(profile.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(mockGetLocalDataStats).toHaveBeenCalledTimes(2)
+    })
+    section = screen.getByText('Local Data').closest('section')
+    expect(section).not.toBeNull()
+    expect(within(section!).queryByText('12')).not.toBeInTheDocument()
+  })
+
+  it('renders local data management as read-only in Tauri desktop mode', async () => {
+    mockIsTauri.mockReturnValue(true)
+    renderSettings()
+
+    const heading = await screen.findByText('Local Data')
+    const section = heading.closest('section')
+    expect(section).not.toBeNull()
+    const localData = within(section!)
+
+    expect(localData.getByRole('button', { name: 'Rebuild Index' })).toBeDisabled()
+    expect(localData.getByRole('button', { name: 'Reset Store' })).toBeDisabled()
+    expect(localData.getByText('Desktop Local Data management is read-only until the Node storage worker is available.')).toBeInTheDocument()
+
+    fireEvent.click(localData.getByRole('button', { name: 'Rebuild Index' }))
+    expect(mockRebuildLocalData).not.toHaveBeenCalled()
   })
 
   it('rebuilds the local data fallback index from settings', async () => {

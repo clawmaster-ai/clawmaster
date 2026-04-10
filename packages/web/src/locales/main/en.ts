@@ -492,6 +492,7 @@ export default {
   "settings.localDataRebuildSuccess": "Local Data index rebuilt.",
   "settings.localDataResetSuccess": "Local Data store reset.",
   "settings.localDataResetConfirm": "Reset Local Data fallback store? Indexed data will be rebuilt by modules as they load.",
+  "settings.localDataDesktopPending": "Desktop Local Data management is read-only until the Node storage worker is available.",
   "settings.update": "Update",
   "settings.checkUpdate": "Check for updates",
   "settings.checking": "Checking for updates...",

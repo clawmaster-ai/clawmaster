@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { changeLanguage } from '@/i18n'
 import DocsPage from '../DocsPage'
@@ -8,6 +8,14 @@ const mockExecCommand = vi.fn()
 const mockWriteText = vi.fn()
 const mockUpsertLocalDataDocuments = vi.fn()
 const mockSearchLocalData = vi.fn()
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
 
 vi.mock('@/shared/adapters/platform', () => ({
   execCommand: (...args: any[]) => mockExecCommand(...args),
@@ -102,6 +110,34 @@ describe('DocsPage', () => {
     })
     expect(await screen.findByRole('heading', { name: 'Indexed Local Data' })).toBeInTheDocument()
     expect(screen.getByText('Install OpenClaw and start the gateway.')).toBeInTheDocument()
+  })
+
+  it('waits for local docs indexing before querying the fallback store', async () => {
+    const upsert = deferred<{ success: true; data: { documentCount: number }; error: null }>()
+    mockUpsertLocalDataDocuments.mockReturnValue(upsert.promise)
+
+    render(
+      <MemoryRouter>
+        <DocsPage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('Search guides, commands, and troubleshooting...'), {
+      target: { value: 'gateway setup' },
+    })
+
+    await waitFor(() => {
+      expect(mockUpsertLocalDataDocuments).toHaveBeenCalled()
+    })
+    expect(mockSearchLocalData).not.toHaveBeenCalled()
+
+    await act(async () => {
+      upsert.resolve({ success: true, data: { documentCount: 14 }, error: null })
+    })
+
+    await waitFor(() => {
+      expect(mockSearchLocalData).toHaveBeenCalledWith({ query: 'gateway setup', module: 'docs', limit: 8 })
+    })
   })
 
   it('shows the local empty state when no built-in results match the query', async () => {

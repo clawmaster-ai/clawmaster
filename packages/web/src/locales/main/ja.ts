@@ -492,6 +492,7 @@ export default {
   "settings.localDataRebuildSuccess": "ローカルデータ索引を再構築しました。",
   "settings.localDataResetSuccess": "ローカルデータストアをリセットしました。",
   "settings.localDataResetConfirm": "ローカルデータのフォールバックストアをリセットしますか？モジュールの読み込み時に索引データは再構築されます。",
+  "settings.localDataDesktopPending": "デスクトップ版のローカルデータ管理は、Node ストレージ worker が利用可能になるまで読み取り専用です。",
   "settings.update": "アップデート",
   "settings.checkUpdate": "アップデートを確認",
   "settings.checking": "アップデートを確認中...",
