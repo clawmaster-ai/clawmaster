@@ -15,9 +15,9 @@ import {
   MessageSquare,
   ScrollText,
   Settings2,
+  Sparkles,
   Wrench,
   X,
-  Zap,
   type LucideIcon,
 } from 'lucide-react'
 import type {
@@ -29,6 +29,11 @@ import type {
 } from '@/lib/types'
 import type { ClawprobeStatusJson } from '@/types/clawprobe'
 import { getMcpServers, type McpServersMap } from '@/shared/adapters/mcp'
+import {
+  getEnabledMcpCount,
+  getEnabledPluginCount,
+  getEnabledSkillCount,
+} from '@/shared/capabilitySummary'
 import { buildGatewayUrl } from '@/shared/gatewayUrl'
 
 export default function Dashboard() {
@@ -146,9 +151,9 @@ export default function Dashboard() {
   const providerCount = Object.keys(config?.models?.providers || {}).length
   const defaultModel = config?.agents?.defaults?.model?.primary || ''
   const feishuAccounts = getChannelAccountCount(config, 'feishu')
+  const enabledMcpCount = getEnabledMcpCount(mcpServers)
   const enabledPluginCount = getEnabledPluginCount(pluginsPayload)
   const enabledSkillCount = getEnabledSkillCount(skills)
-  const installedMcpCount = Object.keys(mcpServers).length
 
   const taskCards: TaskCardConfig[] = [
     {
@@ -307,40 +312,42 @@ export default function Dashboard() {
       outcome: t('dashboard.task.extend.outcome'),
       checklist: [
         {
-          id: 'mcp',
+          id: 'capability-connect',
           label: t('dashboard.task.extend.step1'),
-          to: '/mcp#mcp-import',
-          hint: t('dashboard.task.gotoSection', { page: t('nav.mcp'), section: t('mcp.importTitle') }),
-          status: taskSignalsLoading ? 'loading' : installedMcpCount > 0 ? 'ready' : 'attention',
+          to: '/capabilities#capability-connect-data',
+          hint: t('dashboard.task.gotoSection', { page: t('nav.capabilities'), section: t('capabilities.connect.title') }),
+          status: taskSignalsLoading ? 'loading' : enabledMcpCount > 0 ? 'ready' : 'attention',
         },
         {
-          id: 'plugins',
+          id: 'capability-actions',
           label: t('dashboard.task.extend.step2'),
-          to: '/plugins#plugins-groups',
-          hint: t('dashboard.task.gotoSection', { page: t('nav.plugins'), section: t('nav.plugins') }),
+          to: '/capabilities#capability-automation',
+          hint: t('dashboard.task.gotoSection', { page: t('nav.capabilities'), section: t('capabilities.automation.title') }),
           status: taskSignalsLoading ? 'loading' : enabledPluginCount > 0 ? 'ready' : 'attention',
         },
         {
-          id: 'skills',
+          id: 'capability-enhance',
           label: t('dashboard.task.extend.step3'),
-          to: '/skills#skills-featured',
-          hint: t('dashboard.task.gotoSection', { page: t('nav.skills'), section: t('skills.featuredTitle') }),
+          to: '/capabilities#capability-enhance',
+          hint: t('dashboard.task.gotoSection', { page: t('nav.capabilities'), section: t('capabilities.enhance.title') }),
           status: taskSignalsLoading ? 'loading' : enabledSkillCount > 0 ? 'ready' : 'attention',
         },
         {
-          id: 'runtime-verify',
+          id: 'capability-verify',
           label: t('dashboard.task.extend.step4'),
-          to: '/skills#skills-installed',
-          hint: t('dashboard.task.gotoSection', { page: t('nav.skills'), section: t('skills.installedTitle') }),
+          to: '/capabilities#capability-runtime',
+          hint: t('dashboard.task.gotoSection', { page: t('nav.capabilities'), section: t('capabilities.runtimeTitle') }),
           status: taskSignalsLoading
             ? 'loading'
-            : installedMcpCount + enabledPluginCount + enabledSkillCount > 0
+            : enabledMcpCount + enabledPluginCount + enabledSkillCount > 0
               ? 'ready'
               : 'unknown',
         },
       ],
-      primaryLink: { to: '/mcp', label: t('dashboard.task.openFlow') },
+      primaryLink: { to: '/capabilities', label: t('nav.capabilities') },
       secondaryLinks: [
+        { to: '/capabilities', label: t('nav.capabilities') },
+        { to: '/mcp', label: t('nav.mcp') },
         { to: '/plugins', label: t('nav.plugins') },
         { to: '/skills', label: t('nav.skills') },
       ],
@@ -618,12 +625,12 @@ export default function Dashboard() {
           </div>
           <p className="text-sm text-muted-foreground">{t('dashboard.memoryManagementDesc')}</p>
         </Link>
-        <Link to="/skills" className="list-card transition hover:border-primary/50">
+        <Link to="/capabilities" className="list-card transition hover:border-primary/50">
           <div className="flex items-center gap-2 mb-2">
-            <Zap className="w-5 h-5 text-primary" />
-            <h3 className="font-medium">{t('dashboard.skillMarket')}</h3>
+            <Sparkles className="w-5 h-5 text-primary" />
+            <h3 className="font-medium">{t('dashboard.capabilityCenter')}</h3>
           </div>
-          <p className="text-sm text-muted-foreground">{t('dashboard.skillMarketDesc')}</p>
+          <p className="text-sm text-muted-foreground">{t('dashboard.capabilityCenterDesc')}</p>
         </Link>
       </div>
 
@@ -747,7 +754,7 @@ function TaskEntryCard({
             <p className="mt-1 text-sm leading-6 text-muted-foreground">{task.outcome}</p>
           </div>
         </div>
-        <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
+        <span className="inline-flex items-center rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground whitespace-nowrap">
           {t('dashboard.task.readyCount', { ready: summary.ready, total: summary.total })}
         </span>
       </div>
@@ -870,7 +877,7 @@ function TaskChecklistDrawer({
                       </div>
                     </div>
                   </div>
-                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${taskStatusToneClass(item.status)}`}>
+                  <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${taskStatusToneClass(item.status)}`}>
                     {taskStatusLabel(t, item.status)}
                   </span>
                 </div>
@@ -954,19 +961,6 @@ function getChannelAccountCount(config: OpenClawConfig | null, channelId: string
 function isGatewayProtected(config: OpenClawConfig | null): boolean {
   const authMode = config?.gateway?.auth?.mode
   return Boolean(config?.gateway?.bind) && Boolean(authMode) && authMode !== 'none'
-}
-
-function getEnabledPluginCount(pluginsPayload: PluginsListPayload | null): number {
-  return (pluginsPayload?.plugins ?? []).filter((plugin) => {
-    const status = plugin.status?.trim().toLowerCase() ?? ''
-    if (!status) return false
-    if (/\bdisabled\b/.test(status) || /\boff\b/.test(status)) return false
-    return /\benabled\b/.test(status) || /\bactive\b/.test(status) || /\bloaded\b/.test(status)
-  }).length
-}
-
-function getEnabledSkillCount(skills: SkillInfo[]): number {
-  return skills.filter((skill) => skill.disabled !== true).length
 }
 
 function taskStatusToneClass(status: Exclude<TaskChecklistTone, 'loading'> | TaskChecklistTone): string {
