@@ -36,6 +36,25 @@ type OllamaInstallation = {
   version: string
 }
 
+type CommandResult = {
+  code: number
+  stdout: string
+  stderr: string
+}
+
+export const OLLAMA_USER_LOCAL_INSTALL_SCRIPT = [
+  'set -e',
+  'mkdir -p ~/.local/bin ~/.local/lib/ollama',
+  'ARCH=$(uname -m)',
+  'case $ARCH in x86_64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; esac',
+  'LATEST=$(curl -fsSI https://github.com/ollama/ollama/releases/latest 2>/dev/null | grep -i "^location:" | sed "s|.*/tag/||" | tr -d "\\r\\n")',
+  'URL="https://github.com/ollama/ollama/releases/download/${LATEST}/ollama-linux-${ARCH}.tar.zst"',
+  'echo "Downloading ${URL}..."',
+  'curl -fsSL "${URL}" | zstd -d | tar x -C ~/.local 2>&1',
+  'chmod +x ~/.local/bin/ollama',
+  'echo "Installed ollama ${LATEST} to ~/.local/bin/ollama"',
+].join(' && ')
+
 async function runHostHelper(args: string[]): Promise<string> {
   const out = await execFileAsync(process.execPath, ['-e', OLLAMA_HOST_HELPER_SCRIPT, ...args], {
     env: process.env,
@@ -108,7 +127,7 @@ async function runWslCommandWithInput(
   cmd: string,
   args: string[],
   input: string,
-): Promise<{ code: number; stdout: string; stderr: string }> {
+): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn('wsl.exe', ['-d', distro, '--', cmd, ...args], {
       env: process.env,
@@ -133,6 +152,97 @@ async function runWslCommandWithInput(
   })
 }
 
+async function runHostCommandWithInput(
+  cmd: string,
+  args: string[],
+  input: string,
+): Promise<CommandResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, {
+      env: process.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      resolve({ code: code ?? 1, stdout, stderr })
+    })
+    child.stdin.end(input)
+  })
+}
+
+async function runHostShell(script: string): Promise<CommandResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('bash', ['-lc', script], {
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      resolve({ code: code ?? 1, stdout, stderr })
+    })
+  })
+}
+
+export async function runOllamaInstallWithFallback(
+  primaryInstall: () => Promise<CommandResult>,
+  fallbackInstall: () => Promise<CommandResult>,
+): Promise<string> {
+  const primary = await primaryInstall()
+  if (primary.code === 0) {
+    return primary.stdout.trim() || 'installed'
+  }
+
+  const fallback = await fallbackInstall()
+  if (fallback.code === 0) {
+    return fallback.stdout.trim() || 'installed'
+  }
+
+  throw new Error(
+    fallback.stderr.trim()
+      || fallback.stdout.trim()
+      || primary.stderr.trim()
+      || primary.stdout.trim()
+      || `ollama install failed (${primary.code})`,
+  )
+}
+
+async function installOllamaHost(): Promise<string> {
+  if (process.platform === 'win32') {
+    return runHostHelper(['install'])
+  }
+
+  const response = await fetch('https://ollama.com/install.sh')
+  if (!response.ok) {
+    throw new Error('Failed to download Ollama install script')
+  }
+  const script = await response.text()
+
+  return runOllamaInstallWithFallback(
+    () => runHostCommandWithInput('sh', ['-s'], script),
+    () => runHostShell(OLLAMA_USER_LOCAL_INSTALL_SCRIPT),
+  )
+}
+
 export async function detectOllamaInstallation(): Promise<{ installed: boolean; version?: string }> {
   try {
     const installation = await resolveOllamaInstallation()
@@ -145,7 +255,7 @@ export async function detectOllamaInstallation(): Promise<{ installed: boolean; 
 export async function installOllamaService(): Promise<string> {
   const distro = getSelectedWslDistro()
   if (!distro) {
-    return runHostHelper(['install'])
+    return installOllamaHost()
   }
 
   const response = await fetch('https://ollama.com/install.sh')
@@ -153,11 +263,11 @@ export async function installOllamaService(): Promise<string> {
     throw new Error('Failed to download Ollama install script')
   }
   const script = await response.text()
-  const out = await runWslCommandWithInput(distro, 'sh', ['-s'], script)
-  if (out.code !== 0) {
-    throw new Error(out.stderr.trim() || out.stdout.trim() || `ollama install failed (${out.code})`)
-  }
-  return out.stdout.trim() || 'installed'
+
+  return runOllamaInstallWithFallback(
+    () => runWslCommandWithInput(distro, 'sh', ['-s'], script),
+    () => runWslShell(distro, OLLAMA_USER_LOCAL_INSTALL_SCRIPT),
+  )
 }
 
 export async function isOllamaRunningService(baseUrl = 'http://localhost:11434'): Promise<boolean> {
