@@ -206,10 +206,21 @@ async function runHostShell(script: string): Promise<CommandResult> {
 export async function runOllamaInstallWithFallback(
   primaryInstall: () => Promise<CommandResult>,
   fallbackInstall: () => Promise<CommandResult>,
+  options: {
+    enableFallback?: boolean
+  } = {},
 ): Promise<string> {
   const primary = await primaryInstall()
   if (primary.code === 0) {
     return primary.stdout.trim() || 'installed'
+  }
+
+  if (options.enableFallback === false) {
+    throw new Error(
+      primary.stderr.trim()
+        || primary.stdout.trim()
+        || `ollama install failed (${primary.code})`,
+    )
   }
 
   const fallback = await fallbackInstall()
@@ -240,6 +251,7 @@ async function installOllamaHost(): Promise<string> {
   return runOllamaInstallWithFallback(
     () => runHostCommandWithInput('sh', ['-s'], script),
     () => runHostShell(OLLAMA_USER_LOCAL_INSTALL_SCRIPT),
+    { enableFallback: process.platform !== 'darwin' },
   )
 }
 

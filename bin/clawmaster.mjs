@@ -293,14 +293,29 @@ export async function validateServiceState(state, options = {}) {
   }
 }
 
-async function getRunningServiceState() {
+export function getSignalExitCode(signal) {
+  if (signal === 'SIGINT') return 130
+  if (signal === 'SIGTERM') return 143
+  return 1
+}
+
+async function getRunningServiceState(options = {}) {
   const state = readServiceState()
   if (!state) return null
   if (!isProcessAlive(Number(state.pid))) {
     clearServiceState()
     return null
   }
-  return validateServiceState(state)
+  const valid = await validateServiceState(state, {
+    allowUnreachable: options.allowUnreachable ?? false,
+    timeoutMs: options.timeoutMs,
+    fetcher: options.fetcher,
+  })
+  if (valid) {
+    return valid
+  }
+  clearServiceState()
+  return null
 }
 
 async function runDoctor() {
@@ -327,7 +342,7 @@ async function runDoctor() {
 
 async function runStatus(args) {
   const baseUrl = normalizeServiceUrl(getServiceUrl(args))
-  const storedState = await getRunningServiceState()
+  const storedState = await getRunningServiceState({ allowUnreachable: false })
   const explicitUrl = hasValueFlag(args, 'url')
   const state = storedState && (!explicitUrl || normalizeServiceUrl(storedState.url) === baseUrl)
     ? storedState
@@ -351,7 +366,7 @@ async function runStatus(args) {
 }
 
 async function runStop() {
-  const state = await getRunningServiceState()
+  const state = await getRunningServiceState({ allowUnreachable: false })
   if (!state) {
     console.error('No running ClawMaster background service was found.')
     process.exitCode = 1
@@ -415,7 +430,7 @@ async function runServe(args) {
   const assets = resolveServiceAssets()
   const urls = resolveServiceUrls(host, port)
   const url = urls.url
-  const running = await getRunningServiceState()
+  const running = await getRunningServiceState({ allowUnreachable: false })
   const stdoutLog = join(serviceStateDir, 'service.stdout.log')
   const stderrLog = join(serviceStateDir, 'service.stderr.log')
 
@@ -506,13 +521,18 @@ async function runServe(args) {
     }
   }
 
-  process.on('SIGINT', () => stopChild('SIGINT'))
-  process.on('SIGTERM', () => stopChild('SIGTERM'))
+  const handleSigint = () => stopChild('SIGINT')
+  const handleSigterm = () => stopChild('SIGTERM')
+
+  process.on('SIGINT', handleSigint)
+  process.on('SIGTERM', handleSigterm)
 
   child.on('exit', (code, signal) => {
     clearServiceState()
+    process.off('SIGINT', handleSigint)
+    process.off('SIGTERM', handleSigterm)
     if (signal) {
-      process.kill(process.pid, signal)
+      process.exit(getSignalExitCode(signal))
       return
     }
     process.exit(code ?? 0)

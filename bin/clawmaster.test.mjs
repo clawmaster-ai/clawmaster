@@ -80,6 +80,24 @@ test('validateServiceState preserves recorded daemons while the pid is still ali
   assert.deepEqual(result, state)
 })
 
+test('validateServiceState rejects unreachable recorded daemons when callers require a successful probe', async () => {
+  const result = await cliModule.validateServiceState(
+    {
+      pid: process.pid,
+      url: 'http://127.0.0.1:3001',
+      token: 'stale-token',
+    },
+    {
+      allowUnreachable: false,
+      fetcher: async () => {
+        throw new Error('connection refused')
+      },
+    },
+  )
+
+  assert.equal(result, null)
+})
+
 test('validateServiceState drops dead recorded daemons', async () => {
   const result = await cliModule.validateServiceState(
     {
@@ -93,6 +111,12 @@ test('validateServiceState drops dead recorded daemons', async () => {
   )
 
   assert.equal(result, null)
+})
+
+test('getSignalExitCode returns conventional shell exit codes for forwarded signals', () => {
+  assert.equal(cliModule.getSignalExitCode('SIGINT'), 130)
+  assert.equal(cliModule.getSignalExitCode('SIGTERM'), 143)
+  assert.equal(cliModule.getSignalExitCode('SIGUSR1'), 1)
 })
 
 test('resolveCommandProbePath prefers a Windows where result', () => {

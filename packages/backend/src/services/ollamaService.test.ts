@@ -39,6 +39,22 @@ test('runOllamaInstallWithFallback surfaces the fallback failure when both insta
   )
 })
 
+test('runOllamaInstallWithFallback can skip the fallback path entirely', async () => {
+  let fallbackCalled = false
+  await assert.rejects(
+    () => runOllamaInstallWithFallback(
+      async () => ({ code: 1, stdout: '', stderr: 'primary failed' }),
+      async () => {
+        fallbackCalled = true
+        return { code: 0, stdout: 'should not run', stderr: '' }
+      },
+      { enableFallback: false },
+    ),
+    /primary failed/,
+  )
+  assert.equal(fallbackCalled, false)
+})
+
 test('OLLAMA_USER_LOCAL_INSTALL_SCRIPT installs into the per-user ~/.local prefix', () => {
   assert.match(OLLAMA_USER_LOCAL_INSTALL_SCRIPT, /mkdir -p ~\/\.local\/bin ~\/\.local\/lib\/ollama/)
   assert.match(OLLAMA_USER_LOCAL_INSTALL_SCRIPT, /tar x -C ~\/\.local/)

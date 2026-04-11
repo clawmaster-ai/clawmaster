@@ -14,7 +14,7 @@ import { detectSystemResult } from './system'
 import { tauriInvoke } from './invoke'
 import { getConfigResult, saveFullConfigResult, setConfigResult } from './openclaw'
 import { wrapAsync, type AdapterResult } from './types'
-import { parseImportedMcpServers, type McpImportCandidate, type McpImportFormat } from './mcpImport'
+import { parseImportedMcpServers, type McpImportCandidate } from './mcpImport'
 import { webFetchJson, webFetchVoid } from './webHttp'
 
 export type McpTransport = 'stdio' | 'http' | 'sse'
@@ -51,20 +51,6 @@ export interface McpImportSummary {
   path: string
   importedIds: string[]
 }
-
-const MCP_IMPORT_SOURCE_DEFINITIONS: Array<{
-  id: string
-  format: McpImportFormat
-  relativePath?: string
-  homePath?: string
-}> = [
-  { id: 'project-mcp', format: 'json', relativePath: '.mcp.json' },
-  { id: 'cursor', format: 'json', relativePath: '.cursor/mcp.json' },
-  { id: 'vscode', format: 'json', relativePath: '.vscode/mcp.json' },
-  { id: 'claude-user', format: 'json', homePath: '.claude.json' },
-  { id: 'codex-user', format: 'toml', homePath: '.codex/config.toml' },
-  { id: 'copilot-user', format: 'json', homePath: '.copilot/mcp-config.json' },
-]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

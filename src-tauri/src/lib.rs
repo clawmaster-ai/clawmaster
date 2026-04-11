@@ -768,6 +768,7 @@ fn resolve_system_command_path(cmd: &str) -> PathBuf {
     resolved
 }
 
+#[cfg(not(target_os = "macos"))]
 const OLLAMA_USER_LOCAL_INSTALL_SCRIPT: &str = concat!(
     "set -e && ",
     "mkdir -p ~/.local/bin ~/.local/lib/ollama && ",
@@ -885,6 +886,7 @@ fn download_file_via_curl(url: &str, target: &Path) -> Result<(), String> {
     }
 }
 
+#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 fn run_host_ollama_fallback_install() -> Result<String, String> {
     let output = Command::new(resolve_bash_command_path())
         .args(["-lc", OLLAMA_USER_LOCAL_INSTALL_SCRIPT])
@@ -3828,14 +3830,26 @@ fn install_ollama_host() -> Result<String, String> {
             return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
         }
 
-        match run_host_ollama_fallback_install() {
-            Ok(status) => Ok(status),
-            Err(fallback_error) => {
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                if stderr.trim().is_empty() {
-                    Err(fallback_error)
-                } else {
-                    Err(cmd_err_stderr("OLLAMA_INSTALL_FAILED", &stderr))
+        #[cfg(target_os = "macos")]
+        {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if stderr.trim().is_empty() {
+                return Err(cmd_err("OLLAMA_INSTALL_FAILED"));
+            }
+            return Err(cmd_err_stderr("OLLAMA_INSTALL_FAILED", &stderr));
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            match run_host_ollama_fallback_install() {
+                Ok(status) => Ok(status),
+                Err(fallback_error) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    if stderr.trim().is_empty() {
+                        Err(fallback_error)
+                    } else {
+                        Err(cmd_err_stderr("OLLAMA_INSTALL_FAILED", &stderr))
+                    }
                 }
             }
         }
