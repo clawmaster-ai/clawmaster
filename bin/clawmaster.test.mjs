@@ -54,6 +54,12 @@ test('resolveServiceUrls maps wildcard hosts to local probe urls', () => {
     url: 'http://[::1]:3001',
     wildcard: true,
   })
+  assert.deepEqual(cliModule.resolveServiceUrls('::1', '3001'), {
+    bindHost: '::1',
+    port: '3001',
+    url: 'http://[::1]:3001',
+    wildcard: false,
+  })
 })
 
 test('validateServiceState preserves recorded daemons while the pid is still alive', async () => {
@@ -105,6 +111,26 @@ test('resolveCommandProbePath keeps non-Windows probes unchanged', () => {
       platform: 'linux',
     }),
     'openclaw',
+  )
+})
+
+test('getCommandProbeExecOptions enables the shell for Windows command shims', () => {
+  assert.deepEqual(
+    cliModule.getCommandProbeExecOptions({ platform: 'win32' }),
+    {
+      shell: true,
+      windowsHide: true,
+    },
+  )
+})
+
+test('getCommandProbeExecOptions keeps direct exec for non-Windows platforms', () => {
+  assert.deepEqual(
+    cliModule.getCommandProbeExecOptions({ platform: 'linux' }),
+    {
+      shell: false,
+      windowsHide: true,
+    },
   )
 })
 

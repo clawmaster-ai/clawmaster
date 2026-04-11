@@ -46,6 +46,19 @@ export function resolveHostCommandPathForTest(command: string, options: {
   return firstCommandPath(options.whereOutput ?? '') ?? command
 }
 
+export function getHostCommandExecOptionsForTest(options: {
+  platform?: string
+} = {}): {
+  shell: boolean
+  windowsHide: boolean
+} {
+  const platform = options.platform ?? process.platform
+  return {
+    shell: platform === 'win32',
+    windowsHide: true,
+  }
+}
+
 function resolveHostCommandPath(command: string): string {
   if (process.platform !== 'win32') {
     return command
@@ -286,7 +299,7 @@ export async function scanInstalledSkill(payload: SkillGuardScanRequest) {
     ], {
       env: process.env,
       maxBuffer: 20 * 1024 * 1024,
-      windowsHide: true,
+      ...getHostCommandExecOptionsForTest(),
     })
     return normalizeSkillGuardResult(
       `${String(out.stdout ?? '')}\n${String(out.stderr ?? '')}`,

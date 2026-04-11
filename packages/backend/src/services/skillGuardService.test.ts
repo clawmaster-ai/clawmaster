@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { resolveHostCommandPathForTest } from './skillGuardService.js'
+import { getHostCommandExecOptionsForTest, resolveHostCommandPathForTest } from './skillGuardService.js'
 
 test('resolveHostCommandPathForTest keeps non-Windows commands unchanged', () => {
   assert.equal(
@@ -27,5 +27,25 @@ test('resolveHostCommandPathForTest falls back to the bare command when where ou
       whereOutput: '',
     }),
     'npm',
+  )
+})
+
+test('getHostCommandExecOptionsForTest enables shell execution for Windows npm.cmd shims', () => {
+  assert.deepEqual(
+    getHostCommandExecOptionsForTest({ platform: 'win32' }),
+    {
+      shell: true,
+      windowsHide: true,
+    },
+  )
+})
+
+test('getHostCommandExecOptionsForTest keeps direct exec on non-Windows hosts', () => {
+  assert.deepEqual(
+    getHostCommandExecOptionsForTest({ platform: 'linux' }),
+    {
+      shell: false,
+      windowsHide: true,
+    },
   )
 })

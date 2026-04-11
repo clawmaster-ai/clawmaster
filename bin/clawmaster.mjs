@@ -85,8 +85,17 @@ function getReachableHost(host) {
   return normalized
 }
 
+function formatHttpHost(host) {
+  const normalized = String(host ?? '').trim()
+  if (!normalized) return '127.0.0.1'
+  if (normalized.startsWith('[') && normalized.endsWith(']')) {
+    return normalized
+  }
+  return normalized.includes(':') ? `[${normalized}]` : normalized
+}
+
 function buildHttpUrl(host, port) {
-  return `http://${host}:${port}`
+  return `http://${formatHttpHost(host)}:${port}`
 }
 
 export function resolveServiceUrls(host, port) {
@@ -209,10 +218,18 @@ export function resolveCommandProbePath(command, options = {}) {
   }
 }
 
+export function getCommandProbeExecOptions(options = {}) {
+  const platform = options.platform ?? process.platform
+  return {
+    shell: platform === 'win32',
+    windowsHide: true,
+  }
+}
+
 async function probeCommand(command, args) {
   try {
     const resolvedCommand = resolveCommandProbePath(command)
-    const { stdout } = await execFile(resolvedCommand, args, { shell: false, windowsHide: true })
+    const { stdout } = await execFile(resolvedCommand, args, getCommandProbeExecOptions())
     return { ok: true, output: stdout.trim() }
   } catch (error) {
     return {
