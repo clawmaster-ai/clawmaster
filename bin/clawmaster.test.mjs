@@ -56,13 +56,14 @@ test('resolveServiceUrls maps wildcard hosts to local probe urls', () => {
   })
 })
 
-test('validateServiceState clears stale recorded daemons even if the pid is alive', async () => {
+test('validateServiceState preserves recorded daemons while the pid is still alive', async () => {
+  const state = {
+    pid: process.pid,
+    url: 'http://127.0.0.1:3001',
+    token: 'stale-token',
+  }
   const result = await cliModule.validateServiceState(
-    {
-      pid: process.pid,
-      url: 'http://127.0.0.1:3001',
-      token: 'stale-token',
-    },
+    state,
     {
       fetcher: async () => {
         throw new Error('connection refused')
@@ -70,7 +71,41 @@ test('validateServiceState clears stale recorded daemons even if the pid is aliv
     },
   )
 
+  assert.deepEqual(result, state)
+})
+
+test('validateServiceState drops dead recorded daemons', async () => {
+  const result = await cliModule.validateServiceState(
+    {
+      pid: 999999,
+      url: 'http://127.0.0.1:3001',
+      token: 'dead-token',
+    },
+    {
+      fetcher: async () => ({ ok: true }),
+    },
+  )
+
   assert.equal(result, null)
+})
+
+test('resolveCommandProbePath prefers a Windows where result', () => {
+  assert.equal(
+    cliModule.resolveCommandProbePath('npm', {
+      platform: 'win32',
+      whereOutput: 'C:\\Program Files\\nodejs\\npm.cmd\r\n',
+    }),
+    'C:\\Program Files\\nodejs\\npm.cmd',
+  )
+})
+
+test('resolveCommandProbePath keeps non-Windows probes unchanged', () => {
+  assert.equal(
+    cliModule.resolveCommandProbePath('openclaw', {
+      platform: 'linux',
+    }),
+    'openclaw',
+  )
 })
 
 test('buildServiceSpawnOptions preserves the caller working directory', () => {

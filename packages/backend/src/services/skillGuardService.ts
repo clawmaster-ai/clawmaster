@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -26,6 +26,43 @@ export interface SkillGuardScanRequest {
 function trailingSlugToken(value: string | undefined): string {
   const parts = String(value || '').split('/').filter(Boolean)
   return parts[parts.length - 1] || ''
+}
+
+function firstCommandPath(whereOutput: string): string | null {
+  return String(whereOutput)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0) ?? null
+}
+
+export function resolveHostCommandPathForTest(command: string, options: {
+  platform?: string
+  whereOutput?: string | null
+} = {}): string {
+  const platform = options.platform ?? process.platform
+  if (platform !== 'win32') {
+    return command
+  }
+  return firstCommandPath(options.whereOutput ?? '') ?? command
+}
+
+function resolveHostCommandPath(command: string): string {
+  if (process.platform !== 'win32') {
+    return command
+  }
+  try {
+    const output = execFileSync('where', [command], {
+      encoding: 'utf8',
+      env: process.env,
+      windowsHide: true,
+    })
+    return resolveHostCommandPathForTest(command, {
+      platform: process.platform,
+      whereOutput: output,
+    })
+  } catch {
+    return command
+  }
 }
 
 function uniqueTokens(values: Array<string | undefined>): string[] {
@@ -239,7 +276,7 @@ export async function scanInstalledSkill(payload: SkillGuardScanRequest) {
         `Installed skill directory not found for: ${payload.skillKey || payload.name || payload.slug || 'unknown'}`
       )
     }
-    const out = await execFileAsync('npm', [
+    const out = await execFileAsync(resolveHostCommandPath('npm'), [
       'exec',
       '--yes',
       '@clawmaster/skillguard-cli',
@@ -249,6 +286,7 @@ export async function scanInstalledSkill(payload: SkillGuardScanRequest) {
     ], {
       env: process.env,
       maxBuffer: 20 * 1024 * 1024,
+      windowsHide: true,
     })
     return normalizeSkillGuardResult(
       `${String(out.stdout ?? '')}\n${String(out.stderr ?? '')}`,

@@ -2,7 +2,7 @@
 
 import { createRequire } from 'node:module'
 import { randomBytes } from 'node:crypto'
-import { spawn, execFile as execFileCallback } from 'node:child_process'
+import { spawn, execFile as execFileCallback, execFileSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chmodSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -182,9 +182,37 @@ function isProcessAlive(pid) {
   }
 }
 
+function firstCommandPath(whereOutput) {
+  return String(whereOutput ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0) ?? null
+}
+
+export function resolveCommandProbePath(command, options = {}) {
+  const platform = options.platform ?? process.platform
+  if (platform !== 'win32') {
+    return command
+  }
+  if (typeof options.whereOutput === 'string') {
+    return firstCommandPath(options.whereOutput) ?? command
+  }
+  try {
+    const output = execFileSync('where', [command], {
+      encoding: 'utf8',
+      env: process.env,
+      windowsHide: true,
+    })
+    return firstCommandPath(output) ?? command
+  } catch {
+    return command
+  }
+}
+
 async function probeCommand(command, args) {
   try {
-    const { stdout } = await execFile(command, args, { shell: false })
+    const resolvedCommand = resolveCommandProbePath(command)
+    const { stdout } = await execFile(resolvedCommand, args, { shell: false, windowsHide: true })
     return { ok: true, output: stdout.trim() }
   } catch (error) {
     return {
@@ -244,19 +272,18 @@ export async function validateServiceState(state, options = {}) {
     })
     return state
   } catch {
-    return null
+    return options.allowUnreachable === false ? null : state
   }
 }
 
 async function getRunningServiceState() {
   const state = readServiceState()
   if (!state) return null
-  const valid = await validateServiceState(state)
-  if (valid) {
-    return valid
+  if (!isProcessAlive(Number(state.pid))) {
+    clearServiceState()
+    return null
   }
-  clearServiceState()
-  return null
+  return validateServiceState(state)
 }
 
 async function runDoctor() {
