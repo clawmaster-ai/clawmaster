@@ -11,7 +11,8 @@
 import { execCommand } from './platform'
 import { getIsTauri } from './platform'
 import { detectSystemResult } from './system'
-import { setConfigResult } from './openclaw'
+import { tauriInvoke } from './invoke'
+import { getConfigResult, saveFullConfigResult, setConfigResult } from './openclaw'
 import { wrapAsync, type AdapterResult } from './types'
 import { parseImportedMcpServers, type McpImportCandidate, type McpImportFormat } from './mcpImport'
 import { webFetchJson, webFetchVoid } from './webHttp'
@@ -167,8 +168,9 @@ async function readJsonFile(path: string): Promise<unknown | null> {
     return JSON.parse(result.data.content) as unknown
   }
   try {
-    const raw = await execCommand('node', ['-e', READ_OPTIONAL_FILE_SCRIPT, path])
-    const parsed = JSON.parse(raw) as { exists?: boolean; content?: string }
+    const parsed = await tauriInvoke<{ exists?: boolean; content?: string }>('read_runtime_text_file', {
+      pathInput: path,
+    })
     if (!parsed.exists || !parsed.content?.trim()) return null
     return JSON.parse(parsed.content) as unknown
   } catch {
@@ -251,12 +253,10 @@ async function writeManagedMcpRegistry(servers: McpServersMap): Promise<void> {
     return
   }
   const { registryPath } = await getOpenclawRuntimePaths()
-  await execCommand('node', [
-    '-e',
-    WRITE_TEXT_FILE_SCRIPT,
-    registryPath,
-    JSON.stringify({ mcpServers: servers }, null, 2),
-  ])
+  await tauriInvoke('write_runtime_text_file', {
+    pathInput: registryPath,
+    content: JSON.stringify({ mcpServers: servers }, null, 2),
+  })
 }
 
 function serializeEnabledServersForOpenClaw(servers: McpServersMap): Record<string, Record<string, unknown>> {
@@ -288,53 +288,31 @@ async function writeOpenClawConfig(servers: McpServersMap): Promise<void> {
   if (!getIsTauri()) {
     return
   }
-  const { configPath } = await getOpenclawRuntimePaths()
   const runtimeServers = serializeEnabledServersForOpenClaw(servers)
-  const script = `
-const fs = require('node:fs')
-const path = require('node:path')
-const os = require('node:os')
-
-function isRecord(value) {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function expandHome(input) {
-  return String(input || '').replace(/^~(?=$|[\\\\/])/, os.homedir())
-}
-
-const target = expandHome(process.argv[1])
-const nextServers = JSON.parse(process.argv[2] || '{}')
-
-let config = {}
-try {
-  config = JSON.parse(fs.readFileSync(target, 'utf8'))
-} catch (error) {
-  if (!error || error.code !== 'ENOENT') throw error
-}
-
-if (!isRecord(config)) {
-  config = {}
-}
-
-if (Object.keys(nextServers).length > 0) {
-  const currentMcp = isRecord(config.mcp) ? config.mcp : {}
-  config.mcp = {
-    ...currentMcp,
-    servers: nextServers,
+  const configResult = await getConfigResult()
+  if (!configResult.success) {
+    throw new Error(configResult.error ?? 'Failed to load OpenClaw config')
   }
-} else if (isRecord(config.mcp)) {
-  delete config.mcp.servers
-  if (Object.keys(config.mcp).length === 0) {
-    delete config.mcp
+  const nextConfig = { ...(configResult.data ?? {}) } as Record<string, unknown>
+  const currentMcp = isRecord(nextConfig.mcp) ? { ...nextConfig.mcp } : {}
+  if (Object.keys(runtimeServers).length > 0) {
+    currentMcp.servers = runtimeServers
+    nextConfig.mcp = currentMcp
+  } else if (Object.keys(currentMcp).length > 0) {
+    delete currentMcp.servers
+    if (Object.keys(currentMcp).length > 0) {
+      nextConfig.mcp = currentMcp
+    } else {
+      delete nextConfig.mcp
+    }
+  } else {
+    delete nextConfig.mcp
   }
-}
 
-fs.mkdirSync(path.dirname(target), { recursive: true })
-fs.writeFileSync(target, JSON.stringify(config, null, 2) + '\\n')
-  `.trim()
-
-  return execCommand('node', ['-e', script, configPath, JSON.stringify(runtimeServers)]).then(() => {})
+  const saveResult = await saveFullConfigResult(nextConfig)
+  if (!saveResult.success) {
+    throw new Error(saveResult.error ?? 'Failed to save OpenClaw config')
+  }
 }
 
 async function persistMcpConfig(servers: McpServersMap): Promise<void> {
@@ -405,19 +383,9 @@ async function readTextFile(pathInput: string): Promise<{ path: string; content:
     }
     return result.data
   }
-  const script = `
-const fs = require('node:fs')
-const path = require('node:path')
-const os = require('node:os')
-const input = process.argv[1] || ''
-const expanded = input.replace(/^~(?=$|[\\\\/])/, os.homedir())
-const resolved = path.isAbsolute(expanded) ? expanded : path.resolve(process.cwd(), expanded)
-const content = fs.readFileSync(resolved, 'utf8')
-console.log(JSON.stringify({ path: resolved, content }))
-  `.trim()
-
-  const raw = await execCommand('node', ['-e', script, pathInput])
-  return JSON.parse(raw) as { path: string; content: string }
+  return tauriInvoke<{ path: string; content: string }>('read_required_runtime_text_file', {
+    pathInput,
+  })
 }
 
 function mergeImportedServers(current: McpServersMap, imported: McpServersMap): { merged: McpServersMap; importedIds: string[] } {
@@ -450,29 +418,7 @@ export function listMcpImportCandidates(): Promise<AdapterResult<McpImportCandid
   if (!getIsTauri()) {
     return webFetchJson<McpImportCandidate[]>('/api/mcp/import-candidates')
   }
-  return wrapAsync(async () => {
-    const script = `
-const fs = require('node:fs')
-const path = require('node:path')
-const os = require('node:os')
-const cwd = process.cwd()
-const home = os.homedir()
-const defs = ${JSON.stringify(MCP_IMPORT_SOURCE_DEFINITIONS)}
-const candidates = defs.map((def) => {
-  const fullPath = def.relativePath ? path.join(cwd, def.relativePath) : path.join(home, def.homePath)
-  return {
-    id: def.id,
-    format: def.format,
-    path: fullPath,
-    exists: fs.existsSync(fullPath),
-  }
-})
-console.log(JSON.stringify(candidates))
-    `.trim()
-
-    const raw = await execCommand('node', ['-e', script])
-    return JSON.parse(raw) as McpImportCandidate[]
-  })
+  return wrapAsync(async () => tauriInvoke<McpImportCandidate[]>('list_mcp_import_candidates'))
 }
 
 export function importMcpServers(pathInput: string): Promise<AdapterResult<McpImportSummary>> {
@@ -560,30 +506,3 @@ export function toggleMcpServer(id: string, enabled: boolean): Promise<AdapterRe
     return enabled ? 'enabled' : 'disabled'
   })
 }
-
-const READ_OPTIONAL_FILE_SCRIPT = `
-const fs = require('node:fs')
-const path = require('node:path')
-const os = require('node:os')
-const input = String(process.argv[1] || '')
-const expanded = input.replace(/^~(?=$|[\\\\/])/, os.homedir())
-const resolved = path.isAbsolute(expanded) ? expanded : path.resolve(process.cwd(), expanded)
-if (!fs.existsSync(resolved)) {
-  console.log(JSON.stringify({ path: resolved, exists: false, content: '' }))
-  process.exit(0)
-}
-const content = fs.readFileSync(resolved, 'utf8')
-console.log(JSON.stringify({ path: resolved, exists: true, content }))
-`.trim()
-
-const WRITE_TEXT_FILE_SCRIPT = `
-const fs = require('node:fs')
-const path = require('node:path')
-const os = require('node:os')
-const input = String(process.argv[1] || '')
-const expanded = input.replace(/^~(?=$|[\\\\/])/, os.homedir())
-const resolved = path.isAbsolute(expanded) ? expanded : path.resolve(process.cwd(), expanded)
-const content = String(process.argv[2] || '')
-fs.mkdirSync(path.dirname(resolved), { recursive: true })
-fs.writeFileSync(resolved, content.endsWith('\\n') ? content : content + '\\n', 'utf8')
-`.trim()

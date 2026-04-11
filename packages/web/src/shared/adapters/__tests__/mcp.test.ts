@@ -10,6 +10,10 @@ import {
   toggleMcpServer,
 } from '../mcp'
 
+vi.mock('../invoke', () => ({
+  tauriInvoke: vi.fn(),
+}))
+
 vi.mock('../platform', () => ({
   execCommand: vi.fn(),
   getIsTauri: vi.fn(() => false),
@@ -33,6 +37,8 @@ vi.mock('../system', () => ({
 }))
 
 vi.mock('../openclaw', () => ({
+  getConfigResult: vi.fn(),
+  saveFullConfigResult: vi.fn(),
   setConfigResult: vi.fn().mockResolvedValue({
     success: true,
     data: undefined,
@@ -51,6 +57,20 @@ describe('mcp adapter', () => {
     return vi.mocked(execCommand)
   }
 
+  async function tauriInvokeMock() {
+    const { tauriInvoke } = await import('../invoke')
+    return vi.mocked(tauriInvoke)
+  }
+
+  async function openclawMocks() {
+    const { getConfigResult, saveFullConfigResult, setConfigResult } = await import('../openclaw')
+    return {
+      getConfigResult: vi.mocked(getConfigResult),
+      saveFullConfigResult: vi.mocked(saveFullConfigResult),
+      setConfigResult: vi.mocked(setConfigResult),
+    }
+  }
+
   async function webFetchJsonMock() {
     const { webFetchJson } = await import('../webHttp')
     return vi.mocked(webFetchJson)
@@ -64,8 +84,18 @@ describe('mcp adapter', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     ;(await execMock()).mockReset()
+    ;(await tauriInvokeMock()).mockReset()
     ;(await webFetchJsonMock()).mockReset()
     ;(await webFetchVoidMock()).mockReset()
+    const openclaw = await openclawMocks()
+    openclaw.getConfigResult.mockReset()
+    openclaw.saveFullConfigResult.mockReset()
+    openclaw.setConfigResult.mockReset()
+    openclaw.setConfigResult.mockResolvedValue({
+      success: true,
+      data: undefined,
+      error: null,
+    })
   })
 
   it('loads merged MCP servers through the dedicated backend route', async () => {
@@ -270,5 +300,113 @@ describe('mcp adapter', () => {
     const missing = await checkMcpPackage('missing-package')
     expect(missing.success).toBe(true)
     expect(missing.data).toBe(false)
+  })
+
+  it('uses tauri commands instead of node when loading MCP state on desktop', async () => {
+    const { getIsTauri } = await import('../platform')
+    const invoke = await tauriInvokeMock()
+    const openclaw = await openclawMocks()
+    getIsTauri.mockReturnValue(true)
+    invoke.mockResolvedValueOnce({
+      exists: true,
+      content: JSON.stringify({
+        mcpServers: {
+          context7: {
+            transport: 'http',
+            url: 'https://mcp.context7.com/mcp',
+            enabled: false,
+            headers: {},
+            env: {},
+          },
+        },
+      }),
+    })
+    openclaw.getConfigResult.mockResolvedValueOnce({
+      success: true,
+      data: {
+        mcp: {
+          servers: {
+            context7: {
+              transport: 'streamable-http',
+              url: 'https://mcp.context7.com/mcp',
+            },
+          },
+        },
+      },
+      error: null,
+    })
+
+    const result = await getMcpServers()
+
+    expect(result.success).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('read_runtime_text_file', {
+      pathInput: '~/.openclaw/mcp.json',
+    })
+    expect((await execMock())).not.toHaveBeenCalledWith('node', expect.anything())
+  })
+
+  it('uses tauri commands instead of node when listing import candidates on desktop', async () => {
+    const { getIsTauri } = await import('../platform')
+    const invoke = await tauriInvokeMock()
+    getIsTauri.mockReturnValue(true)
+    invoke.mockResolvedValueOnce([
+      { id: 'project-mcp', format: 'json', path: '/repo/.mcp.json', exists: true },
+    ])
+
+    const result = await listMcpImportCandidates()
+
+    expect(result.success).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('list_mcp_import_candidates')
+    expect((await execMock())).not.toHaveBeenCalledWith('node', expect.anything())
+  })
+
+  it('uses tauri commands instead of node when importing and saving MCP state on desktop', async () => {
+    const { getIsTauri } = await import('../platform')
+    const invoke = await tauriInvokeMock()
+    const openclaw = await openclawMocks()
+    getIsTauri.mockReturnValue(true)
+
+    invoke
+      .mockResolvedValueOnce({
+        path: '/repo/.mcp.json',
+        content: JSON.stringify({
+          mcpServers: {
+            context7: {
+              transport: 'http',
+              url: 'https://mcp.context7.com/mcp',
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: true,
+        content: JSON.stringify({ mcpServers: {} }),
+      })
+    openclaw.getConfigResult.mockResolvedValueOnce({
+      success: true,
+      data: {},
+      error: null,
+    })
+    openclaw.saveFullConfigResult.mockResolvedValueOnce({
+      success: true,
+      data: undefined,
+      error: null,
+    })
+
+    const result = await importMcpServers('/repo/.mcp.json')
+
+    expect(result.success).toBe(true)
+    expect(invoke).toHaveBeenNthCalledWith(1, 'read_required_runtime_text_file', {
+      pathInput: '/repo/.mcp.json',
+    })
+    expect(invoke).toHaveBeenCalledWith('read_runtime_text_file', {
+      pathInput: '~/.openclaw/mcp.json',
+    })
+    expect(invoke).toHaveBeenCalledWith('write_runtime_text_file', {
+      pathInput: '~/.openclaw/mcp.json',
+      content: expect.stringContaining('"context7"'),
+    })
+    expect(openclaw.saveFullConfigResult).toHaveBeenCalled()
+    expect((await execMock())).not.toHaveBeenCalledWith('node', expect.anything())
   })
 })

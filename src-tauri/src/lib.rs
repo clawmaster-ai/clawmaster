@@ -1561,6 +1561,82 @@ fn write_active_openclaw_text_file(path: &Path, content: &str) -> Result<(), Str
     fs::write(path, content).map_err(|e| cmd_err_d("IO_ERROR", e))
 }
 
+fn resolve_runtime_input_path(input: &str) -> Result<PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        let script = format!(
+            "value={}\n{}",
+            shell_escape_posix_arg(input),
+            r#"
+resolve_path() {
+  local value="$1"
+  case "$value" in
+    "~")
+      value="$HOME"
+      ;;
+    "~/"*)
+      value="$HOME/${value#~/}"
+      ;;
+  esac
+  if [ -z "$value" ]; then
+    realpath -m "$PWD"
+    return
+  fi
+  if [ "${value#/}" != "$value" ]; then
+    realpath -m "$value"
+    return
+  fi
+  realpath -m "$PWD/$value"
+}
+resolve_path "$value"
+"#
+        );
+        let output = run_wsl_shell(&distro, script.trim(), None)?;
+        if output.code != 0 {
+            return Err(cmd_err_d(
+                "RUNTIME_PATH_RESOLVE_FAILED",
+                output.stderr.trim().to_string(),
+            ));
+        }
+        let resolved = output.stdout.trim();
+        if resolved.is_empty() {
+            return Err(cmd_err("RUNTIME_PATH_RESOLVE_FAILED"));
+        }
+        return Ok(PathBuf::from(resolved));
+    }
+
+    let expanded = expand_home_path(input);
+    if expanded.is_absolute() {
+        return Ok(expanded);
+    }
+    let cwd = std::env::current_dir().map_err(|e| cmd_err_d("RUNTIME_PATH_RESOLVE_FAILED", e))?;
+    Ok(cwd.join(expanded))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeTextFileDto {
+    path: String,
+    exists: bool,
+    content: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RequiredRuntimeTextFileDto {
+    path: String,
+    content: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct McpImportCandidateDto {
+    id: String,
+    format: String,
+    path: String,
+    exists: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenclawMemoryFileEntry {
@@ -3413,6 +3489,65 @@ fn remove_openclaw_data(confirm: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn read_runtime_text_file(path_input: String) -> Result<RuntimeTextFileDto, String> {
+    let path = resolve_runtime_input_path(&path_input)?;
+    let content = read_active_openclaw_text_file(&path)?;
+    Ok(RuntimeTextFileDto {
+        path: path.to_string_lossy().to_string(),
+        exists: content.is_some(),
+        content: content.unwrap_or_default(),
+    })
+}
+
+#[tauri::command]
+fn read_required_runtime_text_file(path_input: String) -> Result<RequiredRuntimeTextFileDto, String> {
+    let path = resolve_runtime_input_path(&path_input)?;
+    let content = read_active_openclaw_text_file(&path)?
+        .ok_or_else(|| cmd_err_p("RUNTIME_FILE_NOT_FOUND", serde_json::json!({ "path": path.to_string_lossy() })))?;
+    Ok(RequiredRuntimeTextFileDto {
+        path: path.to_string_lossy().to_string(),
+        content,
+    })
+}
+
+#[tauri::command]
+fn write_runtime_text_file(path_input: String, content: String) -> Result<String, String> {
+    let path = resolve_runtime_input_path(&path_input)?;
+    write_active_openclaw_text_file(&path, &content)?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn list_mcp_import_candidates() -> Result<Vec<McpImportCandidateDto>, String> {
+    let definitions = vec![
+        ("project-mcp", "json", Some(".mcp.json"), None),
+        ("cursor", "json", Some(".cursor/mcp.json"), None),
+        ("vscode", "json", Some(".vscode/mcp.json"), None),
+        ("claude-user", "json", None, Some(".claude.json")),
+        ("codex-user", "toml", None, Some(".codex/config.toml")),
+        ("copilot-user", "json", None, Some(".copilot/mcp-config.json")),
+    ];
+
+    let mut out = Vec::new();
+    for (id, format, relative_path, home_path) in definitions {
+        let input = if let Some(relative_path) = relative_path {
+            relative_path.to_string()
+        } else {
+            format!("~/{}", home_path.unwrap_or_default())
+        };
+        let path = resolve_runtime_input_path(&input)?;
+        let exists = read_active_openclaw_text_file(&path)?.is_some();
+        out.push(McpImportCandidateDto {
+            id: id.to_string(),
+            format: format.to_string(),
+            path: path.to_string_lossy().to_string(),
+            exists,
+        });
+    }
+    Ok(out)
+}
+
 fn expand_log_file_path(f: &str) -> PathBuf {
     let t = f.trim();
     if let Some(rest) = t.strip_prefix("~/") {
@@ -3952,6 +4087,10 @@ pub fn run() {
             list_openclaw_backups,
             restore_openclaw_backup,
             remove_openclaw_data,
+            read_runtime_text_file,
+            read_required_runtime_text_file,
+            write_runtime_text_file,
+            list_mcp_import_candidates,
             get_logs,
             run_openclaw_command,
             run_openclaw_command_captured,
