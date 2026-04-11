@@ -1,0 +1,138 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { execFile as execFileCallback } from 'node:child_process'
+import { createServer } from 'node:http'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
+
+const execFile = promisify(execFileCallback)
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const cliEntry = path.join(root, 'bin', 'clawmaster.mjs')
+
+function createTempHome() {
+  return mkdtempSync(path.join(os.tmpdir(), 'clawmaster-cli-test-'))
+}
+
+function writeServiceState(homeDir, state) {
+  const dir = path.join(homeDir, '.clawmaster', 'service')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(path.join(dir, 'service-state.json'), `${JSON.stringify(state, null, 2)}\n`, 'utf8')
+}
+
+async function runCli(args, homeDir) {
+  return execFile(process.execPath, [cliEntry, ...args], {
+    cwd: root,
+    env: {
+      ...process.env,
+      HOME: homeDir,
+    },
+  })
+}
+
+test('published package ships the backend ESM package marker', () => {
+  const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
+  assert.ok(
+    Array.isArray(pkg.files) && pkg.files.includes('packages/backend/package.json'),
+    'root package must publish packages/backend/package.json so dist/index.js keeps ESM semantics',
+  )
+})
+
+test('status --url does not reuse local daemon token or metadata for a different target', async () => {
+  const tempHome = createTempHome()
+  const requests = []
+  const server = createServer((req, res) => {
+    requests.push({
+      url: req.url,
+      authorization: req.headers.authorization,
+    })
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({
+      openclaw: { installed: true, version: '1.2.3', configPath: '/tmp/openclaw.json' },
+      runtime: { mode: 'native' },
+    }))
+  })
+
+  try {
+    await new Promise((resolve, reject) => {
+      server.listen(0, '127.0.0.1', (error) => (error ? reject(error) : resolve()))
+    })
+    const address = server.address()
+    assert.ok(address && typeof address === 'object')
+    const url = `http://127.0.0.1:${address.port}`
+
+    writeServiceState(tempHome, {
+      pid: process.pid,
+      url: 'http://127.0.0.1:3001',
+      token: 'local-service-token',
+      startedAt: '2026-04-11T00:00:00.000Z',
+    })
+
+    const { stdout } = await runCli(['status', '--url', url], tempHome)
+
+    assert.match(stdout, new RegExp(`ClawMaster service is reachable at ${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+    assert.doesNotMatch(stdout, /pid:\s+/)
+    assert.doesNotMatch(stdout, /started:\s+/)
+    assert.equal(requests[0]?.url, '/api/system/detect')
+    assert.equal(requests[0]?.authorization, undefined)
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+    })
+    rmSync(tempHome, { recursive: true, force: true })
+  }
+})
+
+test('status reuses the local daemon token and metadata for the recorded service', async () => {
+  const tempHome = createTempHome()
+  const requests = []
+  const token = 'local-service-token'
+  const startedAt = '2026-04-11T00:00:00.000Z'
+  const server = createServer((req, res) => {
+    requests.push({
+      url: req.url,
+      authorization: req.headers.authorization,
+    })
+    if (req.headers.authorization !== `Bearer ${token}`) {
+      res.writeHead(401, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'unauthorized' }))
+      return
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({
+      openclaw: { installed: true, version: '1.2.3', configPath: '/tmp/openclaw.json' },
+      runtime: { mode: 'native' },
+    }))
+  })
+
+  try {
+    await new Promise((resolve, reject) => {
+      server.listen(0, '127.0.0.1', (error) => (error ? reject(error) : resolve()))
+    })
+    const address = server.address()
+    assert.ok(address && typeof address === 'object')
+    const url = `http://127.0.0.1:${address.port}`
+
+    writeServiceState(tempHome, {
+      pid: process.pid,
+      url,
+      token,
+      startedAt,
+    })
+
+    const { stdout } = await runCli(['status'], tempHome)
+
+    assert.match(stdout, /ClawMaster service is reachable/)
+    assert.match(stdout, new RegExp(`pid:\\s+${process.pid}`))
+    assert.match(stdout, new RegExp(`started:\\s+${startedAt}`))
+    assert.equal(requests[0]?.url, '/api/system/detect')
+    assert.equal(requests[0]?.authorization, `Bearer ${token}`)
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+    })
+    rmSync(tempHome, { recursive: true, force: true })
+  }
+})

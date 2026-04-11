@@ -63,6 +63,15 @@ function hasFlag(args, name) {
   return args.includes(longFlag)
 }
 
+function hasValueFlag(args, name) {
+  const longFlag = `--${name}`
+  return args.some((arg) => arg === longFlag || arg.startsWith(`${longFlag}=`))
+}
+
+function normalizeServiceUrl(value) {
+  return String(value ?? '').replace(/\/+$/, '')
+}
+
 function getServiceUrl(args = []) {
   const stored = readServiceState()
   return parseFlagValue(args, 'url', stored?.url ?? 'http://127.0.0.1:3001')
@@ -216,8 +225,12 @@ async function runDoctor() {
 }
 
 async function runStatus(args) {
-  const baseUrl = getServiceUrl(args).replace(/\/+$/, '')
-  const state = getRunningServiceState()
+  const baseUrl = normalizeServiceUrl(getServiceUrl(args))
+  const storedState = getRunningServiceState()
+  const explicitUrl = hasValueFlag(args, 'url')
+  const state = storedState && (!explicitUrl || normalizeServiceUrl(storedState.url) === baseUrl)
+    ? storedState
+    : null
   const token = parseFlagValue(args, 'token', state?.token ?? '')
   try {
     const data = await fetchServiceInfo(baseUrl, { retries: 8, retryDelayMs: 250, token })

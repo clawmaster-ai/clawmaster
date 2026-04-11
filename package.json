@@ -6,8 +6,9 @@
     "clawmaster": "./bin/clawmaster.mjs"
   },
   "files": [
-    "bin/",
+    "bin/clawmaster.mjs",
     "packages/backend/dist/",
+    "packages/backend/package.json",
     "packages/web/dist/",
     "package.json",
     "README.md",
@@ -28,7 +29,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "prepack": "npm run build:backend && npm run build",
-    "test": "npm run test --workspace=@openclaw-manager/backend && npm run test --workspace=@openclaw-manager/web"
+    "test:cli": "node --test bin/*.test.mjs",
+    "test": "npm run test:cli && npm run test --workspace=@openclaw-manager/backend && npm run test --workspace=@openclaw-manager/web"
   },
   "keywords": [
     "openclaw",
