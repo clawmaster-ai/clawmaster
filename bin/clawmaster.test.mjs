@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile as execFileCallback } from 'node:child_process'
 import { createServer } from 'node:http'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,6 +11,7 @@ import { promisify } from 'node:util'
 const execFile = promisify(execFileCallback)
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const cliEntry = path.join(root, 'bin', 'clawmaster.mjs')
+const cliModule = await import('./clawmaster.mjs')
 
 function createTempHome() {
   return mkdtempSync(path.join(os.tmpdir(), 'clawmaster-cli-test-'))
@@ -38,6 +39,67 @@ test('published package ships the backend ESM package marker', () => {
     Array.isArray(pkg.files) && pkg.files.includes('packages/backend/package.json'),
     'root package must publish packages/backend/package.json so dist/index.js keeps ESM semantics',
   )
+})
+
+test('resolveServiceUrls maps wildcard hosts to local probe urls', () => {
+  assert.deepEqual(cliModule.resolveServiceUrls('0.0.0.0', '3001'), {
+    bindHost: '0.0.0.0',
+    port: '3001',
+    url: 'http://127.0.0.1:3001',
+    wildcard: true,
+  })
+  assert.deepEqual(cliModule.resolveServiceUrls('::', '3001'), {
+    bindHost: '::',
+    port: '3001',
+    url: 'http://[::1]:3001',
+    wildcard: true,
+  })
+})
+
+test('validateServiceState clears stale recorded daemons even if the pid is alive', async () => {
+  const result = await cliModule.validateServiceState(
+    {
+      pid: process.pid,
+      url: 'http://127.0.0.1:3001',
+      token: 'stale-token',
+    },
+    {
+      fetcher: async () => {
+        throw new Error('connection refused')
+      },
+    },
+  )
+
+  assert.equal(result, null)
+})
+
+test('buildServiceSpawnOptions preserves the caller working directory', () => {
+  const tempHome = createTempHome()
+  const workingDir = path.join(tempHome, 'workspace')
+  mkdirSync(workingDir, { recursive: true })
+
+  const stdoutLog = path.join(tempHome, 'stdout.log')
+  const stderrLog = path.join(tempHome, 'stderr.log')
+  const options = cliModule.buildServiceSpawnOptions({
+    assets: { frontendDist: '/tmp/frontend-dist' },
+    daemon: true,
+    host: '127.0.0.1',
+    port: '3001',
+    token: 'secret-token',
+    stdoutLog,
+    stderrLog,
+    workingDir,
+  })
+
+  assert.equal(options.cwd, workingDir)
+  assert.equal(options.env.CLAWMASTER_FRONTEND_DIST, '/tmp/frontend-dist')
+  assert.equal(options.env.CLAWMASTER_SERVICE_TOKEN, 'secret-token')
+  assert.equal(options.env.BACKEND_HOST, '127.0.0.1')
+  assert.equal(options.env.BACKEND_PORT, '3001')
+  closeSync(options.stdio[1])
+  closeSync(options.stdio[2])
+
+  rmSync(tempHome, { recursive: true, force: true })
 })
 
 test('status --url does not reuse local daemon token or metadata for a different target', async () => {

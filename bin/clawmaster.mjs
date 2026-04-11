@@ -12,6 +12,7 @@ import os from 'node:os'
 const execFile = promisify(execFileCallback)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
+const cliEntryPath = fileURLToPath(import.meta.url)
 const require = createRequire(import.meta.url)
 const pkg = require(resolve(root, 'package.json'))
 const serviceStateDir = join(os.homedir(), '.clawmaster', 'service')
@@ -70,6 +71,33 @@ function hasValueFlag(args, name) {
 
 function normalizeServiceUrl(value) {
   return String(value ?? '').replace(/\/+$/, '')
+}
+
+function isWildcardHost(host) {
+  const normalized = String(host ?? '').trim()
+  return normalized === '0.0.0.0' || normalized === '::' || normalized === '[::]'
+}
+
+function getReachableHost(host) {
+  const normalized = String(host ?? '').trim()
+  if (normalized === '0.0.0.0') return '127.0.0.1'
+  if (normalized === '::' || normalized === '[::]') return '[::1]'
+  return normalized
+}
+
+function buildHttpUrl(host, port) {
+  return `http://${host}:${port}`
+}
+
+export function resolveServiceUrls(host, port) {
+  const bindHost = String(host ?? '').trim() || '127.0.0.1'
+  const reachableHost = getReachableHost(bindHost)
+  return {
+    bindHost,
+    port: String(port),
+    url: buildHttpUrl(reachableHost, port),
+    wildcard: isWildcardHost(bindHost),
+  }
 }
 
 function getServiceUrl(args = []) {
@@ -154,14 +182,6 @@ function isProcessAlive(pid) {
   }
 }
 
-function getRunningServiceState() {
-  const state = readServiceState()
-  if (!state) return null
-  if (isProcessAlive(Number(state.pid))) return state
-  clearServiceState()
-  return null
-}
-
 async function probeCommand(command, args) {
   try {
     const { stdout } = await execFile(command, args, { shell: false })
@@ -179,13 +199,17 @@ async function fetchServiceInfo(baseUrl, options = {}) {
     retries = 1,
     retryDelayMs = 250,
     token = '',
+    timeoutMs = 5000,
   } = options
 
   let lastError = null
   for (let attempt = 0; attempt < retries; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
       const response = await fetch(`${baseUrl}/api/system/detect`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        signal: controller.signal,
       })
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
@@ -196,10 +220,43 @@ async function fetchServiceInfo(baseUrl, options = {}) {
       if (attempt < retries - 1) {
         await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
       }
+    } finally {
+      clearTimeout(timer)
     }
   }
 
   throw lastError ?? new Error('unknown service probe failure')
+}
+
+export async function validateServiceState(state, options = {}) {
+  if (!state) return null
+  if (!isProcessAlive(Number(state.pid))) {
+    return null
+  }
+
+  const fetcher = options.fetcher ?? fetchServiceInfo
+  try {
+    await fetcher(normalizeServiceUrl(state.url), {
+      retries: 1,
+      retryDelayMs: 0,
+      timeoutMs: options.timeoutMs ?? 750,
+      token: typeof state.token === 'string' ? state.token : '',
+    })
+    return state
+  } catch {
+    return null
+  }
+}
+
+async function getRunningServiceState() {
+  const state = readServiceState()
+  if (!state) return null
+  const valid = await validateServiceState(state)
+  if (valid) {
+    return valid
+  }
+  clearServiceState()
+  return null
 }
 
 async function runDoctor() {
@@ -226,7 +283,7 @@ async function runDoctor() {
 
 async function runStatus(args) {
   const baseUrl = normalizeServiceUrl(getServiceUrl(args))
-  const storedState = getRunningServiceState()
+  const storedState = await getRunningServiceState()
   const explicitUrl = hasValueFlag(args, 'url')
   const state = storedState && (!explicitUrl || normalizeServiceUrl(storedState.url) === baseUrl)
     ? storedState
@@ -250,7 +307,7 @@ async function runStatus(args) {
 }
 
 async function runStop() {
-  const state = getRunningServiceState()
+  const state = await getRunningServiceState()
   if (!state) {
     console.error('No running ClawMaster background service was found.')
     process.exitCode = 1
@@ -279,14 +336,42 @@ async function runStop() {
   process.exitCode = 1
 }
 
+export function buildServiceSpawnOptions({
+  assets,
+  daemon,
+  host,
+  port,
+  token,
+  stdoutLog,
+  stderrLog,
+  workingDir = process.cwd(),
+}) {
+  return {
+    cwd: workingDir,
+    stdio: daemon
+      ? ['ignore', openSync(stdoutLog, 'a'), openSync(stderrLog, 'a')]
+      : 'inherit',
+    env: {
+      ...process.env,
+      BACKEND_HOST: host,
+      BACKEND_PORT: port,
+      CLAWMASTER_FRONTEND_DIST: assets.frontendDist,
+      CLAWMASTER_SERVICE_TOKEN: token,
+    },
+    detached: daemon,
+    shell: false,
+  }
+}
+
 async function runServe(args) {
   const host = getBackendHost(args)
   const port = getBackendPort(args)
   const daemon = hasFlag(args, 'daemon')
   const token = getServiceToken(args)
   const assets = resolveServiceAssets()
-  const url = `http://${host}:${port}`
-  const running = getRunningServiceState()
+  const urls = resolveServiceUrls(host, port)
+  const url = urls.url
+  const running = await getRunningServiceState()
   const stdoutLog = join(serviceStateDir, 'service.stdout.log')
   const stderrLog = join(serviceStateDir, 'service.stderr.log')
 
@@ -307,21 +392,19 @@ async function runServe(args) {
   }
 
   ensureServiceStateDir()
-  const child = spawn(process.execPath, [assets.backendEntry], {
-    cwd: root,
-    stdio: daemon
-      ? ['ignore', openSync(stdoutLog, 'a'), openSync(stderrLog, 'a')]
-      : 'inherit',
-    env: {
-      ...process.env,
-      BACKEND_HOST: host,
-      BACKEND_PORT: port,
-      CLAWMASTER_FRONTEND_DIST: assets.frontendDist,
-      CLAWMASTER_SERVICE_TOKEN: token,
-    },
-    detached: daemon,
-    shell: false,
-  })
+  const child = spawn(
+    process.execPath,
+    [assets.backendEntry],
+    buildServiceSpawnOptions({
+      assets,
+      daemon,
+      host,
+      port,
+      token,
+      stdoutLog,
+      stderrLog,
+    }),
+  )
 
   writeServiceState({
     pid: child.pid,
@@ -336,7 +419,7 @@ async function runServe(args) {
 
   if (daemon) {
     try {
-      await fetchServiceInfo(url, { retries: 40, retryDelayMs: 250, token })
+      await fetchServiceInfo(url, { retries: 40, retryDelayMs: 250, timeoutMs: 1000, token })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       try {
@@ -357,6 +440,9 @@ async function runServe(args) {
 
     child.unref()
     console.log(`Started ClawMaster service in the background at ${url}`)
+    if (urls.wildcard) {
+      console.log(`bound: ${host}:${port}`)
+    }
     console.log(`pid: ${child.pid}`)
     console.log(`token: ${token}`)
     console.log('Use `clawmaster status` to inspect it and `clawmaster stop` to stop it.')
@@ -364,6 +450,9 @@ async function runServe(args) {
   }
 
   console.log(`Starting ClawMaster service on ${url}`)
+  if (urls.wildcard) {
+    console.log(`bound: ${host}:${port}`)
+  }
   console.log(`token: ${token}`)
   console.log('Press Ctrl+C to stop.')
 
@@ -426,4 +515,6 @@ async function main() {
   process.exitCode = 1
 }
 
-void main()
+if (process.argv[1] && resolve(process.argv[1]) === cliEntryPath) {
+  void main()
+}
