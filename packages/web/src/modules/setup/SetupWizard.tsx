@@ -48,6 +48,7 @@ import {
   PRIMARY_PROVIDERS,
   CHANNEL_TYPES,
   DEFAULT_ONBOARDING_STATE,
+  getProviderCredentialLabel,
 } from './types'
 import type {
   PaddleOcrModuleId,
@@ -1606,10 +1607,11 @@ function ProviderStep({
   onSubmit: () => void
   onSkip: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [showMore, setShowMore] = useState(false)
   const visibleIds = showMore ? allProviderIds : [...primaryIds]
   const providerCfg = PROVIDERS[onboard.provider]
+  const credentialLabel = getProviderCredentialLabel(onboard.provider, i18n.language)
 
   return (
     <div className="fullscreen-step">
@@ -1658,7 +1660,7 @@ function ProviderStep({
               rel="noopener noreferrer"
               className="block mb-3 text-center text-xs text-primary hover:underline"
             >
-              {t('setup.getApiKey', { provider: providerCfg.label })}
+              {t('setup.getApiKey', { provider: providerCfg.label, credential: credentialLabel })}
             </a>
           )}
           {providerCfg?.needsBaseUrl && (
@@ -1672,7 +1674,10 @@ function ProviderStep({
           )}
           <input
             type="password"
-            placeholder={t('setup.apiKeyPlaceholder', { provider: providerCfg?.label ?? onboard.provider })}
+            placeholder={t('setup.apiKeyPlaceholder', {
+              provider: providerCfg?.label ?? onboard.provider,
+              credential: credentialLabel,
+            })}
             value={onboard.apiKey}
             onChange={(e) => updateOnboard({ apiKey: e.target.value })}
             className="w-full px-4 py-3 rounded-lg border border-border bg-card text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"

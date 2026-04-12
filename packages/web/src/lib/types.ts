@@ -153,6 +153,33 @@ export interface OpenclawMemoryStatusPayload {
   stderr?: string
 }
 
+export interface OpenclawMemorySearchCapabilityPayload {
+  mode: 'native' | 'fallback'
+  reason?: 'fts5_unavailable'
+  detail?: string
+}
+
+export interface OpenclawMemoryReindexPayload {
+  exitCode: number
+  stdout: string
+  stderr?: string
+}
+
+export interface OpenclawMemoryFileEntry {
+  name: string
+  relativePath: string
+  absolutePath: string
+  size: number
+  modifiedAtMs: number
+  extension: string
+  kind: 'sqlite' | 'journal' | 'json' | 'text' | 'other'
+}
+
+export interface OpenclawMemoryFilesPayload {
+  root: string
+  files: OpenclawMemoryFileEntry[]
+}
+
 /** Resolved PowerMem CLI `--env-file` target for viewing/editing in the UI */
 export interface PowermemEnvPayload {
   path: string
