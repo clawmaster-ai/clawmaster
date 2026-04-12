@@ -2,6 +2,10 @@
 
 This directory holds the first native desktop E2E slice for ClawMaster.
 
+The smoke accepts the two valid desktop entry states:
+- main app shell when an existing OpenClaw profile is already available
+- startup fullscreen when the runtime is clean and needs install or takeover
+
 ## Modes
 
 - `darwin`: local launch smoke

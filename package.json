@@ -30,7 +30,7 @@
     "tauri:build": "tauri build",
     "prepack": "npm run build:backend && npm run build",
     "test:cli": "node --test bin/*.test.mjs",
-    "test:desktop": "node --test tests/desktop/*.test.mjs",
+    "test:desktop": "node --test tests/desktop/smoke.test.mjs",
     "test": "npm run test:cli && npm run test --workspace=@openclaw-manager/backend && npm run test --workspace=@openclaw-manager/web"
   },
   "keywords": [

@@ -234,26 +234,49 @@ async function runWebdriverSmoke(binaryPath) {
       .withCapabilities(capabilities)
       .build()
 
-    await driver.wait(until.elementLocated(By.css('.app-shell')), APP_READY_TIMEOUT_MS)
+    await driver.wait(async () => {
+      const [shells, fullscreenShells] = await Promise.all([
+        driver.findElements(By.css('.app-shell')),
+        driver.findElements(By.css('.fullscreen-shell')),
+      ])
+
+      return shells.length > 0 || fullscreenShells.length > 0
+    }, APP_READY_TIMEOUT_MS)
+
     const body = await driver.findElement(By.css('body')).getText()
     assert.match(body, /(ClawMaster|龙虾管理大师)/)
 
-    await driver.findElement(By.css('.app-command-trigger')).click()
-    await driver.wait(until.elementLocated(By.css('.command-palette-panel')), 10_000)
+    const appShell = await driver.findElements(By.css('.app-shell'))
+    if (appShell.length > 0) {
+      await driver.findElement(By.css('.app-command-trigger')).click()
+      await driver.wait(until.elementLocated(By.css('.command-palette-panel')), 10_000)
 
-    const input = await driver.findElement(By.css('.command-palette-input'))
-    await input.sendKeys('settings', Key.ENTER)
+      const input = await driver.findElement(By.css('.command-palette-input'))
+      await input.sendKeys('settings', Key.ENTER)
 
-    const title = await driver.wait(
-      until.elementLocated(By.css('.app-topbar-title')),
-      10_000,
+      const title = await driver.wait(
+        until.elementLocated(By.css('.app-topbar-title')),
+        10_000,
+      )
+      const titleText = await title.getText()
+      assert.match(titleText, /(Settings|设置|設定)/)
+
+      return {
+        mode: 'webdriver',
+        details: `navigated to settings via command palette (${titleText})`,
+        logs: tauriDriver.getLogs(),
+      }
+    }
+
+    const startupCopy = await driver.findElement(By.css('.fullscreen-shell')).getText()
+    assert.match(
+      startupCopy,
+      /(ClawMaster|OpenClaw|检测|Detect|Install|安装|Take over|接管)/,
     )
-    const titleText = await title.getText()
-    assert.match(titleText, /(Settings|设置|設定)/)
 
     return {
       mode: 'webdriver',
-      details: `navigated to settings via command palette (${titleText})`,
+      details: 'reached desktop startup shell on a clean runtime',
       logs: tauriDriver.getLogs(),
     }
   } finally {
