@@ -256,14 +256,10 @@ async function runWebdriverSmoke(binaryPath) {
       .withCapabilities(capabilities)
       .build()
 
-    await driver.wait(async () => {
-      const [shells, fullscreenShells] = await Promise.all([
-        driver.findElements(By.css('.app-shell')),
-        driver.findElements(By.css('.fullscreen-shell')),
-      ])
-
-      return shells.length > 0 || fullscreenShells.length > 0
-    }, APP_READY_TIMEOUT_MS)
+    await driver.wait(
+      until.elementLocated(By.css('.app-shell, .fullscreen-shell')),
+      APP_READY_TIMEOUT_MS,
+    )
 
     const body = await driver.findElement(By.css('body')).getText()
     assert.match(body, /(ClawMaster|龙虾管理大师)/)
