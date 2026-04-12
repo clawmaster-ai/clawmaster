@@ -387,9 +387,12 @@ async function runWebdriverSmoke(binaryPath) {
       startupCopy,
       /(ClawMaster|OpenClaw|检测|Detect|Install|安装|Take over|接管)/,
     )
+    const startupDiagnostics = await collectWindowDiagnostics(driver)
     await captureDriverArtifacts(driver, 'desktop-startup-shell', {
       mode: 'webdriver',
       page: 'startup',
+      startupCopy,
+      diagnostics: startupDiagnostics,
     })
 
     return {
@@ -540,6 +543,39 @@ async function captureDriverArtifacts(driver, name, metadata = {}) {
     }, null, 2),
     'utf8',
   )
+}
+
+async function collectWindowDiagnostics(driver) {
+  return driver.executeAsyncScript(function () {
+    const done = arguments[arguments.length - 1]
+
+    ;(async () => {
+      const diagnostics = {
+        href: window.location.href,
+        pathname: window.location.pathname,
+        hash: window.location.hash,
+        bodyText: document.body?.innerText?.slice(0, 4000) ?? '',
+        tauriGlobals: {
+          hasTauri: typeof window.__TAURI__ !== 'undefined',
+          hasTauriInternal: typeof window.__TAURI_INTERNALS__ !== 'undefined',
+        },
+      }
+
+      try {
+        const internalInvoke = window.__TAURI_INTERNALS__?.invoke
+        if (typeof internalInvoke === 'function') {
+          diagnostics.detectSystem = await internalInvoke('detect_system')
+          diagnostics.getConfig = await internalInvoke('get_config')
+        }
+      } catch (error) {
+        diagnostics.invokeError = String(error)
+      }
+
+      done(diagnostics)
+    })().catch((error) => {
+      done({ error: String(error) })
+    })
+  })
 }
 
 async function persistDriverLogs(logs, name) {
