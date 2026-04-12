@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '22.13.0'
   PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
   PKG_CONFIG_PATH_x86_64_unknown_linux_gnu: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
 

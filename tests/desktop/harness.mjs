@@ -20,6 +20,9 @@ const NAVIGATION_TIMEOUT_MS = 15_000
 const ARTIFACT_DIR = process.env.CLAWMASTER_DESKTOP_ARTIFACT_DIR
   ? path.resolve(process.env.CLAWMASTER_DESKTOP_ARTIFACT_DIR)
   : path.join(os.tmpdir(), 'clawmaster-desktop-artifacts')
+const OPENCLAW_BOOTSTRAP_DIR = process.env.CLAWMASTER_DESKTOP_OPENCLAW_BOOTSTRAP_DIR
+  ? path.resolve(process.env.CLAWMASTER_DESKTOP_OPENCLAW_BOOTSTRAP_DIR)
+  : path.join(os.tmpdir(), 'clawmaster-desktop-openclaw-bootstrap')
 const SEEDED_OPENCLAW_CONFIG = {
   models: {
     providers: {
@@ -162,7 +165,7 @@ async function resolveOpenclawEntrypoint() {
     // ignore
   }
 
-  const bootstrapDir = path.join(await ensureArtifactDir(), 'openclaw-bootstrap')
+  const bootstrapDir = OPENCLAW_BOOTSTRAP_DIR
   const bootstrapEntrypoint = path.join(bootstrapDir, 'node_modules', 'openclaw', 'openclaw.mjs')
   if (await pathExists(bootstrapEntrypoint)) {
     return {
