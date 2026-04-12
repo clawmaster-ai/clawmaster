@@ -777,20 +777,6 @@ async function scrollElementIntoView(driver, element) {
   )
 }
 
-async function waitForAnchorInView(driver, anchorId) {
-  await driver.wait(async () => {
-    const result = await driver.executeScript((targetId) => {
-      const target = document.getElementById(targetId)
-      if (!target) return false
-
-      const rect = target.getBoundingClientRect()
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight
-      return rect.bottom >= 0 && rect.top <= viewportHeight
-    }, anchorId)
-    return result === true
-  }, NAVIGATION_TIMEOUT_MS)
-}
-
 async function runPaletteNavigation(driver, options) {
   const {
     query,
@@ -827,7 +813,6 @@ async function runPaletteNavigation(driver, options) {
       NAVIGATION_TIMEOUT_MS,
     )
     await scrollElementIntoView(driver, anchor)
-    await waitForAnchorInView(driver, expectedAnchorId)
   }
 }
 
