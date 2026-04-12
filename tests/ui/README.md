@@ -78,6 +78,7 @@ cases:
 - 日常 UI 改动继续优先使用 `dev-browser` + YAML 描述流做快速验证
 - Linux / Windows 的 Tauri 原生冒烟覆盖单独建设，不与浏览器描述流混用
 - 在原生 E2E 落地前，发布验证仍以 `19-cross-module-workflows.yaml` 为主
+- 本地 macOS 开发机可先运行 `npm run test:desktop`，执行真实 Tauri 构建 + 启动冒烟
 
 ## dev-browser Quick Verification (Recommended)
 

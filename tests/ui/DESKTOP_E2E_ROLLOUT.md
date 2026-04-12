@@ -6,6 +6,12 @@ Tracking issue: [#29](https://github.com/clawmaster-ai/clawmaster/issues/29)
 
 Add native desktop end-to-end coverage for ClawMaster so Linux and Windows Tauri builds are exercised in CI with real app launch, shell wiring, and high-value smoke flows.
 
+Current slice status:
+
+- slice 1 harness is implemented under [tests/desktop/README.md](/Users/haili/workspaces/clawmaster/tests/desktop/README.md)
+- macOS contributors can run a local Tauri build-and-launch smoke via `npm run test:desktop`
+- Linux and Windows CI use native WebDriver smoke
+
 ## Principles
 
 - Keep browser-mode `dev-browser` YAML verification as the release-day exploratory path.
