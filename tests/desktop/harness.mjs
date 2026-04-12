@@ -15,6 +15,7 @@ const TAURI_DRIVER_PORT = 4444
 const BUILD_TIMEOUT_MS = 10 * 60_000
 const APP_READY_TIMEOUT_MS = 45_000
 const MAC_LAUNCH_SMOKE_MS = 5_000
+const CLEANUP_TIMEOUT_MS = 10_000
 
 function resolveCommand(name) {
   return process.platform === 'win32' ? `${name}.cmd` : name
@@ -144,6 +145,26 @@ async function terminateChild(child, signal = 'SIGTERM') {
       clearTimeout(handle)
       resolve()
     })
+  })
+}
+
+async function settleWithin(promise, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve()
+    }, timeoutMs)
+
+    Promise.resolve(promise)
+      .catch(() => {})
+      .finally(() => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve()
+      })
   })
 }
 
@@ -282,9 +303,9 @@ async function runWebdriverSmoke(binaryPath) {
     }
   } finally {
     if (driver) {
-      await driver.quit().catch(() => {})
+      await settleWithin(driver.quit(), CLEANUP_TIMEOUT_MS)
     }
-    await terminateChild(tauriDriver.child)
+    await settleWithin(terminateChild(tauriDriver.child), CLEANUP_TIMEOUT_MS)
   }
 }
 
