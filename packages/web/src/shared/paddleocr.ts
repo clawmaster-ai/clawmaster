@@ -31,8 +31,8 @@ export function getPaddleOcrModuleTitleKey(moduleId: PaddleOcrModuleId): string 
 
 export function getPaddleOcrModuleDescriptionKey(moduleId: PaddleOcrModuleId): string {
   return moduleId === PADDLEOCR_TEXT_SKILL_ID
-    ? 'capability.ocrTextDesc'
-    : 'capability.ocrDocDesc'
+    ? 'capability.ocrText.desc'
+    : 'capability.ocrDoc.desc'
 }
 
 export function getPaddleOcrModuleSkillName(moduleId: PaddleOcrModuleId): string {
