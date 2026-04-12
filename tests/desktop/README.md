@@ -18,7 +18,7 @@ The GitHub Actions workflow uploads desktop smoke artifacts on every run:
 - Linux/Windows: screenshots plus metadata, and failure logs when needed
 - macOS: launch logs and metadata
 
-In CI we also seed a temporary minimal `~/.openclaw/openclaw.json` and install the `openclaw` CLI so Linux and Windows can reach the main app shell and exercise desktop navigation instead of stopping at setup.
+In CI we also seed a temporary minimal `~/.openclaw/openclaw.json`, install the `openclaw` CLI, and fall back to a local bootstrap shim when the runner's global npm layout is not directly resolvable. The harness records that bootstrap strategy in the uploaded metadata so startup failures can be traced back to environment setup versus app logic.
 
 ## Modes
 

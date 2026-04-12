@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
-import { access, chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { Builder, By, Capabilities, Key, until } from 'selenium-webdriver'
 
@@ -101,6 +101,143 @@ function readCommandOutput(command, args) {
   })
 }
 
+async function findFirstExistingPath(candidates) {
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    if (await pathExists(candidate)) {
+      return candidate
+    }
+  }
+  return null
+}
+
+async function resolveOpenclawEntrypointFromPrefix(prefix) {
+  if (!prefix) {
+    return null
+  }
+  const candidates = process.platform === 'win32'
+    ? [path.join(prefix, 'node_modules', 'openclaw', 'openclaw.mjs')]
+    : [
+        path.join(prefix, 'lib', 'node_modules', 'openclaw', 'openclaw.mjs'),
+        path.join(prefix, 'node_modules', 'openclaw', 'openclaw.mjs'),
+      ]
+  return findFirstExistingPath(candidates)
+}
+
+async function resolveOpenclawEntrypoint() {
+  const diagnostics = {}
+
+  try {
+    const npmRoot = await readCommandOutput(resolveCommand('npm'), ['root', '-g'])
+    diagnostics.npmRoot = npmRoot
+    const fromRoot = await findFirstExistingPath([path.join(npmRoot, 'openclaw', 'openclaw.mjs')])
+    if (fromRoot) {
+      return {
+        entrypoint: fromRoot,
+        diagnostics: { ...diagnostics, strategy: 'npm-root' },
+      }
+    }
+  } catch (error) {
+    diagnostics.npmRootError = String(error)
+  }
+
+  try {
+    const prefix = await readCommandOutput(resolveCommand('npm'), ['config', 'get', 'prefix'])
+    diagnostics.npmPrefix = prefix
+    const fromPrefix = await resolveOpenclawEntrypointFromPrefix(prefix)
+    if (fromPrefix) {
+      return {
+        entrypoint: fromPrefix,
+        diagnostics: { ...diagnostics, strategy: 'npm-prefix' },
+      }
+    }
+  } catch (error) {
+    diagnostics.npmPrefixError = String(error)
+  }
+
+  try {
+    const nativeOpenclaw = await readCommandOutput(resolveCommand('openclaw'), ['--version'])
+    diagnostics.nativeVersion = nativeOpenclaw
+  } catch {
+    // ignore
+  }
+
+  const bootstrapDir = path.join(await ensureArtifactDir(), 'openclaw-bootstrap')
+  const bootstrapEntrypoint = path.join(bootstrapDir, 'node_modules', 'openclaw', 'openclaw.mjs')
+  if (await pathExists(bootstrapEntrypoint)) {
+    return {
+      entrypoint: bootstrapEntrypoint,
+      diagnostics: { ...diagnostics, strategy: 'bootstrap-cache', bootstrapDir },
+    }
+  }
+
+  await rm(bootstrapDir, { recursive: true, force: true })
+  await mkdir(bootstrapDir, { recursive: true })
+  await runCommand(resolveCommand('npm'), ['install', '--prefix', bootstrapDir, 'openclaw@2026.4.11'], {
+    timeout: 5 * 60_000,
+    env: {
+      ...process.env,
+      CI: process.env.CI ?? 'true',
+    },
+  })
+
+  if (await pathExists(bootstrapEntrypoint)) {
+    return {
+      entrypoint: bootstrapEntrypoint,
+      diagnostics: { ...diagnostics, strategy: 'bootstrap-install', bootstrapDir },
+    }
+  }
+
+  return {
+    entrypoint: null,
+    diagnostics: {
+      ...diagnostics,
+      strategy: 'missing',
+      bootstrapDir,
+      bootstrapEntrypoint,
+    },
+  }
+}
+
+async function writeOpenclawShim(targetPath, entrypoint) {
+  await mkdir(path.dirname(targetPath), { recursive: true })
+  if (process.platform === 'win32') {
+    await writeFile(
+      targetPath,
+      `@echo off\r\nnode "${entrypoint}" %*\r\n`,
+      'utf8',
+    )
+    return
+  }
+
+  await writeFile(
+    targetPath,
+    `#!/usr/bin/env sh\nnode "${entrypoint}" "$@"\n`,
+    'utf8',
+  )
+  await chmod(targetPath, 0o755)
+}
+
+async function installStableOpenclawShims(entrypoint) {
+  const shimPaths = []
+
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming')
+    const stableShim = path.join(appData, 'npm', 'openclaw.cmd')
+    await writeOpenclawShim(stableShim, entrypoint)
+    shimPaths.push(stableShim)
+    return shimPaths
+  }
+
+  for (const dir of [path.join(os.homedir(), '.local', 'bin'), path.join(os.homedir(), 'bin')]) {
+    const stableShim = path.join(dir, 'openclaw')
+    await writeOpenclawShim(stableShim, entrypoint)
+    shimPaths.push(stableShim)
+  }
+
+  return shimPaths
+}
+
 async function ensureOpenclawShim() {
   try {
     const existing = await readCommandOutput(resolveCommand('openclaw'), ['--version'])
@@ -109,40 +246,37 @@ async function ensureOpenclawShim() {
     // continue to shim fallback
   }
 
-  const npmRoot = await readCommandOutput(resolveCommand('npm'), ['root', '-g'])
-  const packageRoot = path.join(npmRoot, 'openclaw')
-  const entrypoint = path.join(packageRoot, 'openclaw.mjs')
-  if (!(await pathExists(entrypoint))) {
-    return { strategy: 'missing', npmRoot, entrypoint }
+  const resolution = await resolveOpenclawEntrypoint()
+  if (!resolution.entrypoint) {
+    return resolution.diagnostics
   }
+  const entrypoint = resolution.entrypoint
 
   const shimDir = path.join(await ensureArtifactDir(), 'bin')
   await mkdir(shimDir, { recursive: true })
+  const shimPath = path.join(shimDir, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw')
+  await writeOpenclawShim(shimPath, entrypoint)
+  const stableShimPaths = await installStableOpenclawShims(entrypoint)
 
-  if (process.platform === 'win32') {
-    const shimPath = path.join(shimDir, 'openclaw.cmd')
-    await writeFile(
-      shimPath,
-      `@echo off\r\nnode "${entrypoint}" %*\r\n`,
-      'utf8',
-    )
-  } else {
-    const shimPath = path.join(shimDir, 'openclaw')
-    await writeFile(
-      shimPath,
-      `#!/usr/bin/env sh\nnode "${entrypoint}" "$@"\n`,
-      'utf8',
-    )
-    await chmod(shimPath, 0o755)
-  }
+  const pathEntries = [
+    ...new Set([
+      shimDir,
+      ...stableShimPaths.map((item) => path.dirname(item)),
+      process.env.PATH ?? '',
+    ].filter(Boolean)),
+  ]
+  process.env.PATH = pathEntries.join(path.delimiter)
+  process.env.CLAWMASTER_OPENCLAW_BIN = shimPath
 
-  process.env.PATH = `${shimDir}${path.delimiter}${process.env.PATH ?? ''}`
   const version = await readCommandOutput(resolveCommand('openclaw'), ['--version'])
   return {
+    ...resolution.diagnostics,
     strategy: 'shim',
-    npmRoot,
     entrypoint,
     shimDir,
+    shimPath,
+    stableShimPaths,
+    resolvedEntrypoint: await realpath(entrypoint).catch(() => entrypoint),
     version,
   }
 }
@@ -695,6 +829,7 @@ async function collectWindowDiagnostics(driver) {
         if (typeof internalInvoke === 'function') {
           diagnostics.detectSystem = await internalInvoke('detect_system')
           diagnostics.getConfig = await internalInvoke('get_config')
+          diagnostics.desktopSmoke = await internalInvoke('desktop_smoke_diagnostics')
         }
       } catch (error) {
         diagnostics.invokeError = String(error)

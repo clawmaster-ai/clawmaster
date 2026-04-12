@@ -16,6 +16,7 @@ Current slice status:
 - desktop smoke artifacts are uploaded in CI for screenshots/logs
 - CI seeds a temporary minimal OpenClaw profile so Linux/Windows can reach the main app shell
 - CI installs the `openclaw` CLI before desktop smoke
+- the harness can self-bootstrap an `openclaw` shim and records runtime diagnostics when startup falls back to setup
 
 ## Principles
 
