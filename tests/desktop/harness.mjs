@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { Builder, By, Capabilities, Key, until } from 'selenium-webdriver'
 
@@ -72,6 +72,79 @@ async function pathExists(targetPath) {
 async function ensureArtifactDir() {
   await mkdir(ARTIFACT_DIR, { recursive: true })
   return ARTIFACT_DIR
+}
+
+function readCommandOutput(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: repoRoot,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: process.platform === 'win32' && /\.cmd$/i.test(command),
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk)
+    })
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk)
+    })
+    child.on('error', reject)
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve(stdout.trim())
+        return
+      }
+      reject(new Error(stderr.trim() || `${command} ${args.join(' ')} failed with ${code}`))
+    })
+  })
+}
+
+async function ensureOpenclawShim() {
+  try {
+    const existing = await readCommandOutput(resolveCommand('openclaw'), ['--version'])
+    return { strategy: 'native', version: existing }
+  } catch {
+    // continue to shim fallback
+  }
+
+  const npmRoot = await readCommandOutput(resolveCommand('npm'), ['root', '-g'])
+  const packageRoot = path.join(npmRoot, 'openclaw')
+  const entrypoint = path.join(packageRoot, 'openclaw.mjs')
+  if (!(await pathExists(entrypoint))) {
+    return { strategy: 'missing', npmRoot, entrypoint }
+  }
+
+  const shimDir = path.join(await ensureArtifactDir(), 'bin')
+  await mkdir(shimDir, { recursive: true })
+
+  if (process.platform === 'win32') {
+    const shimPath = path.join(shimDir, 'openclaw.cmd')
+    await writeFile(
+      shimPath,
+      `@echo off\r\nnode "${entrypoint}" %*\r\n`,
+      'utf8',
+    )
+  } else {
+    const shimPath = path.join(shimDir, 'openclaw')
+    await writeFile(
+      shimPath,
+      `#!/usr/bin/env sh\nnode "${entrypoint}" "$@"\n`,
+      'utf8',
+    )
+    await chmod(shimPath, 0o755)
+  }
+
+  process.env.PATH = `${shimDir}${path.delimiter}${process.env.PATH ?? ''}`
+  const version = await readCommandOutput(resolveCommand('openclaw'), ['--version'])
+  return {
+    strategy: 'shim',
+    npmRoot,
+    entrypoint,
+    shimDir,
+    version,
+  }
 }
 
 async function seedDesktopSmokeProfile() {
@@ -660,7 +733,11 @@ async function persistTextArtifacts(name, payload) {
 
 export async function runDesktopSmoke() {
   const seededProfile = await seedDesktopSmokeProfile()
-  await persistTextArtifacts('desktop-smoke-bootstrap', await collectBootstrapDiagnostics(seededProfile.info))
+  const openclawBootstrap = await ensureOpenclawShim()
+  await persistTextArtifacts(
+    'desktop-smoke-bootstrap',
+    await collectBootstrapDiagnostics(seededProfile.info, openclawBootstrap),
+  )
   const binaryPath = await ensureDesktopBinary()
   const mode = getSmokeMode()
 
@@ -675,43 +752,14 @@ export async function runDesktopSmoke() {
   }
 }
 
-async function collectBootstrapDiagnostics(seedInfo) {
+async function collectBootstrapDiagnostics(seedInfo, openclawBootstrap) {
   const configPath = seedInfo?.configPath ?? path.join(os.homedir(), '.openclaw', 'openclaw.json')
   const configExists = await pathExists(configPath)
   const configContent = configExists ? await readFile(configPath, 'utf8') : ''
 
-  let openclawVersion = ''
-  try {
-    const output = await new Promise((resolve, reject) => {
-      const child = spawn('openclaw', ['--version'], {
-        cwd: repoRoot,
-        env: process.env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
-      let stdout = ''
-      let stderr = ''
-      child.stdout?.on('data', (chunk) => {
-        stdout += String(chunk)
-      })
-      child.stderr?.on('data', (chunk) => {
-        stderr += String(chunk)
-      })
-      child.on('error', reject)
-      child.on('exit', (code) => {
-        if (code === 0) {
-          resolve(stdout.trim())
-          return
-        }
-        reject(new Error(stderr.trim() || `openclaw exited with code ${code}`))
-      })
-    })
-    openclawVersion = String(output)
-  } catch (error) {
-    openclawVersion = `ERROR: ${String(error)}`
-  }
-
   return {
     seedInfo,
+    openclawBootstrap,
     env: {
       home: os.homedir(),
       path: process.env.PATH ?? '',
@@ -719,6 +767,5 @@ async function collectBootstrapDiagnostics(seedInfo) {
     configExists,
     configPath,
     configPreview: configContent.slice(0, 2000),
-    openclawVersion,
   }
 }
