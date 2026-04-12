@@ -396,11 +396,34 @@ async function runWebdriverSmoke(binaryPath) {
     }
 
     const startupCopy = await driver.findElement(By.css('.fullscreen-shell')).getText()
+    const startupDiagnostics = await collectWindowDiagnostics(driver)
+    const resumedFromSetup = await tryContinueFromSetupWizard(driver)
+    if (resumedFromSetup) {
+      await driver.wait(until.elementLocated(By.css('.app-shell')), NAVIGATION_TIMEOUT_MS)
+      await runPaletteNavigation(driver, {
+        query: 'settings',
+        expectedPath: '/settings',
+        expectedTitle: /(Settings|设置|設定)/,
+      })
+      await verifyDesktopSettingsSurface(driver)
+      await verifyDangerZoneConfirmation(driver)
+      await captureDriverArtifacts(driver, 'desktop-shell-validated', {
+        mode: 'webdriver',
+        page: 'settings',
+        resumedFromSetup: true,
+      })
+
+      return {
+        mode: 'webdriver',
+        details: 'continued from setup wizard into desktop shell and validated settings gating',
+        logs: tauriDriver.getLogs(),
+      }
+    }
+
     assert.match(
       startupCopy,
       /(ClawMaster|OpenClaw|检测|Detect|Install|安装|Take over|接管)/,
     )
-    const startupDiagnostics = await collectWindowDiagnostics(driver)
     await captureDriverArtifacts(driver, 'desktop-startup-shell', {
       mode: 'webdriver',
       page: 'startup',
@@ -504,6 +527,26 @@ async function clickSidebarLink(driver, href) {
     NAVIGATION_TIMEOUT_MS,
   )
   await link.click()
+}
+
+async function tryContinueFromSetupWizard(driver) {
+  const buttons = await driver.findElements(By.css('.fullscreen-shell button'))
+  for (const button of buttons) {
+    const label = (await button.getText()).trim()
+    if (!label) continue
+    if (!/(进入管理大师|跳过，稍后配置|Enter ClawMaster|Skip, configure later|ClawMasterへ|スキップ、後で設定)/.test(label)) {
+      continue
+    }
+
+    await button.click()
+    await driver.wait(until.elementLocated(By.css('.app-shell, .fullscreen-shell')), NAVIGATION_TIMEOUT_MS)
+    const appShell = await driver.findElements(By.css('.app-shell'))
+    if (appShell.length > 0) {
+      return true
+    }
+  }
+
+  return false
 }
 
 async function verifyDesktopSettingsSurface(driver) {
