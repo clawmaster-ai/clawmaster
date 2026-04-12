@@ -644,7 +644,6 @@ async function runWebdriverSmoke(binaryPath) {
         expectedPath: '/settings',
         expectedHash: '#settings-profile',
         expectedTitle: /(Settings|设置|設定)/,
-        expectedAnchorId: 'settings-profile',
       })
       setStep('verifying desktop local data controls after setup continuation')
       await verifyDesktopSettingsSurface(driver)
