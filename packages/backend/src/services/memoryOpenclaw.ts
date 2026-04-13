@@ -212,7 +212,11 @@ function countOccurrences(text: string, query: string): number {
   return count
 }
 
-async function resolveWorkspaceDirs(agent?: string): Promise<string[]> {
+async function resolveWorkspaceDirs(agent?: string, openclawDataRootOverride?: string): Promise<string[]> {
+  if (openclawDataRootOverride) {
+    return [path.join(openclawDataRootOverride, 'workspace')]
+  }
+
   const status = await getOpenclawMemoryStatusPayload()
   const entries = parseOpenclawMemoryStatusEntries(status.data)
   const dirs = entries
@@ -222,13 +226,22 @@ async function resolveWorkspaceDirs(agent?: string): Promise<string[]> {
   if (dirs.length > 0) {
     return Array.from(new Set(dirs))
   }
-  return [path.join(getOpenclawDataDir(), 'workspace')]
+  return [path.join(openclawDataRootOverride ?? getOpenclawDataDir(), 'workspace')]
 }
 
-async function resolveWorkspaceStatusEntries(agent?: string): Promise<Array<{
+async function resolveWorkspaceStatusEntries(agent?: string, openclawDataRootOverride?: string): Promise<Array<{
   agentId: string
   workspaceDir: string
 }>> {
+  if (openclawDataRootOverride) {
+    return [
+      {
+        agentId: agent?.trim() || 'main',
+        workspaceDir: path.join(openclawDataRootOverride, 'workspace'),
+      },
+    ]
+  }
+
   let matches: Array<{ agentId: string; workspaceDir: string }> = []
   try {
     const status = await getOpenclawMemoryStatusPayload()
@@ -252,7 +265,7 @@ async function resolveWorkspaceStatusEntries(agent?: string): Promise<Array<{
   return [
     {
       agentId: agent?.trim() || 'main',
-      workspaceDir: path.join(getOpenclawDataDir(), 'workspace'),
+      workspaceDir: path.join(openclawDataRootOverride ?? getOpenclawDataDir(), 'workspace'),
     },
   ]
 }
@@ -302,9 +315,12 @@ export async function searchWorkspaceMemoryFiles(
 }
 
 export async function listWorkspaceMemoryDocuments(
-  options?: { agent?: string }
+  options?: { agent?: string; openclawDataRootOverride?: string }
 ): Promise<OpenclawWorkspaceMemoryDocument[]> {
-  const workspaceEntries = await resolveWorkspaceStatusEntries(options?.agent?.trim() || undefined)
+  const workspaceEntries = await resolveWorkspaceStatusEntries(
+    options?.agent?.trim() || undefined,
+    options?.openclawDataRootOverride,
+  )
   const documents: OpenclawWorkspaceMemoryDocument[] = []
 
   for (const entry of workspaceEntries) {
@@ -344,9 +360,12 @@ export async function listWorkspaceMemoryDocuments(
 
 export async function searchOpenclawMemoryFallback(
   query: string,
-  options?: { agent?: string; maxResults?: number }
+  options?: { agent?: string; maxResults?: number; openclawDataRootOverride?: string }
 ): Promise<OpenclawMemoryHit[]> {
-  const workspaceDirs = await resolveWorkspaceDirs(options?.agent?.trim() || undefined)
+  const workspaceDirs = await resolveWorkspaceDirs(
+    options?.agent?.trim() || undefined,
+    options?.openclawDataRootOverride,
+  )
   return searchWorkspaceMemoryFiles(query, workspaceDirs, options?.maxResults ?? 20)
 }
 

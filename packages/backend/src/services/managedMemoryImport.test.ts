@@ -56,6 +56,7 @@ test('importOpenclawWorkspaceMemories imports workspace markdown files idempoten
 
   const context = {
     dataRootOverride: path.join(homeDir, '.clawmaster', 'data', 'default'),
+    openclawDataRootOverride: path.join(homeDir, '.openclaw'),
     profileSelection: { kind: 'default' } as const,
     engineOverride: 'powermem-sqlite' as const,
   }
@@ -90,6 +91,7 @@ test('importOpenclawWorkspaceMemories updates changed source content without dup
 
   const context = {
     dataRootOverride: path.join(homeDir, '.clawmaster', 'data', 'default'),
+    openclawDataRootOverride: path.join(homeDir, '.openclaw'),
     profileSelection: { kind: 'default' } as const,
     engineOverride: 'powermem-sqlite' as const,
   }
@@ -121,6 +123,7 @@ test('importOpenclawWorkspaceMemories removes stale imported memories when sourc
 
   const context = {
     dataRootOverride: path.join(homeDir, '.clawmaster', 'data', 'default'),
+    openclawDataRootOverride: path.join(homeDir, '.openclaw'),
     profileSelection: { kind: 'default' } as const,
     engineOverride: 'powermem-sqlite' as const,
   }

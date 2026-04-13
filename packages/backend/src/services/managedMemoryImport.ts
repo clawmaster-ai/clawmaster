@@ -168,7 +168,9 @@ export async function getManagedMemoryImportStatus(
 ): Promise<ManagedMemoryImportStatusPayload> {
   const [state, documents] = await Promise.all([
     readImportState(context),
-    listWorkspaceMemoryDocuments(),
+    listWorkspaceMemoryDocuments({
+      openclawDataRootOverride: context.openclawDataRootOverride,
+    }),
   ])
   return summarizeImportState(state, context, documents.length)
 }
@@ -178,7 +180,9 @@ export async function importOpenclawWorkspaceMemories(
 ): Promise<ManagedMemoryImportStatusPayload> {
   const [previousState, documents] = await Promise.all([
     readImportState(context),
-    listWorkspaceMemoryDocuments(),
+    listWorkspaceMemoryDocuments({
+      openclawDataRootOverride: context.openclawDataRootOverride,
+    }),
   ])
 
   const now = nowIso()

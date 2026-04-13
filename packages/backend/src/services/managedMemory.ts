@@ -41,6 +41,7 @@ export interface ManagedMemoryContext extends OpenclawProfileContext {
   profileSelection?: OpenclawProfileSelection
   runtimeSelection?: ReturnType<typeof getClawmasterRuntimeSelection>
   dataRootOverride?: string
+  openclawDataRootOverride?: string
   engineOverride?: ManagedMemoryEngine
 }
 
