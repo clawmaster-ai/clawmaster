@@ -1,0 +1,28 @@
+# CODEOWNERS
+# Defines automatic review assignment by path.
+# Last match wins. See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: core team reviews everything not matched below
+*                                   @clawmaster-ai/core
+
+# Frontend modules and shared layer
+packages/web/src/modules/           @clawmaster-ai/frontend
+packages/web/src/                   @clawmaster-ai/frontend
+shared/                             @clawmaster-ai/frontend
+
+# Translations — i18n team reviews all locale files
+packages/web/src/i18n/              @clawmaster-ai/i18n
+
+# Express backend
+packages/backend/                   @clawmaster-ai/backend
+
+# Tauri / Rust desktop
+src-tauri/                          @clawmaster-ai/desktop
+
+# CI/CD and GitHub config
+.github/                            @clawmaster-ai/infra
+.github/workflows/                  @clawmaster-ai/infra
+
+# Security and governance files — always require core review
+SECURITY.md                         @clawmaster-ai/core
+CODEOWNERS                          @clawmaster-ai/core

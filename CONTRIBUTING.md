@@ -79,6 +79,51 @@ Example: `feat: add token usage chart to observe module`
 3. Reviewers may request changes -- please address feedback promptly.
 4. Once approved, a maintainer will merge using **squash and merge**.
 
+> [!NOTE]
+> First-time contributors: a maintainer will add `/ok-to-test` to trigger the full CI pipeline (including multi-platform Tauri builds) after a quick review of your diff. This protects CI minutes from unknown forks.
+
+## Testing Requirements
+
+Every pull request must be tested before review:
+
+- **Bug fixes** must include a regression test that would have caught the bug.
+- **New features** must include unit tests covering the happy path and at least one error path.
+- Run `npm test` locally before opening a PR — CI will reject PRs with failing tests.
+- New code in `packages/web/src/modules/` and `shared/` targets **80% branch coverage**. Legacy pages in `packages/web/src/pages/` are excluded from this requirement.
+- Place tests in co-located `__tests__/` directories following the existing pattern (see `shared/adapters/__tests__/` or `modules/setup/__tests__/`).
+
+> [!TIP]
+> `npm test && npm run build` is the minimum bar. Run both locally before pushing.
+
+## What Not to Include in PRs
+
+> [!WARNING]
+> PRs containing any of the following will be asked to remove them before merge:
+
+- **No screenshots or screen recordings** — post demos in [Discussions](https://github.com/clawmaster-ai/clawmaster/discussions) instead.
+- **No test output logs** or captured terminal output pasted inline.
+- **No debug `console.log` calls** left in production code paths.
+- **No generated files**: `dist/`, `coverage/`, `*.tsbuildinfo`, `src-tauri/target/`.
+- **No new `Cargo.lock` entries** without prior maintainer sign-off on the new crate.
+
+The PR description check CI step will fail if the required template sections are left empty.
+
+## Dependency Policy
+
+Node.js v20+ is the **only permitted runtime dependency**.
+
+- **No Python, Ruby, shell scripts, or other runtimes** as required dependencies. OpenClaw's environment provides Node.js — nothing else is guaranteed to be present.
+- **New npm packages**: open an issue first and justify the bundle impact. The Tauri desktop distributable has a size budget; heavy transitive dependencies need explicit sign-off.
+- **New Rust crates** (Tauri side): require sign-off from a maintainer with desktop experience before merging.
+- **Nothing that requires a separate install step** beyond `npm install` for web/backend, or the standard `cargo build` for Tauri.
+
+> [!CAUTION]
+> Adding a dependency that pulls in native binaries, Python, or a separate runtime will be rejected. When in doubt, open an issue first.
+
+## Draft PRs
+
+Open your PR as a **draft** if it is not yet ready for review. This avoids triggering the multi-platform Tauri build (which consumes CI minutes) and signals work-in-progress to maintainers. Mark as ready only when all local checks pass.
+
 ## Questions?
 
 Open a [Discussion](https://github.com/clawmaster-ai/clawmaster/discussions) or reach out to the OpenClaw community.

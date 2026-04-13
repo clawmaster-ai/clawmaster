@@ -120,3 +120,16 @@ GitHub Actions workflow (`.github/workflows/build.yml`):
 1. **Test job** (every push/PR): `npm ci` -> TypeScript check -> `npm test` -> `npm run build`
 2. **Build job** (tags, main, manual): multi-platform Tauri build (Linux x64, macOS x64/ARM64, Windows x64)
 3. Tag pushes create draft GitHub releases with platform installers; non-tag builds upload artifacts with 7-day retention
+
+## Hard Rules
+
+These apply to all code changes, including AI-assisted ones:
+
+- **No new npm dependencies** without an open issue and maintainer sign-off. Desktop bundle size is a hard constraint; every new package adds to the Tauri distributable.
+- **No new Rust crates** without sign-off from a maintainer with desktop experience.
+- **No Python, shell scripts, or non-Node.js runtimes** as required dependencies. Node.js is the only runtime guaranteed in the OpenClaw environment.
+- **Run `npm test` after every logic change.** Do not submit code that fails `npm test`.
+- **All UI text must go through `t()`.** Never hardcode display strings or Chinese characters in components.
+- **Branch prefixes are required**: `feat/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/`.
+- **No `console.log` in production code paths.** Remove debug output before opening a PR.
+- **No generated files in commits**: `dist/`, `coverage/`, `src-tauri/target/`, `*.tsbuildinfo`.

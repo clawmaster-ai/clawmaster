@@ -1,0 +1,38 @@
+name: PR Description Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  check-pr-description:
+    name: Check PR description
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required sections
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body ?? '';
+
+            // "What" section must exist and have meaningful content after the heading
+            const whatMatch = body.match(/##\s*What\s*\n([\s\S]*?)(?=\n##|$)/i);
+            const whatContent = (whatMatch?.[1] ?? '').replace(/<!--[\s\S]*?-->/g, '').trim();
+
+            if (whatContent.length < 20) {
+              core.setFailed(
+                'PR description is missing a What section.\n' +
+                'Please fill in ## What with at least one sentence describing what changed.'
+              );
+              return;
+            }
+
+            // Warn if the caution reminder line was not removed (means checklist was not read)
+            if (body.includes('does **not** contain: screenshots')) {
+              core.warning(
+                'The PR template reminder line under [!CAUTION] is still present. ' +
+                'Please confirm and delete it before requesting review.'
+              );
+            }
+
+            core.info('PR description check passed.');

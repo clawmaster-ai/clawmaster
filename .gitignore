@@ -9,7 +9,7 @@ build/
 
 # Tauri
 src-tauri/target/
-src-tauri/Cargo.lock
+# Cargo.lock is intentionally committed for this binary crate (reproducible builds)
 
 # Environment
 .env
@@ -32,9 +32,12 @@ logs/
 *.log
 npm-debug.log*
 
-# Test
+# Test output
 coverage/
+test-results/
+playwright-report/
+*.snap
+tests/screenshots/
 
 # Misc
 *.tsbuildinfo
-tests/screenshots/
