@@ -34,9 +34,18 @@ type ManagedPluginConfig = {
 const DEFAULT_RECALL_LIMIT = 5
 const DEFAULT_RECALL_SCORE_THRESHOLD = 0
 
-function defaultManagedEngine(): ManagedMemoryEngine {
-  if (process.platform === 'linux') return 'powermem-seekdb'
+export function defaultManagedEngineForTest(
+  platform = process.platform,
+  arch = process.arch,
+): ManagedMemoryEngine {
+  if (platform === 'linux' && (arch === 'x64' || arch === 'arm64')) {
+    return 'powermem-seekdb'
+  }
   return 'powermem-sqlite'
+}
+
+function defaultManagedEngine(): ManagedMemoryEngine {
+  return defaultManagedEngineForTest()
 }
 
 function defaultManagedDataRoot(): string {

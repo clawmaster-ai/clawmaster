@@ -68,3 +68,32 @@ test('importOpenclawWorkspaceMemories refreshes managed memory from workspace ma
     assert.ok(!hits.some((item) => /pour-over before lunch/i.test(item.content)))
   })
 })
+
+test('importOpenclawWorkspaceMemories marks identical workspace files as duplicates', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-plugin-workspace-duplicate-'))
+  const stateDir = path.join(root, 'openclaw-state')
+  const workspaceDir = path.join(stateDir, 'workspace')
+  const memoryDir = path.join(workspaceDir, 'memory')
+  fs.mkdirSync(memoryDir, { recursive: true })
+
+  const duplicated = '# Shared preference\nAlice prefers espresso after lunch.\n'
+  fs.writeFileSync(path.join(memoryDir, 'coffee-a.md'), duplicated, 'utf8')
+  fs.writeFileSync(path.join(memoryDir, 'coffee-b.md'), duplicated, 'utf8')
+
+  const context = {
+    dataRootOverride: path.join(root, 'clawmaster-data'),
+    engineOverride: 'powermem-sqlite' as const,
+  }
+
+  await withOpenclawStateDir(stateDir, async () => {
+    const first = await importOpenclawWorkspaceMemories(context)
+    assert.equal(first.availableSourceCount, 2)
+    assert.equal(first.importedMemoryCount, 1)
+    assert.equal(first.lastRun?.imported, 1)
+    assert.equal(first.lastRun?.duplicate, 1)
+
+    const hits = await searchManagedMemories('espresso lunch', { limit: 10 }, context)
+    const matchingHits = hits.filter((item) => /espresso after lunch/i.test(item.content))
+    assert.equal(matchingHits.length, 1)
+  })
+})

@@ -148,8 +148,6 @@ function fingerprintImportDocument(input: WorkspaceMemoryDocument): string {
   return createHash('sha256')
     .update(input.agentId)
     .update('\n')
-    .update(input.sourcePath)
-    .update('\n')
     .update(input.content)
     .digest('hex')
 }
