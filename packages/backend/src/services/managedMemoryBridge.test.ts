@@ -20,7 +20,7 @@ test('windowsPathToWslPath converts drive paths into /mnt mounts', () => {
 })
 
 test('buildManagedMemoryBridgeEntry points native runtimes at the managed data root', () => {
-  const homeDir = path.join(os.tmpdir(), 'clawmaster-memory-plugin-linux')
+  const homeDir = '/tmp/clawmaster-memory-plugin-linux'
   const entry = buildManagedMemoryBridgeEntry({
     platform: 'linux',
     homeDir,

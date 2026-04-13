@@ -12,7 +12,11 @@ import {
 
 function withHomeDir<T>(homeDir: string, fn: () => Promise<T>): Promise<T> {
   const previousHome = process.env['HOME']
+  const previousUserProfile = process.env['USERPROFILE']
+  const previousAppData = process.env['APPDATA']
   process.env['HOME'] = homeDir
+  process.env['USERPROFILE'] = homeDir
+  process.env['APPDATA'] = path.join(homeDir, 'AppData', 'Roaming')
   return Promise.resolve()
     .then(fn)
     .finally(() => {
@@ -20,6 +24,16 @@ function withHomeDir<T>(homeDir: string, fn: () => Promise<T>): Promise<T> {
         delete process.env['HOME']
       } else {
         process.env['HOME'] = previousHome
+      }
+      if (previousUserProfile === undefined) {
+        delete process.env['USERPROFILE']
+      } else {
+        process.env['USERPROFILE'] = previousUserProfile
+      }
+      if (previousAppData === undefined) {
+        delete process.env['APPDATA']
+      } else {
+        process.env['APPDATA'] = previousAppData
       }
     })
 }
