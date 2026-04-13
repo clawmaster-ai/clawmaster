@@ -549,3 +549,14 @@ export async function deleteManagedMemory(
   }
   return deleted
 }
+
+export async function closeManagedMemoryRuntimesForTests(): Promise<void> {
+  const runtimes = Array.from(runtimeCache.values())
+  runtimeCache.clear()
+  await Promise.allSettled(
+    runtimes.map(async (runtimePromise) => {
+      const runtime = await runtimePromise
+      await runtime.memory.close()
+    }),
+  )
+}

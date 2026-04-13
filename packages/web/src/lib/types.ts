@@ -258,6 +258,7 @@ export interface ManagedMemoryBridgeStatusPayload {
   issues: string[]
   installed: boolean
   pluginStatus: string | null
+  installedPluginPath: string | null
   runtimePluginPath: string | null
   pluginPath: string
   pluginPathExists: boolean

@@ -24,6 +24,7 @@ export interface OpenClawPluginRow {
   name: string
   status?: string
   version?: string
+  source?: string
   description?: string
 }
 
@@ -111,6 +112,14 @@ function normalizePluginRow(item: unknown): OpenClawPluginRow | null {
     name: String(item.name ?? item.title ?? id),
     status: typeof item.status === 'string' ? item.status : undefined,
     version: typeof item.version === 'string' ? item.version : undefined,
+    source:
+      typeof item.source === 'string'
+        ? item.source
+        : typeof item.sourcePath === 'string'
+          ? item.sourcePath
+          : typeof item.path === 'string'
+            ? item.path
+            : undefined,
     description: typeof item.description === 'string' ? item.description : undefined,
   }
 }
@@ -281,6 +290,7 @@ function parseOpenclawPluginsTable(
       name: cur.name,
       status: cur.status || undefined,
       version: cur.version,
+      source: cur.descParts[0] || undefined,
       description,
     })
     cur = null

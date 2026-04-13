@@ -43,6 +43,7 @@ export interface ManagedMemoryBridgeStatusPayload {
   issues: string[]
   installed: boolean
   pluginStatus: string | null
+  installedPluginPath: string | null
   runtimePluginPath: string | null
   pluginPath: string
   pluginPathExists: boolean
@@ -200,18 +201,58 @@ function bridgeEntriesMatch(left: ManagedMemoryBridgeEntry | null, right: Manage
   )
 }
 
-async function getInstalledPluginStatus(): Promise<{ installed: boolean; pluginStatus: string | null }> {
+function dirnamePortable(value: string): string {
+  if (/^[A-Za-z]:[\\/]/.test(value) || value.includes('\\')) {
+    return path.win32.dirname(value)
+  }
+  return path.posix.dirname(value)
+}
+
+function normalizeComparablePluginPath(value: string): string {
+  let normalized = value.trim()
+  if (!normalized) return ''
+  if (/^(global|stock|file):/i.test(normalized)) {
+    normalized = normalized.slice(normalized.indexOf(':') + 1).trim()
+  }
+  const lowerLeaf = path.posix.basename(normalized.replace(/\\/g, '/')).toLowerCase()
+  if (lowerLeaf === 'openclaw.plugin.json' || /^index\.[cm]?[jt]s$/i.test(lowerLeaf)) {
+    normalized = dirnamePortable(normalized)
+  }
+  normalized = normalized.replace(/\\/g, '/').replace(/\/+$/, '')
+  if (/^[A-Za-z]:\//.test(normalized)) {
+    normalized = normalized[0]!.toLowerCase() + normalized.slice(1)
+  }
+  return normalized
+}
+
+function resolveInstalledPluginPath(row: openclawPlugins.OpenClawPluginRow | null): string | null {
+  const candidates = [row?.source, row?.description]
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string' || !candidate.trim()) continue
+    const normalized = normalizeComparablePluginPath(candidate)
+    if (normalized) return normalized
+  }
+  return null
+}
+
+async function getInstalledPluginStatus(): Promise<{
+  installed: boolean
+  pluginStatus: string | null
+  installedPluginPath: string | null
+}> {
   try {
     const { rows } = await openclawPlugins.listOpenclawPlugins()
     const plugin = rows.find((row) => row.id === MEMORY_BRIDGE_PLUGIN_ID) ?? null
     return {
       installed: Boolean(plugin),
       pluginStatus: plugin?.status ?? null,
+      installedPluginPath: resolveInstalledPluginPath(plugin),
     }
   } catch {
     return {
       installed: false,
       pluginStatus: null,
+      installedPluginPath: null,
     }
   }
 }
@@ -237,6 +278,20 @@ export function getManagedMemoryBridgePluginIssue(
   return `${MEMORY_BRIDGE_PLUGIN_ID} is installed but its runtime status is unknown.`
 }
 
+export function getManagedMemoryBridgePluginPathIssue(
+  installedPluginPath: string | null,
+  runtimePluginPath: string | null,
+): string | null {
+  if (!installedPluginPath || !runtimePluginPath) {
+    return null
+  }
+  const normalizedInstalledPluginPath = normalizeComparablePluginPath(installedPluginPath)
+  const normalizedRuntimePluginPath = normalizeComparablePluginPath(runtimePluginPath)
+  return normalizedInstalledPluginPath === normalizedRuntimePluginPath
+    ? null
+    : `${MEMORY_BRIDGE_PLUGIN_ID} is linked to ${normalizedInstalledPluginPath} instead of ${normalizedRuntimePluginPath}.`
+}
+
 export async function getManagedMemoryBridgeStatusPayload(
   context: ManagedMemoryContext = {}
 ): Promise<ManagedMemoryBridgeStatusPayload> {
@@ -249,7 +304,7 @@ export async function getManagedMemoryBridgeStatusPayload(
     .stat(paths.pluginManifestPath)
     .then(() => true)
     .catch(() => false)
-  const { installed, pluginStatus } = await getInstalledPluginStatus()
+  const { installed, pluginStatus, installedPluginPath } = await getInstalledPluginStatus()
   const issues: string[] = []
 
   if (paths.unsupportedReason) {
@@ -261,6 +316,10 @@ export async function getManagedMemoryBridgeStatusPayload(
   const pluginIssue = getManagedMemoryBridgePluginIssue(installed, pluginStatus)
   if (pluginIssue) {
     issues.push(pluginIssue)
+  }
+  const pluginPathIssue = getManagedMemoryBridgePluginPathIssue(installedPluginPath, paths.runtimePluginPath)
+  if (pluginPathIssue) {
+    issues.push(pluginPathIssue)
   }
   if (currentSlotValue !== MEMORY_BRIDGE_PLUGIN_ID) {
     issues.push(`plugins.slots.${MEMORY_BRIDGE_SLOT_KEY} is not set to ${MEMORY_BRIDGE_PLUGIN_ID}`)
@@ -277,6 +336,7 @@ export async function getManagedMemoryBridgeStatusPayload(
       : desiredEntry
         && installed
         && isManagedMemoryBridgePluginReady(pluginStatus)
+        && !pluginPathIssue
         && currentEntry
         && currentSlotValue === MEMORY_BRIDGE_PLUGIN_ID
         && bridgeEntriesMatch(currentEntry, desiredEntry)
@@ -292,6 +352,7 @@ export async function getManagedMemoryBridgeStatusPayload(
     issues,
     installed,
     pluginStatus,
+    installedPluginPath,
     runtimePluginPath: paths.runtimePluginPath,
     pluginPath: paths.hostPluginPath,
     pluginPathExists,
@@ -310,14 +371,20 @@ export async function syncManagedMemoryBridge(
 ): Promise<ManagedMemoryBridgeStatusPayload> {
   const paths = resolveBridgeRuntimePaths(context)
   const desiredEntry = buildManagedMemoryBridgeEntry(context)
-  const { installed } = await getInstalledPluginStatus()
+  const { installed, installedPluginPath } = await getInstalledPluginStatus()
 
   if (!desiredEntry || !paths.runtimePluginPath) {
     throw new Error(paths.unsupportedReason ?? 'Managed PowerMem plugin runtime path is unavailable')
   }
 
   await fs.stat(paths.pluginManifestPath)
-  if (!installed) {
+  const pathIssue = getManagedMemoryBridgePluginPathIssue(installedPluginPath, paths.runtimePluginPath)
+  if (installed && pathIssue) {
+    await openclawPlugins.uninstallOpenclawPlugin(MEMORY_BRIDGE_PLUGIN_ID, true, {
+      disableLoadedFirst: true,
+    })
+  }
+  if (!installed || pathIssue) {
     await openclawPlugins.installOpenclawPluginFromPath(paths.runtimePluginPath, { link: true })
   }
   await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, true).catch(() => undefined)

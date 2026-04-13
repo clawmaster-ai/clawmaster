@@ -14,6 +14,10 @@ import {
   type ManagedMemoryEngine,
   type ManagedMemoryContext,
 } from './runtime.js'
+import {
+  importOpenclawWorkspaceMemories,
+  resolveOpenclawWorkspaceDir,
+} from './workspaceImport.js'
 
 type ManagedPluginConfig = {
   dataRoot: string
@@ -164,12 +168,6 @@ function lastUserMessageText(messages: unknown[] | undefined): string {
     }
   }
   return ''
-}
-
-function resolveOpenclawWorkspaceDir(): string {
-  const stateDir = process.env['OPENCLAW_STATE_DIR']?.trim()
-  if (stateDir) return join(stateDir, 'workspace')
-  return join(homedir(), '.openclaw', 'workspace')
 }
 
 function buildManagedStatusEntries(
@@ -546,9 +544,13 @@ const plugin = {
             .option('--verbose', 'Compatibility flag')
             .action(async () => {
               try {
+                const imported = await importOpenclawWorkspaceMemories(managedContext)
                 const status = await getManagedMemoryStatusPayload(managedContext)
                 console.log(
-                  `Managed PowerMem index ready (${status.engine}, ${status.dbPath ?? status.storagePath})`,
+                  `Managed PowerMem index ready (${status.engine}, ${status.dbPath ?? status.storagePath})`
+                )
+                console.log(
+                  `Imported workspace memories: ${imported.lastRun?.imported ?? 0} new, ${imported.lastRun?.updated ?? 0} updated, ${imported.lastRun?.skipped ?? 0} unchanged, ${imported.importedMemoryCount} tracked.`,
                 )
               } catch (error) {
                 console.error('Managed memory index check failed:', error)

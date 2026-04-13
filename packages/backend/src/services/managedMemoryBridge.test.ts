@@ -6,6 +6,7 @@ import test from 'node:test'
 
 import {
   buildManagedMemoryBridgeEntry,
+  getManagedMemoryBridgePluginPathIssue,
   getManagedMemoryBridgeStatusPayload,
   getManagedMemoryBridgePluginIssue,
   isManagedMemoryBridgePluginReady,
@@ -127,4 +128,21 @@ test('getManagedMemoryBridgePluginIssue flags disabled installed plugins as drif
     'memory-clawmaster-powermem is not installed in OpenClaw yet.',
   )
   assert.equal(getManagedMemoryBridgePluginIssue(true, 'loaded'), null)
+})
+
+test('getManagedMemoryBridgePluginPathIssue detects stale linked plugin paths', () => {
+  assert.equal(
+    getManagedMemoryBridgePluginPathIssue(
+      '/opt/clawmaster-old/plugins/memory-clawmaster-powermem',
+      '/opt/clawmaster/plugins/memory-clawmaster-powermem',
+    ),
+    'memory-clawmaster-powermem is linked to /opt/clawmaster-old/plugins/memory-clawmaster-powermem instead of /opt/clawmaster/plugins/memory-clawmaster-powermem.',
+  )
+  assert.equal(
+    getManagedMemoryBridgePluginPathIssue(
+      'global:/opt/clawmaster/plugins/memory-clawmaster-powermem/index.ts',
+      '/opt/clawmaster/plugins/memory-clawmaster-powermem',
+    ),
+    null,
+  )
 })
