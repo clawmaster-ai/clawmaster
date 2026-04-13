@@ -16,6 +16,9 @@
 
 **Join the community**: contribute modules, translations, and harness improvements for the OpenClaw ecosystem.
 
+| **16 LLM Providers** | **6 Channel Types** | **74 Tests Passing** | **3 Languages** |
+|:---:|:---:|:---:|:---:|
+
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="Quick Start" /></a>
   <a href="#roadmap"><img src="https://img.shields.io/badge/Roadmap-6_capabilities-ff69b4?style=for-the-badge" alt="Roadmap" /></a>
@@ -167,6 +170,12 @@ Six capabilities — tracked as labeled issues:
 | 能守护 Guard | Planned | Key encryption, spend limits, RBAC |
 
 Browse [`label:roadmap`](https://github.com/clawmaster-ai/clawmaster/issues?q=label%3Aroadmap) to pick up an item. Leave a comment before starting — core contributors who land roadmap features can claim model credits from the OpenClaw team.
+
+## 📰 News
+
+- **2026-04-13** 🏗️ OSS governance overhaul — CODEOWNERS, PR template (What/Why/How/Testing), YAML issue forms, `pr-description-check` CI, architecture boundary tests ([#35](https://github.com/clawmaster-ai/clawmaster/pull/35))
+
+<!-- Add entries here as notable changes ship. Format: **YYYY-MM-DD** emoji **description** — detail ([#PR](link)) -->
 
 ## Development
 
