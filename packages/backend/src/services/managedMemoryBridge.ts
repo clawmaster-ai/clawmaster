@@ -10,6 +10,7 @@ import {
   type ManagedMemoryStoreContext,
 } from './managedMemory.js'
 import { importOpenclawWorkspaceMemories } from './managedMemoryImport.js'
+import { reindexOpenclawMemory } from './memoryOpenclaw.js'
 import * as openclawPlugins from './openclawPlugins.js'
 
 export interface ManagedMemoryBridgeConfig {
@@ -144,6 +145,23 @@ export function buildManagedMemoryBridgeEntry(
       recallScoreThreshold: 0,
     },
   }
+}
+
+export function resolveManagedMemoryBridgeImportModeForTest(
+  context: ManagedMemoryContext = {}
+): 'host-import' | 'openclaw-reindex' {
+  const store = resolveManagedMemoryStoreContext(context)
+  return store.runtimeTarget === 'wsl2' ? 'openclaw-reindex' : 'host-import'
+}
+
+async function syncManagedMemoryBridgeWorkspaceImport(
+  context: ManagedMemoryContext = {}
+): Promise<void> {
+  if (resolveManagedMemoryBridgeImportModeForTest(context) === 'openclaw-reindex') {
+    await reindexOpenclawMemory()
+    return
+  }
+  await importOpenclawWorkspaceMemories(context)
 }
 
 function normalizeBridgeEntry(value: unknown): ManagedMemoryBridgeEntry | null {
@@ -397,6 +415,6 @@ export async function syncManagedMemoryBridge(
     await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, false).catch(() => undefined)
   }
   await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, true).catch(() => undefined)
-  await importOpenclawWorkspaceMemories(context)
+  await syncManagedMemoryBridgeWorkspaceImport(context)
   return getManagedMemoryBridgeStatusPayload(context)
 }

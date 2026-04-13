@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { SQLiteStore, type VectorStore } from 'powermem'
 
 import {
   addManagedMemory,
@@ -11,6 +12,7 @@ import {
   getManagedMemoryStatusPayload,
   getManagedMemoryStatsPayload,
   listManagedMemories,
+  migrateLegacySqliteIfNeededForTest,
   resetManagedMemory,
   resolveManagedMemoryEngine,
   resolveManagedMemoryStoreContext,
@@ -165,4 +167,71 @@ test('managed memory stats count distinct users across multiple pages', async ()
   const stats = await getManagedMemoryStatsPayload(context)
   assert.equal(stats.totalMemories, 503)
   assert.equal(stats.userCount, 503)
+})
+
+test('migrateLegacySqliteIfNeededForTest resumes interrupted sqlite-to-seekdb migrations', async () => {
+  const dataRootOverride = path.join(os.tmpdir(), `clawmaster-managed-memory-seekdb-migrate-${Date.now()}`)
+  const store = resolveManagedMemoryStoreContext({
+    dataRootOverride,
+    profileSelection: { kind: 'default' },
+    engineOverride: 'powermem-seekdb',
+  })
+  await fs.mkdir(store.runtimeRoot, { recursive: true })
+
+  const sqliteStore = new SQLiteStore(store.legacyDbPath)
+  const embedding = new Array(128).fill(0.5)
+  try {
+    await sqliteStore.insert('legacy-1', embedding, {
+      data: 'Alice prefers espresso after lunch.',
+      agent_id: 'main',
+      hash: 'legacy-1',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      metadata: {},
+    })
+    await sqliteStore.insert('legacy-2', embedding, {
+      data: 'Alice keeps a paper notebook for meeting prep.',
+      agent_id: 'main',
+      hash: 'legacy-2',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      metadata: {},
+    })
+  } finally {
+    await sqliteStore.close()
+  }
+
+  const records = new Map<string, { id: string; payload: Record<string, unknown> }>()
+  records.set('legacy-1', {
+    id: 'legacy-1',
+    payload: { data: 'stale partial migration row' },
+  })
+  const fakeSeekdbStore = {
+    async count() {
+      return records.size
+    },
+    async getById(id: string) {
+      return records.get(id) ?? null
+    },
+    async insert(id: string, _vector: number[], payload: Record<string, unknown>) {
+      records.set(id, { id, payload })
+    },
+    async update(id: string, _vector: number[], payload: Record<string, unknown>) {
+      records.set(id, { id, payload })
+    },
+  } as unknown as VectorStore
+
+  await migrateLegacySqliteIfNeededForTest(store, fakeSeekdbStore)
+
+  assert.equal(records.size, 2)
+  assert.match(String(records.get('legacy-1')?.payload.data ?? ''), /espresso/i)
+  assert.match(String(records.get('legacy-2')?.payload.data ?? ''), /paper notebook/i)
+
+  const markerPath = path.join(store.runtimeRoot, 'powermem-seekdb-migration.json')
+  const marker = JSON.parse(await fs.readFile(markerPath, 'utf8')) as Record<string, unknown>
+  assert.equal(marker.mode, 'sqlite-to-seekdb')
+  assert.equal(marker.migratedCount, 2)
+  assert.equal(marker.updatedCount, 1)
+  assert.equal(marker.insertedCount, 1)
+  assert.equal(marker.existingCountAtStart, 1)
 })

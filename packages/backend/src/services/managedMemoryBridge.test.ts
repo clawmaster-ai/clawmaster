@@ -10,6 +10,7 @@ import {
   getManagedMemoryBridgeStatusPayload,
   getManagedMemoryBridgePluginIssue,
   isManagedMemoryBridgePluginReady,
+  resolveManagedMemoryBridgeImportModeForTest,
   resolveInstalledPluginPath,
   resolveManagedMemoryPluginRootPath,
   windowsPathToWslPath,
@@ -166,5 +167,27 @@ test('resolveInstalledPluginPath only trusts explicit source paths', () => {
       description: '/opt/clawmaster/plugins/memory-clawmaster-powermem',
     }),
     null,
+  )
+})
+
+test('resolveManagedMemoryBridgeImportModeForTest uses OpenClaw reindex for WSL runtimes', () => {
+  assert.equal(
+    resolveManagedMemoryBridgeImportModeForTest({
+      platform: 'linux',
+      homeDir: '/tmp/clawmaster-native-bridge-import',
+      runtimeSelection: { mode: 'native' },
+      profileSelection: { kind: 'default' },
+    }),
+    'host-import',
+  )
+
+  assert.equal(
+    resolveManagedMemoryBridgeImportModeForTest({
+      platform: 'win32',
+      homeDir: 'C:\\Users\\haili',
+      runtimeSelection: { mode: 'wsl2', wslDistro: 'Ubuntu-24.04' },
+      profileSelection: { kind: 'default' },
+    }),
+    'openclaw-reindex',
   )
 })

@@ -368,18 +368,11 @@ async function migrateLegacySqliteIfNeeded(
   if (await pathExists(markerPath)) return
   if (!(await pathExists(store.legacyDbPath))) return
 
-  const existingCount = await seekdbStore.count()
-  if (existingCount > 0) {
-    await writeSeekdbMigrationMarker(store, {
-      migratedAt: new Date().toISOString(),
-      mode: 'existing-seekdb-store',
-      existingCount,
-    })
-    return
-  }
-
   const sqliteStore = new SQLiteStore(store.legacyDbPath)
+  const existingCountAtStart = await seekdbStore.count()
   let migratedCount = 0
+  let insertedCount = 0
+  let updatedCount = 0
 
   try {
     let offset = 0
@@ -393,11 +386,18 @@ async function migrateLegacySqliteIfNeeded(
       total = page.total
 
       for (const record of page.records) {
-        await seekdbStore.insert(
-          record.id,
-          record.embedding ?? embedText(record.content),
-          toPowermemPayload(record),
-        )
+        const vector = record.embedding ?? embedText(record.content)
+        const payload = toPowermemPayload(record)
+        const existing = await seekdbStore
+          .getById(record.id, record.userId, record.agentId)
+          .catch(() => null)
+        if (existing) {
+          await seekdbStore.update(record.id, vector, payload)
+          updatedCount += 1
+        } else {
+          await seekdbStore.insert(record.id, vector, payload)
+          insertedCount += 1
+        }
         migratedCount += 1
       }
 
@@ -414,8 +414,18 @@ async function migrateLegacySqliteIfNeeded(
     migratedAt: new Date().toISOString(),
     mode: 'sqlite-to-seekdb',
     migratedCount,
+    insertedCount,
+    updatedCount,
+    existingCountAtStart,
     sourcePath: store.legacyDbPath,
   })
+}
+
+export async function migrateLegacySqliteIfNeededForTest(
+  store: ManagedMemoryStoreContext,
+  seekdbStore: VectorStore,
+): Promise<void> {
+  await migrateLegacySqliteIfNeeded(store, seekdbStore)
 }
 
 async function removeLegacySqliteFiles(store: ManagedMemoryStoreContext): Promise<void> {
