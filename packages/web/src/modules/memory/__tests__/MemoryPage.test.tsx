@@ -7,6 +7,8 @@ const mockGetIsTauri = vi.fn(() => false)
 const mockManagedMemoryStatus = vi.fn()
 const mockManagedMemoryStats = vi.fn()
 const mockManagedMemoryImportStatus = vi.fn()
+const mockManagedMemoryBridgeStatus = vi.fn()
+const mockSyncManagedMemoryBridge = vi.fn()
 const mockImportOpenclawManagedMemory = vi.fn()
 const mockManagedMemoryList = vi.fn()
 const mockManagedMemorySearch = vi.fn()
@@ -28,6 +30,8 @@ vi.mock('@/adapters', () => ({
     managedMemoryStatus: (...args: any[]) => mockManagedMemoryStatus(...args),
     managedMemoryStats: (...args: any[]) => mockManagedMemoryStats(...args),
     managedMemoryImportStatus: (...args: any[]) => mockManagedMemoryImportStatus(...args),
+    managedMemoryBridgeStatus: (...args: any[]) => mockManagedMemoryBridgeStatus(...args),
+    syncManagedMemoryBridge: (...args: any[]) => mockSyncManagedMemoryBridge(...args),
     importOpenclawManagedMemory: (...args: any[]) => mockImportOpenclawManagedMemory(...args),
     managedMemoryList: (...args: any[]) => mockManagedMemoryList(...args),
     managedMemorySearch: (...args: any[]) => mockManagedMemorySearch(...args),
@@ -101,6 +105,115 @@ describe('MemoryPage', () => {
           failed: 0,
           importedMemoryCount: 1,
           lastImportedAt: '2026-04-12T17:10:00.000Z',
+        },
+      },
+    })
+    mockManagedMemoryBridgeStatus.mockResolvedValue({
+      success: true,
+      data: {
+        pluginId: 'memory-clawmaster-powermem',
+        slotKey: 'memory',
+        state: 'drifted',
+        issues: ['plugins.slots.memory is not set to memory-clawmaster-powermem'],
+        installed: false,
+        pluginStatus: null,
+        installedPluginPath: null,
+        runtimePluginPath: '/tmp/openclaw/plugins/memory-clawmaster-powermem',
+        pluginPath: '/tmp/clawmaster/plugins/memory-clawmaster-powermem',
+        pluginPathExists: true,
+        store: {
+          implementation: 'powermem',
+          engine: 'powermem-sqlite',
+          runtimeMode: 'host-managed',
+          runtimeTarget: 'native',
+          hostPlatform: 'darwin',
+          hostArch: 'arm64',
+          targetPlatform: 'darwin',
+          targetArch: 'arm64',
+          selectedWslDistro: null,
+          profileKey: 'default',
+          dataRoot: '/tmp/.clawmaster/data/default',
+          runtimeRoot: '/tmp/.clawmaster/data/default/memory/powermem',
+          storagePath: '/tmp/.clawmaster/data/default/memory/powermem/powermem.sqlite',
+          dbPath: '/tmp/.clawmaster/data/default/memory/powermem/powermem.sqlite',
+          legacyDbPath: '/tmp/.clawmaster/data/default/memory/powermem/powermem.sqlite',
+        },
+        currentSlotValue: null,
+        currentEntry: null,
+        desired: {
+          slotValue: 'memory-clawmaster-powermem',
+          entry: {
+            enabled: true,
+            config: {
+              dataRoot: '/tmp/.clawmaster/data/default',
+              engine: 'powermem-sqlite',
+              autoCapture: true,
+              autoRecall: true,
+              inferOnAdd: false,
+              recallLimit: 5,
+              recallScoreThreshold: 0,
+            },
+          },
+        },
+      },
+    })
+    mockSyncManagedMemoryBridge.mockResolvedValue({
+      success: true,
+      data: {
+        pluginId: 'memory-clawmaster-powermem',
+        slotKey: 'memory',
+        state: 'ready',
+        issues: [],
+        installed: true,
+        pluginStatus: 'loaded',
+        installedPluginPath: '/tmp/openclaw/plugins/memory-clawmaster-powermem',
+        runtimePluginPath: '/tmp/openclaw/plugins/memory-clawmaster-powermem',
+        pluginPath: '/tmp/clawmaster/plugins/memory-clawmaster-powermem',
+        pluginPathExists: true,
+        store: {
+          implementation: 'powermem',
+          engine: 'powermem-sqlite',
+          runtimeMode: 'host-managed',
+          runtimeTarget: 'native',
+          hostPlatform: 'darwin',
+          hostArch: 'arm64',
+          targetPlatform: 'darwin',
+          targetArch: 'arm64',
+          selectedWslDistro: null,
+          profileKey: 'default',
+          dataRoot: '/tmp/.clawmaster/data/default',
+          runtimeRoot: '/tmp/.clawmaster/data/default/memory/powermem',
+          storagePath: '/tmp/.clawmaster/data/default/memory/powermem/powermem.sqlite',
+          dbPath: '/tmp/.clawmaster/data/default/memory/powermem/powermem.sqlite',
+          legacyDbPath: '/tmp/.clawmaster/data/default/memory/powermem/powermem.sqlite',
+        },
+        currentSlotValue: 'memory-clawmaster-powermem',
+        currentEntry: {
+          enabled: true,
+          config: {
+            dataRoot: '/tmp/.clawmaster/data/default',
+            engine: 'powermem-sqlite',
+            autoCapture: true,
+            autoRecall: true,
+            inferOnAdd: false,
+            recallLimit: 5,
+            recallScoreThreshold: 0,
+          },
+        },
+        desired: {
+          slotValue: 'memory-clawmaster-powermem',
+          entry: {
+            enabled: true,
+            config: {
+              dataRoot: '/tmp/.clawmaster/data/default',
+              engine: 'powermem-sqlite',
+              autoCapture: true,
+              autoRecall: true,
+              inferOnAdd: false,
+              recallLimit: 5,
+              recallScoreThreshold: 0,
+            },
+          },
         },
       },
     })
@@ -386,6 +499,65 @@ describe('MemoryPage', () => {
       expect(mockImportOpenclawManagedMemory).toHaveBeenCalledTimes(1)
     })
     expect(await screen.findByText('Legacy OpenClaw memory imported into managed PowerMem.')).toBeInTheDocument()
+  })
+
+  it('refreshes legacy OpenClaw capability and status after bridge sync', async () => {
+    mockOpenclawMemorySearchCapability
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          mode: 'unsupported',
+          reason: 'command_unavailable',
+          detail: "error: unknown command 'memory'",
+        },
+      })
+      .mockResolvedValue({
+        success: true,
+        data: {
+          mode: 'native',
+        },
+      })
+    mockOpenclawMemoryStatus
+      .mockResolvedValueOnce({
+        success: false,
+        error: "error: unknown command 'memory'",
+      })
+      .mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 0,
+          data: [
+            {
+              agentId: 'main',
+              status: {
+                backend: 'managed',
+                dirty: false,
+                workspaceDir: '/tmp/openclaw/workspace',
+                dbPath: '/tmp/.clawmaster/data/default/memory/powermem/powermem.sqlite',
+              },
+              scan: {
+                totalFiles: 1,
+              },
+            },
+          ],
+          stderr: '',
+        },
+      })
+
+    render(<MemoryPage />)
+    expect(await screen.findByRole('button', { name: 'Sync bridge' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync bridge' }))
+
+    await waitFor(() => {
+      expect(mockSyncManagedMemoryBridge).toHaveBeenCalledTimes(1)
+    })
+    await waitFor(() => {
+      expect(mockOpenclawMemorySearchCapability).toHaveBeenCalledTimes(2)
+      expect(mockOpenclawMemoryStatus).toHaveBeenCalledTimes(2)
+    })
+    expect(await screen.findByText('The OpenClaw memory slot now points at the shipped PowerMem bridge for this profile.')).toBeInTheDocument()
+    expect(screen.getByText('Native SQLite search')).toBeInTheDocument()
   })
 
   it('compares managed and legacy recall side by side', async () => {

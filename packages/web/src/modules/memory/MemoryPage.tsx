@@ -313,6 +313,14 @@ export default function MemoryPage() {
     ])
   }
 
+  async function refreshLegacySection() {
+    await Promise.all([
+      refetchStatus(),
+      refetchFiles(),
+      refetchSearchCapability(),
+    ])
+  }
+
   async function handleSyncManagedBridge() {
     setManagedBridgeSyncLoading(true)
     const result = await platformResults.syncManagedMemoryBridge()
@@ -328,7 +336,7 @@ export default function MemoryPage() {
           ? t('memory.managedBridgeSyncSuccess')
           : t('memory.managedBridgeSyncDrifted'),
     })
-    await refreshManagedSection()
+    await Promise.all([refreshManagedSection(), refreshLegacySection()])
   }
 
   async function handleImportOpenclawMemory() {
