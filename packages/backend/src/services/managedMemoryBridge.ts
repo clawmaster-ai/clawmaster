@@ -9,6 +9,7 @@ import {
   type ManagedMemoryContext,
   type ManagedMemoryStoreContext,
 } from './managedMemory.js'
+import { importOpenclawWorkspaceMemories } from './managedMemoryImport.js'
 import * as openclawPlugins from './openclawPlugins.js'
 
 export interface ManagedMemoryBridgeConfig {
@@ -225,13 +226,13 @@ function normalizeComparablePluginPath(value: string): string {
   return normalized
 }
 
-function resolveInstalledPluginPath(row: openclawPlugins.OpenClawPluginRow | null): string | null {
-  const candidates = [row?.source, row?.description]
-  for (const candidate of candidates) {
-    if (typeof candidate !== 'string' || !candidate.trim()) continue
-    const normalized = normalizeComparablePluginPath(candidate)
-    if (normalized) return normalized
+export function resolveInstalledPluginPath(row: openclawPlugins.OpenClawPluginRow | null): string | null {
+  const candidate = row?.source
+  if (typeof candidate !== 'string' || !candidate.trim()) {
+    return null
   }
+  const normalized = normalizeComparablePluginPath(candidate)
+  if (normalized) return normalized
   return null
 }
 
@@ -378,15 +379,9 @@ export async function syncManagedMemoryBridge(
   }
 
   await fs.stat(paths.pluginManifestPath)
-  await updateConfigJson((config) => {
-    setConfigAtPath(config, `plugins.slots.${MEMORY_BRIDGE_SLOT_KEY}`, MEMORY_BRIDGE_PLUGIN_ID)
-    setConfigAtPath(config, `plugins.entries.${MEMORY_BRIDGE_PLUGIN_ID}`, desiredEntry)
-  })
-  if (installed) {
-    await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, false).catch(() => undefined)
-  }
   const pathIssue = getManagedMemoryBridgePluginPathIssue(installedPluginPath, paths.runtimePluginPath)
   if (installed && pathIssue) {
+    await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, false).catch(() => undefined)
     await openclawPlugins.uninstallOpenclawPlugin(MEMORY_BRIDGE_PLUGIN_ID, true, {
       disableLoadedFirst: true,
     })
@@ -394,6 +389,14 @@ export async function syncManagedMemoryBridge(
   if (!installed || pathIssue) {
     await openclawPlugins.installOpenclawPluginFromPath(paths.runtimePluginPath, { link: true })
   }
+  await updateConfigJson((config) => {
+    setConfigAtPath(config, `plugins.slots.${MEMORY_BRIDGE_SLOT_KEY}`, MEMORY_BRIDGE_PLUGIN_ID)
+    setConfigAtPath(config, `plugins.entries.${MEMORY_BRIDGE_PLUGIN_ID}`, desiredEntry)
+  })
+  if (installed && !pathIssue) {
+    await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, false).catch(() => undefined)
+  }
   await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, true).catch(() => undefined)
+  await importOpenclawWorkspaceMemories(context)
   return getManagedMemoryBridgeStatusPayload(context)
 }

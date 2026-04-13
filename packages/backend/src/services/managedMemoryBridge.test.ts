@@ -10,6 +10,7 @@ import {
   getManagedMemoryBridgeStatusPayload,
   getManagedMemoryBridgePluginIssue,
   isManagedMemoryBridgePluginReady,
+  resolveInstalledPluginPath,
   resolveManagedMemoryPluginRootPath,
   windowsPathToWslPath,
 } from './managedMemoryBridge.js'
@@ -143,6 +144,27 @@ test('getManagedMemoryBridgePluginPathIssue detects stale linked plugin paths', 
       'global:/opt/clawmaster/plugins/memory-clawmaster-powermem/index.ts',
       '/opt/clawmaster/plugins/memory-clawmaster-powermem',
     ),
+    null,
+  )
+})
+
+test('resolveInstalledPluginPath only trusts explicit source paths', () => {
+  assert.equal(
+    resolveInstalledPluginPath({
+      id: 'memory-clawmaster-powermem',
+      name: 'memory-clawmaster-powermem',
+      source: 'global:/opt/clawmaster/plugins/memory-clawmaster-powermem/index.ts',
+      description: 'linked from /some/other/place',
+    }),
+    '/opt/clawmaster/plugins/memory-clawmaster-powermem',
+  )
+
+  assert.equal(
+    resolveInstalledPluginPath({
+      id: 'memory-clawmaster-powermem',
+      name: 'memory-clawmaster-powermem',
+      description: '/opt/clawmaster/plugins/memory-clawmaster-powermem',
+    }),
     null,
   )
 })
