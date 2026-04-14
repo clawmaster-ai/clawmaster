@@ -17,7 +17,15 @@ const APP_READY_TIMEOUT_MS = 45_000
 const MAC_LAUNCH_SMOKE_MS = 5_000
 const CLEANUP_TIMEOUT_MS = 10_000
 const NAVIGATION_TIMEOUT_MS = 15_000
+const WEBDRIVER_SESSION_RETRY_DELAY_MS = 1_500
+const WEBDRIVER_SESSION_MAX_ATTEMPTS = 3
 const CAPABILITIES_TITLE_PATTERN = /(Capability Center|Assistant Capabilities|能力中心|助手能力|機能センター|アシスタント機能)/
+const RETRYABLE_WEBDRIVER_SESSION_ERROR_PATTERNS = [
+  /\bECONNRESET\b/i,
+  /\bECONNREFUSED\b/i,
+  /socket hang up/i,
+  /Connection refused/i,
+]
 const ARTIFACT_DIR = process.env.CLAWMASTER_DESKTOP_ARTIFACT_DIR
   ? path.resolve(process.env.CLAWMASTER_DESKTOP_ARTIFACT_DIR)
   : path.join(os.tmpdir(), 'clawmaster-desktop-artifacts')
@@ -383,6 +391,173 @@ function waitForPort(port, timeoutMs) {
   })
 }
 
+function sleep(delayMs) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs)
+  })
+}
+
+function normalizeProcessMatchPath(targetPath) {
+  return process.platform === 'win32'
+    ? path.normalize(targetPath).toLowerCase()
+    : targetPath
+}
+
+function quotePowerShellLiteral(value) {
+  return `'${String(value).replaceAll("'", "''")}'`
+}
+
+export function collectNewProcessIds(previousPids, currentPids) {
+  const knownPids = new Set(previousPids)
+  return currentPids.filter((pid) => !knownPids.has(pid))
+}
+
+export function isRetryableWebdriverSessionError(error) {
+  const details = error instanceof Error
+    ? [error.message, error.stack].filter(Boolean).join('\n')
+    : String(error)
+  return RETRYABLE_WEBDRIVER_SESSION_ERROR_PATTERNS.some((pattern) => pattern.test(details))
+}
+
+export async function buildWebdriverSessionWithRetry(options) {
+  const {
+    build,
+    reset,
+    onRetry,
+    maxAttempts = WEBDRIVER_SESSION_MAX_ATTEMPTS,
+    retryDelayMs = WEBDRIVER_SESSION_RETRY_DELAY_MS,
+  } = options
+
+  assert.equal(typeof build, 'function', 'buildWebdriverSessionWithRetry requires a build function')
+
+  let attempt = 0
+  let lastError
+
+  while (attempt < maxAttempts) {
+    attempt += 1
+    try {
+      return await build()
+    } catch (error) {
+      lastError = error
+      if (attempt >= maxAttempts || !isRetryableWebdriverSessionError(error)) {
+        throw error
+      }
+
+      await onRetry?.({
+        attempt,
+        maxAttempts,
+        delayMs: retryDelayMs,
+        error,
+      })
+      await reset?.({
+        attempt,
+        maxAttempts,
+        error,
+      })
+      await sleep(retryDelayMs)
+    }
+  }
+
+  throw lastError
+}
+
+async function listDesktopAppProcessIds(binaryPath) {
+  const normalizedBinaryPath = normalizeProcessMatchPath(binaryPath)
+
+  if (process.platform === 'win32') {
+    const output = await readCommandOutput('pwsh', [
+      '-NoLogo',
+      '-NoProfile',
+      '-Command',
+      [
+        `$target = ${quotePowerShellLiteral(normalizedBinaryPath)}`,
+        'Get-CimInstance Win32_Process |',
+        'Where-Object { $_.ExecutablePath -and $_.ExecutablePath.ToLowerInvariant() -eq $target } |',
+        'ForEach-Object { $_.ProcessId }',
+      ].join(' '),
+    ]).catch(() => '')
+
+    return output
+      .split(/\r?\n/)
+      .map((line) => Number.parseInt(line.trim(), 10))
+      .filter((pid) => Number.isInteger(pid) && pid > 0)
+      .sort((left, right) => left - right)
+  }
+
+  const output = await readCommandOutput('ps', ['-ax', '-o', 'pid=', '-o', 'command=']).catch(() => '')
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\s*(\d+)\s+(.*)$/))
+    .filter(Boolean)
+    .filter((match) => {
+      const command = match[2].trim()
+      return command === binaryPath || command.startsWith(`${binaryPath} `)
+    })
+    .map((match) => Number.parseInt(match[1], 10))
+    .filter((pid) => Number.isInteger(pid) && pid > 0)
+    .sort((left, right) => left - right)
+}
+
+async function terminateProcessId(pid, options = {}) {
+  const { force = false } = options
+
+  if (process.platform === 'win32') {
+    const args = ['/PID', String(pid), '/T']
+    if (force) {
+      args.push('/F')
+    }
+    await readCommandOutput('taskkill', args).catch((error) => {
+      const details = error instanceof Error ? error.message : String(error)
+      if (!/not found|no running instance|cannot find/i.test(details)) {
+        throw error
+      }
+    })
+    return
+  }
+
+  try {
+    process.kill(pid, force ? 'SIGKILL' : 'SIGTERM')
+  } catch (error) {
+    if (error?.code !== 'ESRCH') {
+      throw error
+    }
+  }
+}
+
+async function cleanupRetriedDesktopAppProcesses(binaryPath, previousPids) {
+  const currentPids = await listDesktopAppProcessIds(binaryPath)
+  const launchedPids = collectNewProcessIds(previousPids, currentPids)
+
+  if (launchedPids.length === 0) {
+    return { terminatedPids: [], survivingPids: [] }
+  }
+
+  for (const pid of launchedPids) {
+    await terminateProcessId(pid)
+  }
+
+  await sleep(500)
+
+  let survivingPids = collectNewProcessIds(previousPids, await listDesktopAppProcessIds(binaryPath))
+  for (const pid of survivingPids) {
+    await terminateProcessId(pid, { force: true })
+  }
+
+  await sleep(500)
+  survivingPids = collectNewProcessIds(previousPids, await listDesktopAppProcessIds(binaryPath))
+
+  if (survivingPids.length > 0) {
+    throw new Error(
+      `Failed to terminate retried desktop app process(es): ${survivingPids.join(', ')}`,
+    )
+  }
+
+  return {
+    terminatedPids: launchedPids,
+    survivingPids,
+  }
+}
+
 async function ensureDesktopBinary() {
   if (process.env.CLAWMASTER_DESKTOP_SKIP_BUILD === '1' && await pathExists(getDesktopBinaryPath())) {
     return getDesktopBinaryPath()
@@ -543,13 +718,37 @@ async function startTauriDriver() {
 }
 
 async function runWebdriverSmoke(binaryPath) {
-  const tauriDriver = await startTauriDriver()
+  const tauriDriverAttempts = []
+  let tauriDriver = await startTauriDriver()
   let driver
   let currentStep = 'starting webdriver session'
+  let desktopAppPidsBeforeAttempt = []
 
   const setStep = (step) => {
     currentStep = step
     console.log(`[desktop-smoke] step=${step}`)
+  }
+
+  const flushTauriDriverLogs = (driverHandle = tauriDriver) => {
+    if (!driverHandle) {
+      return
+    }
+    tauriDriverAttempts.push(driverHandle.getLogs())
+  }
+
+  const getCombinedTauriDriverLogs = (includeCurrent = false) => {
+    const entries = includeCurrent && tauriDriver
+      ? [...tauriDriverAttempts, tauriDriver.getLogs()]
+      : tauriDriverAttempts
+
+    return {
+      stdout: entries
+        .map((entry, index) => `--- tauri-driver attempt ${index + 1} stdout ---\n${entry.stdout ?? ''}`)
+        .join('\n'),
+      stderr: entries
+        .map((entry, index) => `--- tauri-driver attempt ${index + 1} stderr ---\n${entry.stderr ?? ''}`)
+        .join('\n'),
+    }
   }
 
   try {
@@ -559,10 +758,38 @@ async function runWebdriverSmoke(binaryPath) {
     capabilities.set('tauri:options', { application: binaryPath })
 
     setStep('connecting webdriver session')
-    driver = await new Builder()
-      .usingServer(`http://127.0.0.1:${TAURI_DRIVER_PORT}`)
-      .withCapabilities(capabilities)
-      .build()
+    driver = await buildWebdriverSessionWithRetry({
+      async build() {
+        desktopAppPidsBeforeAttempt = await listDesktopAppProcessIds(binaryPath)
+        return new Builder()
+          .usingServer(`http://127.0.0.1:${TAURI_DRIVER_PORT}`)
+          .withCapabilities(capabilities)
+          .build()
+      },
+      async reset() {
+        const appCleanup = await cleanupRetriedDesktopAppProcesses(
+          binaryPath,
+          desktopAppPidsBeforeAttempt,
+        )
+        if (appCleanup.terminatedPids.length > 0) {
+          console.warn(
+            `[desktop-smoke] terminated retried desktop app process(es): ${appCleanup.terminatedPids.join(', ')}`,
+          )
+        }
+        const previousTauriDriver = tauriDriver
+        flushTauriDriverLogs(previousTauriDriver)
+        tauriDriver = null
+        await settleWithin(terminateChild(previousTauriDriver.child), CLEANUP_TIMEOUT_MS)
+        tauriDriver = await startTauriDriver()
+      },
+      async onRetry({ attempt, maxAttempts, delayMs, error }) {
+        const details = error instanceof Error ? error.message : String(error)
+        setStep(`retrying webdriver session ${attempt + 1}/${maxAttempts}`)
+        console.warn(
+          `[desktop-smoke] webdriver session attempt ${attempt}/${maxAttempts} failed with retryable bootstrap error: ${details}. Retrying in ${delayMs}ms.`,
+        )
+      },
+    })
 
     setStep('waiting for initial shell')
     await driver.wait(
@@ -619,7 +846,7 @@ async function runWebdriverSmoke(binaryPath) {
       return {
         mode: 'webdriver',
         details: `validated desktop shell navigation, desktop settings, and danger gating (${titleText})`,
-        logs: tauriDriver.getLogs(),
+        logs: getCombinedTauriDriverLogs(true),
       }
     }
 
@@ -675,7 +902,7 @@ async function runWebdriverSmoke(binaryPath) {
       return {
         mode: 'webdriver',
         details: `continued from setup wizard into desktop shell and validated settings gating (${titleText})`,
-        logs: tauriDriver.getLogs(),
+        logs: getCombinedTauriDriverLogs(true),
       }
     }
 
@@ -693,7 +920,7 @@ async function runWebdriverSmoke(binaryPath) {
     return {
       mode: 'webdriver',
       details: 'reached desktop startup shell on a clean runtime',
-      logs: tauriDriver.getLogs(),
+      logs: getCombinedTauriDriverLogs(true),
     }
   } catch (error) {
     if (driver) {
@@ -707,13 +934,15 @@ async function runWebdriverSmoke(binaryPath) {
         diagnostics,
       })
     }
-    await persistDriverLogs(tauriDriver.getLogs(), 'desktop-smoke-failure')
+    await persistDriverLogs(getCombinedTauriDriverLogs(true), 'desktop-smoke-failure')
     throw error
   } finally {
     if (driver) {
       await settleWithin(driver.quit(), CLEANUP_TIMEOUT_MS)
     }
-    await settleWithin(terminateChild(tauriDriver.child), CLEANUP_TIMEOUT_MS)
+    if (tauriDriver) {
+      await settleWithin(terminateChild(tauriDriver.child), CLEANUP_TIMEOUT_MS)
+    }
   }
 }
 
