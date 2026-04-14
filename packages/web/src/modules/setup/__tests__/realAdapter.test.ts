@@ -10,6 +10,7 @@ vi.mock('@/shared/adapters/gateway', () => ({
 }))
 
 vi.mock('@/shared/adapters/openclaw', () => ({
+  getConfigResult: vi.fn(),
   setConfigResult: vi.fn(),
 }))
 
@@ -19,7 +20,7 @@ vi.mock('@/shared/adapters/system', () => ({
 }))
 
 import { execCommand } from '@/shared/adapters/platform'
-import { setConfigResult } from '@/shared/adapters/openclaw'
+import { getConfigResult, setConfigResult } from '@/shared/adapters/openclaw'
 import { detectSystemResult, probeHttpStatusResult } from '@/shared/adapters/system'
 import { realSetupAdapter } from '../adapters'
 import type { InstallProgress } from '../types'
@@ -27,9 +28,19 @@ import type { InstallProgress } from '../types'
 describe('realSetupAdapter', () => {
   beforeEach(() => {
     vi.mocked(execCommand).mockReset()
+    vi.mocked(getConfigResult).mockReset()
     vi.mocked(setConfigResult).mockReset()
     vi.mocked(detectSystemResult).mockReset()
     vi.mocked(probeHttpStatusResult).mockReset()
+    vi.mocked(getConfigResult).mockResolvedValue({
+      success: true,
+      data: {
+        models: {
+          providers: {},
+        },
+      },
+      error: null,
+    } as any)
     vi.mocked(detectSystemResult).mockResolvedValue({
       success: false,
       data: null,
@@ -237,6 +248,49 @@ describe('realSetupAdapter', () => {
       },
       body: JSON.stringify({
         model: 'ernie-5.0-thinking-preview',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      }),
+      timeoutMs: 10000,
+    })
+  })
+
+  it('prefers the saved provider model when probing a legacy baidu-aistudio config', async () => {
+    vi.mocked(getConfigResult).mockResolvedValue({
+      success: true,
+      data: {
+        models: {
+          providers: {
+            'baidu-aistudio': {
+              models: [
+                { id: 'deepseek-v3', name: 'DeepSeek V3' },
+                { id: 'deepseek-r1', name: 'DeepSeek R1' },
+              ],
+            },
+          },
+        },
+      },
+      error: null,
+    } as any)
+    vi.mocked(probeHttpStatusResult).mockResolvedValue({
+      success: true,
+      data: { ok: true, status: 200 },
+      error: null,
+    })
+
+    await expect(
+      realSetupAdapter.onboarding.testApiKey('baidu-aistudio', 'bce-test-token'),
+    ).resolves.toBe(true)
+
+    expect(probeHttpStatusResult).toHaveBeenCalledWith({
+      url: 'https://aistudio.baidu.com/llm/lmapi/v3/chat/completions',
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer bce-test-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'deepseek-v3',
         messages: [{ role: 'user', content: 'hi' }],
         max_tokens: 1,
       }),

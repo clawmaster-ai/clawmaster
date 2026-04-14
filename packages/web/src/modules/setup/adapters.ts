@@ -8,7 +8,7 @@
 
 import { execCommand } from '@/shared/adapters/platform'
 import { startGatewayResult, getGatewayStatusResult } from '@/shared/adapters/gateway'
-import { setConfigResult } from '@/shared/adapters/openclaw'
+import { getConfigResult, setConfigResult } from '@/shared/adapters/openclaw'
 import { detectSystemResult, probeHttpStatusResult } from '@/shared/adapters/system'
 import {
   CAPABILITIES,
@@ -76,7 +76,13 @@ const realOnboardingAdapter: OnboardingAdapter = {
     }
 
     const endpoint = baseUrl || cfg?.baseUrl || 'https://api.openai.com/v1'
-    const model = cfg?.models?.[0]?.id ?? 'gpt-4o-mini'
+    const configResult = await getConfigResult()
+    const configuredProvider = configResult.success ? configResult.data?.models?.providers?.[provider] : undefined
+    const configuredModel = configuredProvider?.models?.[0]
+    const model =
+      (typeof configuredModel === 'string' ? configuredModel : configuredModel?.id)
+      || cfg?.models?.[0]?.id
+      || 'gpt-4o-mini'
     try {
       const result = await probeHttpStatusResult({
         url: `${endpoint}/chat/completions`,
