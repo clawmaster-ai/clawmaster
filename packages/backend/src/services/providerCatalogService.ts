@@ -3,6 +3,11 @@ type ProviderCatalogModel = {
   name: string
 }
 
+type ProviderCatalogRequest = {
+  url: string
+  headers: Record<string, string>
+}
+
 const SAFE_PROVIDER_CATALOG_DEFAULTS: Record<string, string> = {
   anthropic: 'https://api.anthropic.com/v1',
   google: 'https://generativelanguage.googleapis.com/v1beta',
@@ -132,7 +137,7 @@ function buildProviderCatalogRequest(input: {
   providerId: string
   apiKey?: string
   baseUrl?: string
-}) {
+}): ProviderCatalogRequest | null {
   const providerId = input.providerId.trim()
   const apiKey = input.apiKey?.trim() || ''
   const baseUrl = input.baseUrl?.trim()
@@ -258,7 +263,7 @@ export async function listProviderModels(input: {
   try {
     const response = await fetch(request.url, {
       method: 'GET',
-      headers: request.headers,
+      headers: request.headers satisfies HeadersInit,
       signal: controller.signal,
     })
     if (!response.ok) {
