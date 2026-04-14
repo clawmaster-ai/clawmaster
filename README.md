@@ -9,7 +9,14 @@
 </h1>
 
 <p align="center">
-  <strong>A guided desktop app and self-hosted web console for OpenClaw.</strong>
+  <strong>Desktop app · Web console · Service CLI — three ways to run OpenClaw without editing config files.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white" alt="macOS" />
+  <img src="https://img.shields.io/badge/Windows-0078D6?style=flat&logo=windows&logoColor=white" alt="Windows" />
+  <img src="https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black" alt="Linux" />
+  <img src="https://img.shields.io/badge/Web-4285F4?style=flat&logo=googlechrome&logoColor=white" alt="Web" />
 </p>
 
 <p align="center">
@@ -145,12 +152,12 @@ Six capabilities — tracked as labeled issues:
 
 | Capability | Status | What it covers |
 |---|---|---|
-| 能接管 Setup | Released | Wizard, 16 providers, 6 channel types, profile management |
-| 能观测 Observe | Released | ClawProbe integration, cost / token / health dashboard |
-| 能省钱 Save | In progress | PowerMem UI, seekdb integration, token-reduction workflows |
-| 能应用 Apply | Planned | Photo OCR, invoice processing, flashcard tools |
-| 能构建 Build | Planned | Conversational agent builder (LangChain DeepAgents) |
-| 能守护 Guard | Planned | Key encryption, spend limits, RBAC |
+| Setup | Released | Wizard, 16 providers, 6 channel types, profile management |
+| Observe | Released | ClawProbe integration, cost / token / health dashboard |
+| Save | In progress | PowerMem UI, seekdb integration, token-reduction workflows |
+| Apply | Planned | Photo OCR, invoice processing, flashcard tools |
+| Build | Planned | Conversational agent builder (LangChain DeepAgents) |
+| Guard | Planned | Key encryption, spend limits, RBAC |
 
 Browse [`label:roadmap`](https://github.com/clawmaster-ai/clawmaster/issues?q=label%3Aroadmap) to pick up an item. Leave a comment before starting — core contributors who land roadmap features can claim model credits from the OpenClaw team.
 
