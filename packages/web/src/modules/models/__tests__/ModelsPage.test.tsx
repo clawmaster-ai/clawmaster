@@ -254,6 +254,14 @@ describe('ModelsPage', () => {
 
     const picker = document.getElementById('models-provider-picker-baidu-aistudio')
     expect(picker).not.toBeNull()
+    expect(within(picker!).getByPlaceholderText('Search by model name or ID...')).toBeInTheDocument()
+    expect(within(picker!).getByText('Showing 3 of 3 models')).toBeInTheDocument()
+
+    fireEvent.change(within(picker!).getByPlaceholderText('Search by model name or ID...'), {
+      target: { value: 'Turbo VL' },
+    })
+    expect(within(picker!).getByText('Showing 1 of 3 models')).toBeInTheDocument()
+    expect(within(picker!).queryByRole('button', { name: /ERNIE 5.0 Thinking Preview/ })).not.toBeInTheDocument()
 
     fireEvent.click(within(picker!).getByRole('button', { name: /ERNIE 4.5 Turbo VL/ }))
     await waitFor(() => {

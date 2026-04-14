@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, ChevronsUpDown, Sparkles } from 'lucide-react'
+import { ArrowRight, Check, ChevronsUpDown, Search, Sparkles } from 'lucide-react'
 import { platform } from '@/adapters'
 import { PasswordField } from '@/shared/components/PasswordField'
 import { getSetupAdapter } from '@/modules/setup/adapters'
@@ -287,6 +287,7 @@ function ProviderCard({
   const [testResult, setTestResult] = useState<boolean | null>(null)
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState<string>('')
+  const [modelQuery, setModelQuery] = useState('')
   const [settingDefault, setSettingDefault] = useState(false)
   const [setModelError, setSetModelError] = useState<string | null>(null)
   const adapter = getSetupAdapter()
@@ -303,6 +304,32 @@ function ProviderCard({
   useEffect(() => {
     setSelectedModelId(currentModelId || displayModels[0]?.id || '')
   }, [currentModelId, displayModels])
+
+  useEffect(() => {
+    if (!showModelPicker) {
+      setModelQuery('')
+    }
+  }, [showModelPicker])
+
+  const selectedModel = displayModels.find((model) => model.id === selectedModelId) ?? null
+  const currentModel = displayModels.find((model) => model.id === currentModelId) ?? null
+  const normalizedQuery = modelQuery.trim().toLowerCase()
+  const filteredModels = useMemo(() => {
+    const rankedModels = [...displayModels].sort((left, right) => {
+      const leftRank = left.id === selectedModelId ? 0 : left.id === currentModelId ? 1 : 2
+      const rightRank = right.id === selectedModelId ? 0 : right.id === currentModelId ? 1 : 2
+      if (leftRank !== rightRank) return leftRank - rightRank
+      return left.name.localeCompare(right.name)
+    })
+
+    if (!normalizedQuery) {
+      return rankedModels
+    }
+
+    return rankedModels.filter((model) =>
+      `${model.name} ${model.id}`.toLowerCase().includes(normalizedQuery),
+    )
+  }, [displayModels, currentModelId, normalizedQuery, selectedModelId])
 
   const handleTest = async () => {
     setTesting(true)
@@ -422,8 +449,54 @@ function ProviderCard({
             </span>
           </div>
 
-          <div className="mt-4 grid gap-2">
-            {displayModels.map((model) => {
+          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <div className="space-y-3">
+              <label className="block space-y-2">
+                <span className="control-label">{t('common.search')}</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="search"
+                    value={modelQuery}
+                    onChange={(event) => setModelQuery(event.target.value)}
+                    placeholder={t('models.searchModelsPlaceholder')}
+                    className="control-input pl-9"
+                  />
+                </div>
+              </label>
+              <p className="text-xs text-muted-foreground">
+                {t('models.showingModels', { count: filteredModels.length, total: displayModels.length })}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+              <p className="control-label">{t('models.pickModel')}</p>
+              <div className="mt-3 space-y-3">
+                <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground">{t('models.current')}</p>
+                  <p className="mt-2 text-sm font-medium">{currentModel?.name ?? currentModelId ?? '-'}</p>
+                  {currentModel?.id && (
+                    <p className="mt-1 text-xs font-mono text-muted-foreground">{currentModel.id}</p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-center text-muted-foreground">
+                  <ArrowRight className="h-4 w-4" />
+                </div>
+
+                <div className="rounded-xl border border-primary/20 bg-primary/[0.06] p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground">{t('models.selected')}</p>
+                  <p className="mt-2 text-sm font-medium">{selectedModel?.name ?? '-'}</p>
+                  {selectedModel?.id && (
+                    <p className="mt-1 text-xs font-mono text-muted-foreground">{selectedModel.id}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid max-h-80 gap-2 overflow-y-auto pr-1">
+            {filteredModels.map((model) => {
               const selected = selectedModelId === model.id
               const current = currentModelId === model.id
               return (
@@ -457,6 +530,12 @@ function ProviderCard({
               )
             })}
           </div>
+
+          {filteredModels.length === 0 && (
+            <div className="mt-4 rounded-xl border border-dashed border-border/80 bg-background/70 px-4 py-6 text-sm text-muted-foreground">
+              {t('models.noMatchingModels')}
+            </div>
+          )}
 
           {setModelError && (
             <p className="mt-3 text-xs text-red-500">{setModelError}</p>
