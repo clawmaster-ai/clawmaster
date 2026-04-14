@@ -1,4 +1,3 @@
-import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,9 +8,16 @@ import {
   type ManagedMemoryContext,
   type ManagedMemoryStoreContext,
 } from './managedMemory.js'
-import { importOpenclawWorkspaceMemories } from './managedMemoryImport.js'
-import { reindexOpenclawMemory } from './memoryOpenclaw.js'
+import { getOpenclawDataDirForProfile, getOpenclawProfileSelection } from '../openclawProfile.js'
+import { getClawmasterRuntimeSelection } from '../clawmasterSettings.js'
+import * as managedMemoryImportService from './managedMemoryImport.js'
+import * as memoryOpenclawService from './memoryOpenclaw.js'
 import * as openclawPlugins from './openclawPlugins.js'
+import {
+  getWslHomeDirSync,
+  getWslRuntimeUnavailableMessage,
+  resolveSelectedWslDistroSync,
+} from '../wslRuntime.js'
 
 export interface ManagedMemoryBridgeConfig {
   dataRoot: string
@@ -64,13 +70,19 @@ const ROOT_PLUGIN_PATH = fileURLToPath(new URL('../../../../plugins/memory-clawm
 const PACKAGED_PLUGIN_ROOT_ENV = 'CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT'
 const READY_PLUGIN_STATUSES = new Set(['loaded', 'enabled', 'active', 'ready', 'ok'])
 
+export function shouldIgnoreManagedMemoryBridgeReindexErrorForTest(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  const lower = message.toLowerCase()
+  return (
+    lower.includes("unknown command 'memory'") ||
+    (lower.includes('requires node >=') && lower.includes('upgrade node and re-run openclaw'))
+  )
+}
+
 export function resolveManagedMemoryPluginRootPath(): string {
   const packagedRoot = process.env[PACKAGED_PLUGIN_ROOT_ENV]?.trim()
   if (packagedRoot) {
-    const manifestPath = path.join(packagedRoot, 'openclaw.plugin.json')
-    if (fsSync.existsSync(manifestPath)) {
-      return packagedRoot
-    }
+    return packagedRoot
   }
   return ROOT_PLUGIN_PATH
 }
@@ -82,6 +94,20 @@ export function windowsPathToWslPath(value: string): string | null {
   const drive = match[1]!.toLowerCase()
   const tail = match[2]!.replace(/\\/g, '/')
   return `/mnt/${drive}/${tail}`
+}
+
+function sanitizeUncSegment(value: string): string {
+  return value.replace(/[\\/]/g, '').trim()
+}
+
+function wslPathToWindowsUncPath(distro: string, value: string): string {
+  const normalizedDistro = sanitizeUncSegment(distro)
+  const segments = value
+    .replace(/\\/g, '/')
+    .split('/')
+    .map(sanitizeUncSegment)
+    .filter(Boolean)
+  return `\\\\wsl.localhost\\${normalizedDistro}\\${segments.join('\\')}`
 }
 
 function toWslRuntimePath(value: string): string | null {
@@ -96,6 +122,15 @@ function resolveBridgeRuntimePaths(
   const pluginManifestPath = path.join(hostPluginPath, 'openclaw.plugin.json')
 
   if (store.runtimeTarget === 'wsl2') {
+    if (!store.selectedWslDistro) {
+      return {
+        hostPluginPath,
+        runtimePluginPath: null,
+        runtimeDataRoot: null,
+        pluginManifestPath,
+        unsupportedReason: getWslRuntimeUnavailableMessage(),
+      }
+    }
     const runtimePluginPath = toWslRuntimePath(hostPluginPath)
     const runtimeDataRoot = windowsPathToWslPath(store.dataRoot) ?? store.dataRoot
     if (!runtimePluginPath || !runtimeDataRoot) {
@@ -154,14 +189,60 @@ export function resolveManagedMemoryBridgeImportModeForTest(
   return store.runtimeTarget === 'wsl2' ? 'openclaw-reindex' : 'host-import'
 }
 
+export function resolveManagedMemoryBridgeImportContextForTest(
+  context: ManagedMemoryContext = {},
+): ManagedMemoryContext {
+  const runtimeSelection =
+    context.runtimeSelection
+    ?? getClawmasterRuntimeSelection({
+      homeDir: context.homeDir,
+      settingsPath: context.settingsPath,
+      platform: context.platform,
+    })
+  const hostPlatform = context.platform ?? process.platform
+  if (!(hostPlatform === 'win32' && runtimeSelection.mode === 'wsl2')) {
+    return context
+  }
+
+  const distro =
+    runtimeSelection.wslDistro?.trim()
+    || resolveSelectedWslDistroSync(runtimeSelection)
+  if (!distro) {
+    return context
+  }
+
+  const profileSelection = context.profileSelection ?? getOpenclawProfileSelection(context)
+  let wslHomeDir = getWslHomeDirSync(distro)
+  if (wslHomeDir === '/home') {
+    const hostUser = context.homeDir ? path.win32.basename(context.homeDir) : ''
+    if (hostUser && hostUser !== '.' && hostUser !== '/' && hostUser !== '\\') {
+      wslHomeDir = path.posix.join('/home', hostUser)
+    }
+  }
+  const openclawDataRoot =
+    getOpenclawDataDirForProfile(profileSelection, {
+      homeDir: wslHomeDir,
+      platform: 'linux',
+    }) ?? path.posix.join(wslHomeDir, '.openclaw')
+
+  return {
+    ...context,
+    openclawDataRootOverride: wslPathToWindowsUncPath(distro, openclawDataRoot),
+  }
+}
+
 async function syncManagedMemoryBridgeWorkspaceImport(
   context: ManagedMemoryContext = {}
 ): Promise<void> {
-  if (resolveManagedMemoryBridgeImportModeForTest(context) === 'openclaw-reindex') {
-    await reindexOpenclawMemory()
-    return
+  const importContext = resolveManagedMemoryBridgeImportContextForTest(context)
+  await managedMemoryImportService.importOpenclawWorkspaceMemories(importContext)
+  try {
+    await memoryOpenclawService.reindexOpenclawMemory()
+  } catch (error) {
+    if (!shouldIgnoreManagedMemoryBridgeReindexErrorForTest(error)) {
+      throw error
+    }
   }
-  await importOpenclawWorkspaceMemories(context)
 }
 
 function normalizeBridgeEntry(value: unknown): ManagedMemoryBridgeEntry | null {
@@ -244,9 +325,29 @@ function normalizeComparablePluginPath(value: string): string {
   return normalized
 }
 
+function resolveInstalledPluginPathCandidate(row: openclawPlugins.OpenClawPluginRow | null): string | null {
+  const candidates = [row?.source, row?.description]
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue
+    const trimmed = candidate.trim()
+    if (!trimmed) continue
+    if (candidate === row?.description) {
+      const looksPathLike =
+        /^(global|stock|file):/i.test(trimmed)
+        || /^[A-Za-z]:[\\/]/.test(trimmed)
+        || /^(\/|\.{1,2}\/|~\/)/.test(trimmed)
+      if (!looksPathLike) {
+        continue
+      }
+    }
+    return trimmed
+  }
+  return null
+}
+
 export function resolveInstalledPluginPath(row: openclawPlugins.OpenClawPluginRow | null): string | null {
-  const candidate = row?.source
-  if (typeof candidate !== 'string' || !candidate.trim()) {
+  const candidate = resolveInstalledPluginPathCandidate(row)
+  if (!candidate) {
     return null
   }
   const normalized = normalizeComparablePluginPath(candidate)
@@ -298,11 +399,15 @@ export function getManagedMemoryBridgePluginIssue(
 }
 
 export function getManagedMemoryBridgePluginPathIssue(
+  installed: boolean,
   installedPluginPath: string | null,
   runtimePluginPath: string | null,
 ): string | null {
-  if (!installedPluginPath || !runtimePluginPath) {
+  if (!installed || !runtimePluginPath) {
     return null
+  }
+  if (!installedPluginPath) {
+    return `${MEMORY_BRIDGE_PLUGIN_ID} is installed but its linked source path is unknown.`
   }
   const normalizedInstalledPluginPath = normalizeComparablePluginPath(installedPluginPath)
   const normalizedRuntimePluginPath = normalizeComparablePluginPath(runtimePluginPath)
@@ -336,7 +441,11 @@ export async function getManagedMemoryBridgeStatusPayload(
   if (pluginIssue) {
     issues.push(pluginIssue)
   }
-  const pluginPathIssue = getManagedMemoryBridgePluginPathIssue(installedPluginPath, paths.runtimePluginPath)
+  const pluginPathIssue = getManagedMemoryBridgePluginPathIssue(
+    installed,
+    installedPluginPath,
+    paths.runtimePluginPath,
+  )
   if (pluginPathIssue) {
     issues.push(pluginPathIssue)
   }
@@ -350,7 +459,7 @@ export async function getManagedMemoryBridgeStatusPayload(
   }
 
   const state: ManagedMemoryBridgeStatusPayload['state'] =
-    paths.unsupportedReason
+    paths.unsupportedReason || !pluginPathExists
       ? 'unsupported'
       : desiredEntry
         && installed
@@ -397,7 +506,11 @@ export async function syncManagedMemoryBridge(
   }
 
   await fs.stat(paths.pluginManifestPath)
-  const pathIssue = getManagedMemoryBridgePluginPathIssue(installedPluginPath, paths.runtimePluginPath)
+  const pathIssue = getManagedMemoryBridgePluginPathIssue(
+    installed,
+    installedPluginPath,
+    paths.runtimePluginPath,
+  )
   if (installed && pathIssue) {
     await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, false).catch(() => undefined)
     await openclawPlugins.uninstallOpenclawPlugin(MEMORY_BRIDGE_PLUGIN_ID, true, {
@@ -414,7 +527,7 @@ export async function syncManagedMemoryBridge(
   if (installed && !pathIssue) {
     await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, false).catch(() => undefined)
   }
-  await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, true).catch(() => undefined)
+  await openclawPlugins.setOpenclawPluginEnabled(MEMORY_BRIDGE_PLUGIN_ID, true)
   await syncManagedMemoryBridgeWorkspaceImport(context)
   return getManagedMemoryBridgeStatusPayload(context)
 }

@@ -212,20 +212,41 @@ function mergeWrappedPluginName(prev: string, next: string): string {
   return `${p} ${n}`.trim().replace(/\s+/g, ' ')
 }
 
+function mergeWrappedSourceParts(parts: string[]): string | undefined {
+  let merged = ''
+  for (const part of parts.map((item) => item.trim()).filter(Boolean)) {
+    if (!merged) {
+      merged = part
+      continue
+    }
+    if (merged.endsWith('/') || merged.endsWith('-')) {
+      merged += part
+    } else {
+      merged += ` ${part}`
+    }
+  }
+  return merged || undefined
+}
+
 function lineHasTablePipe(line: string): boolean {
   return TABLE_PIPE_SPLIT.test(line)
 }
 
 /** Split on `|` / `│`, keep empty cells (5-column table uses indices; do not filter empty cells) */
 function splitPipeRowPreservingCells(line: string): string[] {
-  return line.split(TABLE_PIPE_SPLIT).map((c) => c.replace(BOX_CHARS, ' ').trim())
+  const cells = line.split(TABLE_PIPE_SPLIT).map((c) => c.replace(BOX_CHARS, ' ').trim())
+  const hasLeadingPipe = /^[\s]*[|│]/.test(line)
+  const hasTrailingPipe = /[|│][\s]*$/.test(line)
+  if (!hasLeadingPipe) cells.unshift('')
+  if (!hasTrailingPipe) cells.push('')
+  return cells
 }
 
 type OpenclawPluginsTableLayout = {
   headerIdx: number
   statusIndex: number
-  sourceIndex: number
-  versionIndex: number
+  sourceIndex?: number
+  versionIndex?: number
 }
 
 function findOpenclawPluginsTableLayout(lines: string[]): OpenclawPluginsTableLayout | null {
@@ -241,6 +262,9 @@ function findOpenclawPluginsTableLayout(lines: string[]): OpenclawPluginsTableLa
     if (c1 !== 'name' || c2 !== 'id') continue
     if (c3 === 'format' && c4.startsWith('status')) {
       return { headerIdx: i, statusIndex: 4, sourceIndex: 5, versionIndex: 6 }
+    }
+    if (c3.startsWith('status') && c4 === 'version') {
+      return { headerIdx: i, statusIndex: 3, versionIndex: 4 }
     }
     if (c3.startsWith('status')) {
       return { headerIdx: i, statusIndex: 3, sourceIndex: 4, versionIndex: 5 }
@@ -284,13 +308,13 @@ function parseOpenclawPluginsTable(
     if (!cur) return
     if (seen.has(cur.id)) return
     seen.add(cur.id)
-    const description = cur.descParts.map((s) => s.trim()).filter(Boolean).join(' ') || undefined
+    const description = mergeWrappedSourceParts(cur.descParts)
     out.push({
       id: cur.id,
       name: cur.name,
       status: cur.status || undefined,
       version: cur.version,
-      source: cur.descParts[0] || undefined,
+      source: description || undefined,
       description,
     })
     cur = null
@@ -300,14 +324,16 @@ function parseOpenclawPluginsTable(
     const line = lines[i]
     if (!lineHasTablePipe(line)) continue
     const cells = splitPipeRowPreservingCells(line)
-    if (cells.length <= layout.sourceIndex) continue
+    if (cells.length <= layout.statusIndex) continue
+    if (layout.sourceIndex !== undefined && cells.length <= layout.sourceIndex) continue
+    if (layout.versionIndex !== undefined && cells.length <= layout.versionIndex) continue
     if (rowIsTableSeparator(cells)) continue
 
     const name = (cells[1] ?? '').trim()
     const id = (cells[2] ?? '').trim()
     const statusCell = (cells[layout.statusIndex] ?? '').trim()
-    const source = (cells[layout.sourceIndex] ?? '').trim()
-    const versionCell = (cells[layout.versionIndex] ?? '').trim()
+    const source = layout.sourceIndex === undefined ? '' : (cells[layout.sourceIndex] ?? '').trim()
+    const versionCell = layout.versionIndex === undefined ? '' : (cells[layout.versionIndex] ?? '').trim()
 
     if (cur && !isPluginsTablePluginStartRow(statusCell)) {
       if (name) cur.name = mergeWrappedPluginName(cur.name, name)
@@ -423,11 +449,20 @@ export function parsePluginsPlainText(stdout: string): OpenClawPluginRow[] {
         name = pipeCells[0]
         const idCandidate = pipeCells[1]
         id = looksLikePluginId(idCandidate) ? idCandidate : idCandidate.replace(/\s+/g, '-').toLowerCase()
-        if (pipeCells[2] && /^[\d.+\w-]+$/.test(pipeCells[2]) && pipeCells[2].length < 32) {
-          version = pipeCells[2]
-        }
-        if (pipeCells[3]) {
-          description = pipeCells.slice(3).join(' ')
+        if (pipeCells.length === 4) {
+          description = pipeCells[2]
+          if (pipeCells[3] && /^[\d.+\w-]+$/.test(pipeCells[3]) && pipeCells[3].length < 32) {
+            version = pipeCells[3]
+          }
+        } else {
+          if (pipeCells[2] && /^[\d.+\w-]+$/.test(pipeCells[2]) && pipeCells[2].length < 32) {
+            version = pipeCells[2]
+          } else if (pipeCells[2]) {
+            description = pipeCells[2]
+          }
+          if (pipeCells[3]) {
+            description = description ? `${description} ${pipeCells.slice(3).join(' ')}` : pipeCells.slice(3).join(' ')
+          }
         }
       }
 
@@ -438,8 +473,15 @@ export function parsePluginsPlainText(stdout: string): OpenClawPluginRow[] {
       rows.push({
         id,
         name: name || id,
+        status:
+          description && /^(loaded|enabled|active|ready|ok|disabled|error|failed)$/i.test(description)
+            ? description
+            : undefined,
         version,
-        description,
+        description:
+          description && /^(loaded|enabled|active|ready|ok|disabled|error|failed)$/i.test(description)
+            ? undefined
+            : description,
       })
       continue
     }

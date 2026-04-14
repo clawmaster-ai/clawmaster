@@ -8,13 +8,17 @@ import type {
 import type { OpenClawPluginServiceContext } from 'openclaw/plugin-sdk'
 import {
   addManagedMemory,
+  getManagedMemoryStatsPayload,
   deleteManagedMemory,
   getManagedMemoryStatusPayload,
+  listManagedMemories,
+  resetManagedMemory,
   searchManagedMemories,
   type ManagedMemoryEngine,
   type ManagedMemoryContext,
 } from './runtime.js'
 import {
+  getManagedMemoryImportStatus,
   importOpenclawWorkspaceMemories,
   resolveOpenclawWorkspaceDir,
 } from './workspaceImport.js'
@@ -182,6 +186,7 @@ function lastUserMessageText(messages: unknown[] | undefined): string {
 function buildManagedStatusEntries(
   cfg: ManagedPluginConfig,
   status: Awaited<ReturnType<typeof getManagedMemoryStatusPayload>>,
+  managedContext: ManagedMemoryContext,
   agentId?: string,
 ) {
   return [
@@ -190,7 +195,7 @@ function buildManagedStatusEntries(
       status: {
         backend: status.engine,
         dirty: false,
-        workspaceDir: resolveOpenclawWorkspaceDir(),
+        workspaceDir: resolveOpenclawWorkspaceDir(managedContext),
         dbPath: status.dbPath ?? status.storagePath,
         runtimeRoot: status.runtimeRoot,
       },
@@ -213,6 +218,58 @@ function normalizeSearchQuery(
   const fromOption = typeof opts.query === 'string' ? opts.query.trim() : ''
   if (fromOption) return fromOption
   return String(positionalQuery ?? '').trim()
+}
+
+type CommandLike = {
+  name(): string
+  command(name: string): CommandLike
+  description(text: string): CommandLike
+  option(flags: string, description: string, defaultValue?: string): CommandLike
+  action(handler: (...args: unknown[]) => unknown): CommandLike
+  commands?: CommandLike[]
+}
+
+function findChildCommand(command: CommandLike, name: string): CommandLike | undefined {
+  return (command.commands ?? []).find((entry) => entry.name() === name)
+}
+
+export function ensureMemoryIndexCompatibilityCommandForTest(
+  program: CommandLike,
+  onIndex: () => Promise<void> | void,
+): void {
+  const existingTopLevelMemory = findChildCommand(program, 'memory')
+  const memory =
+    existingTopLevelMemory
+    ?? program.command('memory').description('Managed memory compatibility commands')
+
+  if (findChildCommand(memory, 'index')) {
+    return
+  }
+
+  memory
+    .command('index')
+    .description('Ensure the managed memory runtime is ready')
+    .option('--force', 'Compatibility flag')
+    .option('--verbose', 'Compatibility flag')
+    .action(async () => {
+      await onIndex()
+    })
+}
+
+function resolveCliScope(
+  scope: {
+    userId?: string
+    agentId?: string
+  },
+  opts: {
+    user?: string
+    agent?: string
+  },
+): { userId?: string; agentId?: string } {
+  return {
+    userId: typeof opts.user === 'string' && opts.user.trim() ? opts.user.trim() : scope.userId,
+    agentId: typeof opts.agent === 'string' && opts.agent.trim() ? opts.agent.trim() : scope.agentId,
+  }
 }
 
 const MEMORY_RECALL_GUIDANCE =
@@ -424,19 +481,66 @@ const plugin = {
         const ltm = program.command('ltm').description('ClawMaster-managed PowerMem memory commands')
 
         ltm
+          .command('status')
+          .description('Show managed PowerMem status')
+          .option('--json', 'Output JSON')
+          .action(async (...args: unknown[]) => {
+            const opts = (args[0] ?? {}) as { json?: boolean }
+            try {
+              const status = await getManagedMemoryStatusPayload(managedContext)
+              if (opts.json) {
+                console.log(JSON.stringify(status, null, 2))
+                return
+              }
+              console.log(`PowerMem: ${status.provisioned ? 'healthy' : 'ready'} (${status.dbPath ?? status.storagePath})`)
+            } catch (error) {
+              console.error('Managed PowerMem status failed:', error)
+              process.exitCode = 1
+            }
+          })
+
+        ltm
+          .command('stats')
+          .description('Show managed PowerMem statistics')
+          .option('--json', 'Output JSON')
+          .action(async (...args: unknown[]) => {
+            const opts = (args[0] ?? {}) as { json?: boolean }
+            try {
+              const stats = await getManagedMemoryStatsPayload(managedContext)
+              if (opts.json) {
+                console.log(JSON.stringify(stats, null, 2))
+                return
+              }
+              console.log(`PowerMem stats: ${stats.totalMemories} memories, ${stats.userCount} users`)
+            } catch (error) {
+              console.error('Managed PowerMem stats failed:', error)
+              process.exitCode = 1
+            }
+          })
+
+        ltm
           .command('search')
           .description('Search managed memories')
           .argument('[query]', 'Search query')
           .option('--query <query>', 'Search query')
           .option('--limit <n>', 'Max results', '5')
+          .option('--user <userId>', 'User filter')
+          .option('--agent <agentId>', 'Agent filter')
           .option('--json', 'Output JSON')
           .action(async (...args: unknown[]) => {
-            const opts = (args[1] ?? {}) as { limit?: string; query?: string; json?: boolean }
+            const opts = (args[1] ?? {}) as {
+              limit?: string
+              query?: string
+              user?: string
+              agent?: string
+              json?: boolean
+            }
             const query = normalizeSearchQuery(args[0], opts)
             const limit = Number.parseInt(opts.limit ?? '5', 10)
+            const resolvedScope = resolveCliScope(scope, opts)
             const results = await searchManagedMemories(
               query,
-              withManagedScope(scope, { limit }),
+              withManagedScope(resolvedScope, { limit }),
               managedContext,
             )
             if (opts.json) {
@@ -444,6 +548,44 @@ const plugin = {
               return
             }
             console.log(JSON.stringify(results, null, 2))
+          })
+
+        ltm
+          .command('list')
+          .description('List managed memories')
+          .option('--limit <n>', 'Max results', '20')
+          .option('--offset <n>', 'Offset', '0')
+          .option('--user <userId>', 'User filter')
+          .option('--agent <agentId>', 'Agent filter')
+          .option('--json', 'Output JSON')
+          .action(async (...args: unknown[]) => {
+            const opts = (args[0] ?? {}) as {
+              limit?: string
+              offset?: string
+              user?: string
+              agent?: string
+              json?: boolean
+            }
+            try {
+              const resolvedScope = resolveCliScope(scope, opts)
+              const result = await listManagedMemories(
+                {
+                  limit: Number.parseInt(opts.limit ?? '20', 10),
+                  offset: Number.parseInt(opts.offset ?? '0', 10),
+                  userId: resolvedScope.userId,
+                  agentId: resolvedScope.agentId,
+                },
+                managedContext,
+              )
+              if (opts.json) {
+                console.log(JSON.stringify(result, null, 2))
+                return
+              }
+              console.log(JSON.stringify(result.memories, null, 2))
+            } catch (error) {
+              console.error('Managed PowerMem list failed:', error)
+              process.exitCode = 1
+            }
           })
 
         ltm
@@ -463,16 +605,25 @@ const plugin = {
           .command('add')
           .description('Manually add a managed memory')
           .argument('<text>', 'Content to store')
+          .option('--user <userId>', 'User id override')
+          .option('--agent <agentId>', 'Agent id override')
+          .option('--json', 'Output JSON')
           .action(async (...args: unknown[]) => {
             const text = String(args[0] ?? '').trim()
+            const opts = (args[1] ?? {}) as { user?: string; agent?: string; json?: boolean }
             try {
+              const resolvedScope = resolveCliScope(scope, opts)
               const created = await addManagedMemory(
                 {
                   content: text,
-                  ...withManagedScope(scope),
+                  ...withManagedScope(resolvedScope),
                 },
                 managedContext,
               )
+              if (opts.json) {
+                console.log(JSON.stringify(created, null, 2))
+                return
+              }
               console.log(`Stored memory ${created.memoryId}`)
             } catch (error) {
               console.error('Managed PowerMem add failed:', error)
@@ -480,8 +631,89 @@ const plugin = {
             }
           })
 
-        const existingTopLevelMemory = ((program as unknown as { commands?: Array<{ name(): string }> }).commands ?? [])
-          .find((command) => command.name() === 'memory')
+        ltm
+          .command('delete')
+          .description('Delete a managed memory')
+          .argument('<memoryId>', 'Managed memory id')
+          .option('--json', 'Output JSON')
+          .action(async (...args: unknown[]) => {
+            const memoryId = String(args[0] ?? '').trim()
+            const opts = (args[1] ?? {}) as { json?: boolean }
+            try {
+              const deleted = await deleteManagedMemory(memoryId, managedContext)
+              if (opts.json) {
+                console.log(JSON.stringify({ deleted }, null, 2))
+                return
+              }
+              console.log(deleted ? `Deleted memory ${memoryId}` : `Memory ${memoryId} was already removed`)
+            } catch (error) {
+              console.error('Managed PowerMem delete failed:', error)
+              process.exitCode = 1
+            }
+          })
+
+        ltm
+          .command('reset')
+          .description('Reset managed PowerMem storage')
+          .option('--json', 'Output JSON')
+          .action(async (...args: unknown[]) => {
+            const opts = (args[0] ?? {}) as { json?: boolean }
+            try {
+              const stats = await resetManagedMemory(managedContext)
+              if (opts.json) {
+                console.log(JSON.stringify(stats, null, 2))
+                return
+              }
+              console.log(`Managed PowerMem reset complete (${stats.totalMemories} memories remaining)`)
+            } catch (error) {
+              console.error('Managed PowerMem reset failed:', error)
+              process.exitCode = 1
+            }
+          })
+
+        ltm
+          .command('import-status')
+          .description('Show OpenClaw workspace import status')
+          .option('--json', 'Output JSON')
+          .action(async (...args: unknown[]) => {
+            const opts = (args[0] ?? {}) as { json?: boolean }
+            try {
+              const status = await getManagedMemoryImportStatus(managedContext)
+              if (opts.json) {
+                console.log(JSON.stringify(status, null, 2))
+                return
+              }
+              console.log(
+                `Import status: ${status.importedMemoryCount}/${status.availableSourceCount} sources tracked`,
+              )
+            } catch (error) {
+              console.error('Managed PowerMem import status failed:', error)
+              process.exitCode = 1
+            }
+          })
+
+        ltm
+          .command('import')
+          .description('Import OpenClaw workspace memories into managed PowerMem')
+          .option('--json', 'Output JSON')
+          .action(async (...args: unknown[]) => {
+            const opts = (args[0] ?? {}) as { json?: boolean }
+            try {
+              const imported = await importOpenclawWorkspaceMemories(managedContext)
+              if (opts.json) {
+                console.log(JSON.stringify(imported, null, 2))
+                return
+              }
+              console.log(
+                `Imported workspace memories: ${imported.lastRun?.imported ?? 0} new, ${imported.lastRun?.updated ?? 0} updated, ${imported.lastRun?.skipped ?? 0} unchanged, ${imported.importedMemoryCount} tracked.`,
+              )
+            } catch (error) {
+              console.error('Managed PowerMem import failed:', error)
+              process.exitCode = 1
+            }
+          })
+
+        const existingTopLevelMemory = findChildCommand(program as CommandLike, 'memory')
 
         if (!existingTopLevelMemory) {
           const memory = program.command('memory').description('Managed memory compatibility commands')
@@ -494,7 +726,7 @@ const plugin = {
               const opts = (args[0] ?? {}) as { json?: boolean }
               try {
                 const status = await getManagedMemoryStatusPayload(managedContext)
-                const payload = buildManagedStatusEntries(cfg, status, scope.agentId)
+                const payload = buildManagedStatusEntries(cfg, status, managedContext, scope.agentId)
                 if (opts.json) {
                   console.log(JSON.stringify(payload, null, 2))
                   return
@@ -545,28 +777,23 @@ const plugin = {
                 process.exitCode = 1
               }
             })
-
-          memory
-            .command('index')
-            .description('Ensure the managed memory runtime is ready')
-            .option('--force', 'Compatibility flag')
-            .option('--verbose', 'Compatibility flag')
-            .action(async () => {
-              try {
-                const imported = await importOpenclawWorkspaceMemories(managedContext)
-                const status = await getManagedMemoryStatusPayload(managedContext)
-                console.log(
-                  `Managed PowerMem index ready (${status.engine}, ${status.dbPath ?? status.storagePath})`
-                )
-                console.log(
-                  `Imported workspace memories: ${imported.lastRun?.imported ?? 0} new, ${imported.lastRun?.updated ?? 0} updated, ${imported.lastRun?.skipped ?? 0} unchanged, ${imported.importedMemoryCount} tracked.`,
-                )
-              } catch (error) {
-                console.error('Managed memory index check failed:', error)
-                process.exitCode = 1
-              }
-            })
         }
+
+        ensureMemoryIndexCompatibilityCommandForTest(program as CommandLike, async () => {
+          try {
+            const imported = await importOpenclawWorkspaceMemories(managedContext)
+            const status = await getManagedMemoryStatusPayload(managedContext)
+            console.log(
+              `Managed PowerMem index ready (${status.engine}, ${status.dbPath ?? status.storagePath})`
+            )
+            console.log(
+              `Imported workspace memories: ${imported.lastRun?.imported ?? 0} new, ${imported.lastRun?.updated ?? 0} updated, ${imported.lastRun?.skipped ?? 0} unchanged, ${imported.importedMemoryCount} tracked.`,
+            )
+          } catch (error) {
+            console.error('Managed memory index check failed:', error)
+            process.exitCode = 1
+          }
+        })
       },
       { commands: ['ltm', 'memory'] },
     )

@@ -1522,6 +1522,7 @@ export default {
   "memory.managedFoundationHelp": "Use ClawMaster-managed PowerMem memory for local semantic recall. Legacy OpenClaw memory remains below for inspection.",
   "memory.managedFoundationTitle": "PowerMem foundation",
   "memory.managedFoundationUnavailable": "This managed section is web/backend-first in PR1. The legacy OpenClaw memory tools below still work.",
+  "memory.managedDesktopSyncRequired": "Sync the OpenClaw bridge first to enable managed PowerMem actions in desktop mode.",
   "memory.managedBridgeTitle": "OpenClaw bridge",
   "memory.managedBridgeHelp": "Ship the local PowerMem plugin into OpenClaw, point the memory slot at it, and keep the plugin config aligned with this profile.",
   "memory.managedBridgeSyncAction": "Sync bridge",

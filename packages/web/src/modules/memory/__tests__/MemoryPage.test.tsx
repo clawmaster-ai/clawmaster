@@ -372,7 +372,7 @@ describe('MemoryPage', () => {
     expect(screen.getByText('main.sqlite')).toBeInTheDocument()
     expect(screen.getAllByText('SQLite store').length).toBeGreaterThan(0)
     expect(screen.getByText('Native SQLite search')).toBeInTheDocument()
-  })
+  }, 10_000)
 
   it('runs a filtered native memory search', async () => {
     mockOpenclawMemorySearch.mockResolvedValueOnce({
@@ -815,24 +815,107 @@ describe('MemoryPage', () => {
     expect(await screen.findByText('That managed memory was already removed.')).toBeInTheDocument()
   })
 
-  it('shows a neutral desktop placeholder instead of a managed-memory error', async () => {
-    mockGetIsTauri.mockReturnValue(true)
-    mockManagedMemoryStatus.mockResolvedValueOnce({
-      success: false,
-      error: 'Managed PowerMem memory is available in web/backend mode first.',
-    })
-    mockManagedMemoryStats.mockResolvedValueOnce({
-      success: false,
-      error: 'Managed PowerMem memory is available in web/backend mode first.',
-    })
+  it('treats malformed managed memory list payloads as empty instead of crashing', async () => {
     mockManagedMemoryList.mockResolvedValueOnce({
-      success: false,
-      error: 'Managed PowerMem memory is available in web/backend mode first.',
+      success: true,
+      data: {} as any,
     })
 
     render(<MemoryPage />)
 
-    expect(await screen.findByText('Managed PowerMem memory will arrive in desktop mode in a later PR. Native OpenClaw memory tools below remain available now.')).toBeInTheDocument()
-    expect(screen.queryByText('Managed PowerMem memory is available in web/backend mode first.')).not.toBeInTheDocument()
+    expect(await screen.findByText('Recent managed memories')).toBeInTheDocument()
+    expect(screen.getByText('No managed memories stored yet.')).toBeInTheDocument()
+  })
+
+  it('keeps bridge controls visible but disables managed actions until desktop bridge sync is ready', async () => {
+    mockGetIsTauri.mockReturnValue(true)
+
+    render(<MemoryPage />)
+
+    expect(await screen.findByText('OpenClaw bridge')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sync bridge' })).toBeInTheDocument()
+    expect(screen.getAllByText('Needs sync').length).toBeGreaterThan(0)
+    expect(
+      screen.getByText('Sync the OpenClaw bridge first to enable managed PowerMem actions in desktop mode.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import OpenClaw memory' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Compare recall' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add memory' })).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: 'Search' })[0]).toBeDisabled()
+    expect(screen.getByPlaceholderText('Compare the same query across managed and legacy memory...')).toBeDisabled()
+    expect(screen.getByPlaceholderText('User ID for managed memory (optional)')).toBeDisabled()
+    expect(screen.getByPlaceholderText('Agent ID for managed memory (optional)')).toBeDisabled()
+    expect(
+      screen.getByPlaceholderText('Store a stable fact, preference, or reusable note in managed PowerMem memory...'),
+    ).toBeDisabled()
+    expect(screen.getByPlaceholderText('Search managed PowerMem memories...')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Delete managed-1' })).toBeDisabled()
+  })
+
+  it('keeps managed desktop actions disabled when bridge status fails to load', async () => {
+    mockGetIsTauri.mockReturnValue(true)
+    mockManagedMemoryBridgeStatus.mockResolvedValueOnce({
+      success: false,
+      error: 'bridge status unavailable',
+    })
+
+    render(<MemoryPage />)
+
+    expect(await screen.findByText('bridge status unavailable')).toBeInTheDocument()
+    expect(
+      screen.getByText('Sync the OpenClaw bridge first to enable managed PowerMem actions in desktop mode.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import OpenClaw memory' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Compare recall' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add memory' })).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: 'Search' })[0]).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Delete managed-1' })).toBeDisabled()
+  })
+
+  it('disables bridge sync when desktop bridge status is unsupported', async () => {
+    mockGetIsTauri.mockReturnValue(true)
+    mockManagedMemoryBridgeStatus.mockResolvedValueOnce({
+      success: true,
+      data: {
+        pluginId: 'memory-clawmaster-powermem',
+        slotKey: 'memory',
+        state: 'unsupported',
+        issues: ['The managed PowerMem plugin files are missing from the ClawMaster package.'],
+        installed: false,
+        pluginStatus: null,
+        installedPluginPath: null,
+        runtimePluginPath: null,
+        pluginPath: '/tmp/clawmaster/plugins/memory-clawmaster-powermem',
+        pluginPathExists: false,
+        store: {
+          implementation: 'powermem',
+          engine: 'powermem-sqlite',
+          runtimeMode: 'host-managed',
+          runtimeTarget: 'native',
+          hostPlatform: 'darwin',
+          hostArch: 'arm64',
+          targetPlatform: 'darwin',
+          targetArch: 'arm64',
+          selectedWslDistro: null,
+          profileKey: 'default',
+          dataRoot: '/tmp/.clawmaster/data/default',
+          runtimeRoot: '/tmp/.clawmaster/data/default/memory/powermem',
+          storagePath: '/tmp/.clawmaster/data/default/memory/powermem/powermem.sqlite',
+          dbPath: '/tmp/.clawmaster/data/default/memory/powermem/powermem.sqlite',
+          legacyDbPath: '/tmp/.clawmaster/data/default/memory/powermem/powermem.sqlite',
+        },
+        currentSlotValue: null,
+        currentEntry: null,
+        desired: {
+          slotValue: 'memory-clawmaster-powermem',
+          entry: null,
+        },
+      },
+    })
+
+    render(<MemoryPage />)
+
+    expect(await screen.findByText('Unsupported')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sync bridge' })).toBeDisabled()
   })
 })

@@ -1522,6 +1522,7 @@ export default {
   "memory.managedFoundationHelp": "使用 ClawMaster 托管的 PowerMem 进行本地语义记忆召回。下方仍保留原生 OpenClaw 记忆用于检查。",
   "memory.managedFoundationTitle": "PowerMem 基础层",
   "memory.managedFoundationUnavailable": "该托管分区在 PR1 先支持 web/backend。下方的原生 OpenClaw 记忆工具仍可使用。",
+  "memory.managedDesktopSyncRequired": "请先同步 OpenClaw bridge，再在桌面模式中启用托管 PowerMem 操作。",
   "memory.managedBridgeTitle": "OpenClaw 桥接",
   "memory.managedBridgeHelp": "把随 ClawMaster 发货的本地 PowerMem 插件装进 OpenClaw，将 memory slot 指向它，并让插件配置与当前 profile 保持一致。",
   "memory.managedBridgeSyncAction": "同步桥接",

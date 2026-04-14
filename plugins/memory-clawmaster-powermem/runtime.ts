@@ -30,11 +30,39 @@ export interface ManagedMemoryContext {
 }
 
 export interface ManagedMemoryStatusPayload {
+  available: true
+  backend: 'service'
+  implementation: 'powermem'
   engine: ManagedMemoryEngine
+  runtimeMode: 'host-managed'
+  runtimeTarget: 'native'
+  hostPlatform: string
+  hostArch: string
+  targetPlatform: string
+  targetArch: string
+  selectedWslDistro: string | null
+  profileKey: string
+  dataRoot: string
   runtimeRoot: string
   storagePath: string
   dbPath?: string
+  legacyDbPath: string
+  storageType: string
   provisioned: boolean
+}
+
+export interface ManagedMemoryStatsPayload extends ManagedMemoryStatusPayload {
+  totalMemories: number
+  userCount: number
+  oldestMemory: string | null
+  newestMemory: string | null
+}
+
+export interface ManagedMemoryListPayload {
+  memories: ManagedMemoryRecord[]
+  total: number
+  limit: number
+  offset: number
 }
 
 export interface ManagedMemoryRecord {
@@ -225,6 +253,10 @@ function normalizeRecord(record: MemoryRecord): ManagedMemoryRecord {
   }
 }
 
+function resolveManagedMemoryStorageType(engine: ManagedMemoryEngine): string {
+  return engine === 'powermem-seekdb' ? 'seekdb' : 'sqlite'
+}
+
 function normalizeSearchHit(hit: SearchHit): ManagedMemorySearchHit {
   return {
     memoryId: hit.memoryId,
@@ -326,18 +358,11 @@ async function migrateLegacySqliteIfNeeded(
   if (await pathExists(markerPath)) return
   if (!(await pathExists(store.legacyDbPath))) return
 
-  const existingCount = await seekdbStore.count()
-  if (existingCount > 0) {
-    await writeSeekdbMigrationMarker(store, {
-      migratedAt: new Date().toISOString(),
-      mode: 'existing-seekdb-store',
-      existingCount,
-    })
-    return
-  }
-
   const sqliteStore = new SQLiteStore(store.legacyDbPath)
   let migratedCount = 0
+  let insertedCount = 0
+  let updatedCount = 0
+  const existingCountAtStart = await seekdbStore.count()
   try {
     let offset = 0
     let total = 0
@@ -350,11 +375,18 @@ async function migrateLegacySqliteIfNeeded(
       total = page.total
 
       for (const record of page.records) {
-        await seekdbStore.insert(
-          record.id,
-          record.embedding ?? embedText(record.content),
-          toPowermemPayload(record),
-        )
+        const vector = record.embedding ?? embedText(record.content)
+        const payload = toPowermemPayload(record)
+        const existing = await seekdbStore
+          .getById(record.id, record.userId, record.agentId)
+          .catch(() => null)
+        if (existing) {
+          await seekdbStore.update(record.id, vector, payload)
+          updatedCount += 1
+        } else {
+          await seekdbStore.insert(record.id, vector, payload)
+          insertedCount += 1
+        }
         migratedCount += 1
       }
 
@@ -369,8 +401,20 @@ async function migrateLegacySqliteIfNeeded(
     migratedAt: new Date().toISOString(),
     mode: 'sqlite-to-seekdb',
     migratedCount,
+    insertedCount,
+    updatedCount,
+    existingCountAtStart,
     sourcePath: store.legacyDbPath,
   })
+}
+
+export async function migrateLegacySqliteIfNeededForTest(
+  context: ManagedMemoryContext,
+  seekdbStore: VectorStore,
+): Promise<void> {
+  const store = resolveManagedMemoryStoreContext(context)
+  await fs.mkdir(store.runtimeRoot, { recursive: true })
+  await migrateLegacySqliteIfNeeded(store, seekdbStore)
 }
 
 async function removeLegacySqliteFiles(store: ManagedMemoryStoreContext): Promise<void> {
@@ -457,6 +501,32 @@ async function isManagedMemoryProvisioned(
   return hasManagedMemoryData(store)
 }
 
+async function countDistinctManagedMemoryUsers(memory: Memory): Promise<number> {
+  const seen = new Set<string>()
+  let offset = 0
+  let total = 0
+
+  while (offset === 0 || offset < total) {
+    const page = await memory.getAll({
+      limit: 500,
+      offset,
+    })
+    total = page.total
+    for (const item of page.memories) {
+      const userId = item.userId?.trim()
+      if (userId) {
+        seen.add(userId)
+      }
+    }
+    if (page.memories.length === 0) {
+      break
+    }
+    offset += page.memories.length
+  }
+
+  return seen.size
+}
+
 function trimOptional(value: string | undefined): string | undefined {
   const normalized = value?.trim()
   return normalized ? normalized : undefined
@@ -472,13 +542,96 @@ export async function getManagedMemoryStatusPayload(
   context: ManagedMemoryContext = {},
 ): Promise<ManagedMemoryStatusPayload> {
   const store = resolveManagedMemoryStoreContext(context)
-  const provisioned = runtimeCache.has(toRuntimeCacheKey(store)) || (await hasManagedMemoryData(store))
+  const runtime = runtimeCache.has(toRuntimeCacheKey(store)) ? await getManagedMemoryRuntime(context) : null
+  const provisioned = runtime ? true : await hasManagedMemoryData(store)
   return {
+    available: true,
+    backend: 'service',
+    implementation: 'powermem',
     engine: store.engine,
+    runtimeMode: 'host-managed',
+    runtimeTarget: 'native',
+    hostPlatform: process.platform,
+    hostArch: process.arch,
+    targetPlatform: process.platform,
+    targetArch: process.arch,
+    selectedWslDistro: null,
+    profileKey: 'default',
+    dataRoot: store.dataRoot,
     runtimeRoot: store.runtimeRoot,
     storagePath: store.storagePath,
     dbPath: store.dbPath,
+    legacyDbPath: store.legacyDbPath,
+    storageType: runtime?.memory.getStorageType() ?? resolveManagedMemoryStorageType(store.engine),
     provisioned,
+  }
+}
+
+export async function getManagedMemoryStatsPayload(
+  context: ManagedMemoryContext = {},
+): Promise<ManagedMemoryStatsPayload> {
+  const status = await getManagedMemoryStatusPayload(context)
+  if (!status.provisioned) {
+    return {
+      ...status,
+      totalMemories: 0,
+      userCount: 0,
+      oldestMemory: null,
+      newestMemory: null,
+    }
+  }
+
+  const runtime = await getManagedMemoryRuntime(context)
+  const [statistics, totalMemories, userCount] = await Promise.all([
+    runtime.memory.getStatistics(),
+    runtime.memory.count(),
+    countDistinctManagedMemoryUsers(runtime.memory),
+  ])
+
+  return {
+    ...status,
+    storageType: runtime.memory.getStorageType(),
+    totalMemories,
+    userCount,
+    oldestMemory: typeof statistics['oldestMemory'] === 'string' ? statistics['oldestMemory'] : null,
+    newestMemory: typeof statistics['newestMemory'] === 'string' ? statistics['newestMemory'] : null,
+  }
+}
+
+export async function listManagedMemories(
+  options: {
+    userId?: string
+    agentId?: string
+    limit?: number
+    offset?: number
+  } = {},
+  context: ManagedMemoryContext = {},
+): Promise<ManagedMemoryListPayload> {
+  const limit = Math.min(100, Math.max(1, options.limit ?? DEFAULT_LIST_LIMIT))
+  const offset = Math.max(0, options.offset ?? 0)
+
+  if (!(await isManagedMemoryProvisioned(context))) {
+    return {
+      memories: [],
+      total: 0,
+      limit,
+      offset,
+    }
+  }
+
+  const runtime = await getManagedMemoryRuntime(context)
+  const result = await runtime.memory.getAll({
+    userId: trimOptional(options.userId),
+    agentId: trimOptional(options.agentId),
+    limit,
+    offset,
+  })
+
+  return {
+    memories: result.memories.map(normalizeRecord),
+    total: result.total,
+    limit: result.limit,
+    offset: result.offset,
   }
 }
 
@@ -560,6 +713,20 @@ export async function deleteManagedMemory(
     await removeLegacySqliteFiles(runtime.store)
   }
   return deleted
+}
+
+export async function resetManagedMemory(
+  context: ManagedMemoryContext = {},
+): Promise<ManagedMemoryStatsPayload> {
+  if (!(await isManagedMemoryProvisioned(context))) {
+    return getManagedMemoryStatsPayload(context)
+  }
+  const runtime = await getManagedMemoryRuntime(context)
+  await runtime.memory.reset()
+  if (runtime.store.engine === 'powermem-seekdb') {
+    await removeLegacySqliteFiles(runtime.store)
+  }
+  return getManagedMemoryStatsPayload(context)
 }
 
 export async function closeManagedMemoryRuntimesForTests(): Promise<void> {

@@ -177,6 +177,14 @@ test('createApp rejects destructive settings actions without the danger header i
           },
         })
         assert.equal(managedResetResponse.status, 403)
+
+        const bridgeSyncResponse = await fetch(`${baseUrl}/api/memory/managed/bridge/sync`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer secret-token',
+          },
+        })
+        assert.equal(bridgeSyncResponse.status, 403)
       } finally {
         if (server.listening) {
           await new Promise<void>((resolve, reject) => {

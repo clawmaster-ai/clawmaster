@@ -26,9 +26,9 @@ import type {
   OpenclawMemorySearchCapabilityPayload,
   OpenclawMemoryStatusPayload,
 } from '@/lib/types'
+import { getIsTauri } from '@/shared/adapters/platform'
 import { ActionBanner } from '@/shared/components/ActionBanner'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
-import { getIsTauri } from '@/shared/adapters/platform'
 import type { OpenclawMemoryHit } from '@/shared/memoryOpenclawParse'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 
@@ -111,7 +111,7 @@ function isKnownLegacyMemoryUnsupported(message: string): boolean {
 
 export default function MemoryPage() {
   const { t } = useTranslation()
-  const isDesktopRuntime = getIsTauri()
+  const isTauri = getIsTauri()
   const [managedUserId, setManagedUserId] = useState('')
   const [managedAgentId, setManagedAgentId] = useState('')
   const [managedQuery, setManagedQuery] = useState('')
@@ -205,6 +205,10 @@ export default function MemoryPage() {
     () => normalizeStatusEntries(statusPayload?.data),
     [statusPayload?.data],
   )
+  const managedMemories = useMemo(
+    () => (Array.isArray(managedList?.memories) ? managedList.memories : []),
+    [managedList],
+  )
   const selectedFile =
     filesPayload?.files.find((entry) => entry.relativePath === selectedFilePath) ?? filesPayload?.files[0] ?? null
 
@@ -229,9 +233,15 @@ export default function MemoryPage() {
   }, [statusPayload?.stderr])
 
   const managedSectionError = managedStatusErr || managedStatsErr || managedListErr || managedImportStatusErr
+  const managedBridgeReady = !isTauri || managedBridgeStatus?.state === 'ready'
+  const managedDesktopBridgePending = isTauri && !managedBridgeReady
+  const managedRuntimeInteractive = managedBridgeReady
   const managedRuntimeNote = managedStatus?.provisioned
     ? t('memory.managedProvisionedNote')
     : t('memory.managedUnprovisionedNote')
+  const managedRuntimeSummaryNote = managedDesktopBridgePending
+    ? t('memory.managedDesktopSyncRequired')
+    : managedRuntimeNote
   const managedImportedCount = managedImportStatus?.importedMemoryCount ?? 0
   const managedAvailableSourceCount = managedImportStatus?.availableSourceCount ?? 0
   const managedTrackedSourceCount = managedImportStatus?.trackedSources ?? 0
@@ -340,6 +350,10 @@ export default function MemoryPage() {
   }
 
   async function handleImportOpenclawMemory() {
+    if (!managedRuntimeInteractive) {
+      setFeedback({ tone: 'error', message: t('memory.managedDesktopSyncRequired') })
+      return
+    }
     setManagedImportLoading(true)
     const result = await platformResults.importOpenclawManagedMemory()
     setManagedImportLoading(false)
@@ -352,6 +366,12 @@ export default function MemoryPage() {
   }
 
   async function handleComparisonSearch() {
+    if (!managedRuntimeInteractive) {
+      setComparisonError(t('memory.managedDesktopSyncRequired'))
+      setComparisonManagedHits(null)
+      setComparisonOpenclawHits(null)
+      return
+    }
     const trimmed = comparisonQuery.trim()
     if (!trimmed) {
       setComparisonManagedHits([])
@@ -386,6 +406,11 @@ export default function MemoryPage() {
   }
 
   async function runManagedSearch() {
+    if (!managedRuntimeInteractive) {
+      setManagedHits([])
+      setManagedSearchErr(t('memory.managedDesktopSyncRequired'))
+      return
+    }
     const trimmed = managedQuery.trim()
     if (!trimmed) {
       setManagedHits([])
@@ -409,6 +434,10 @@ export default function MemoryPage() {
   }
 
   async function handleAddManagedMemory() {
+    if (!managedRuntimeInteractive) {
+      setFeedback({ tone: 'error', message: t('memory.managedDesktopSyncRequired') })
+      return
+    }
     const content = managedContent.trim()
     if (!content) {
       setFeedback({ tone: 'error', message: t('memory.managedAddFailed') })
@@ -434,6 +463,10 @@ export default function MemoryPage() {
   }
 
   async function handleDeleteManagedMemory(memoryId: string) {
+    if (!managedRuntimeInteractive) {
+      setFeedback({ tone: 'error', message: t('memory.managedDesktopSyncRequired') })
+      return
+    }
     setManagedMutationLoading(true)
     const result = await platformResults.deleteManagedMemory(memoryId)
     setManagedMutationLoading(false)
@@ -561,11 +594,101 @@ export default function MemoryPage() {
               </button>
             </div>
 
-            {isDesktopRuntime ? (
-              <div className="rounded-[1.15rem] border border-border/70 bg-muted/30 px-4 py-3">
-                <p className="text-sm text-muted-foreground">{t('memory.managedDesktopUnavailable')}</p>
+            <div className="section-subcard space-y-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-foreground">{t('memory.managedBridgeTitle')}</h4>
+                  <p className="mt-1 text-sm text-muted-foreground">{t('memory.managedBridgeHelp')}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={
+                    managedBridgeSyncLoading
+                    || managedBridgeStatusLoading
+                    || managedBridgeStatus?.state === 'unsupported'
+                  }
+                  onClick={() => void handleSyncManagedBridge()}
+                  className="button-secondary shrink-0 disabled:opacity-50"
+                >
+                  <Wrench className={`h-4 w-4 ${managedBridgeSyncLoading ? 'animate-spin' : ''}`} />
+                  <span>
+                    {managedBridgeSyncLoading ? t('memory.managedBridgeSyncing') : t('memory.managedBridgeSyncAction')}
+                  </span>
+                </button>
               </div>
-            ) : managedStatusLoading || managedStatsLoading || managedImportStatusLoading || managedListLoading ? (
+
+              {managedBridgeStatusLoading ? (
+                <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+              ) : managedBridgeStatusErr ? (
+                <p className="text-sm text-red-500">{managedBridgeStatusErr}</p>
+              ) : managedBridgeStatus ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={
+                        managedBridgeStatus.state === 'ready'
+                          ? 'inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400'
+                          : managedBridgeStatus.state === 'unsupported'
+                            ? 'inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400'
+                            : 'inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground'
+                      }
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>
+                        {managedBridgeStatus.state === 'ready'
+                          ? t('memory.managedBridgeReady')
+                          : managedBridgeStatus.state === 'unsupported'
+                            ? t('memory.managedBridgeUnsupported')
+                            : t('memory.managedBridgeNeedsSync')}
+                      </span>
+                    </span>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                      {managedBridgeStatus.pluginId}
+                    </span>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                      {managedBridgeStatus.installed
+                        ? t('memory.managedBridgeInstalled')
+                        : t('memory.managedBridgeNotInstalled')}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 text-xs text-muted-foreground md:grid-cols-2">
+                    <p>
+                      {t('memory.managedBridgeSlotLabel')}: <span className="font-mono">{managedBridgeStatus.currentSlotValue ?? '—'}</span>
+                    </p>
+                    <p>
+                      {t('memory.managedBridgeRuntimePathLabel')}:{' '}
+                      <span className="font-mono break-all">{managedBridgeStatus.runtimePluginPath ?? '—'}</span>
+                    </p>
+                    <p>
+                      {t('memory.managedBridgePluginPathLabel')}:{' '}
+                      <span className="font-mono break-all">{managedBridgeStatus.pluginPath}</span>
+                    </p>
+                    <p>
+                      {t('memory.managedBridgeDataRootLabel')}:{' '}
+                      <span className="font-mono break-all">{managedBridgeStatus.desired.entry?.config.dataRoot ?? '—'}</span>
+                    </p>
+                  </div>
+
+                  {managedBridgeStatus.issues.length > 0 ? (
+                    <div className="rounded-[1rem] border border-border/70 bg-background/70 px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                        {t('memory.managedBridgeIssuesTitle')}
+                      </p>
+                      <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                        {managedBridgeStatus.issues.map((issue) => (
+                          <li key={issue} className="list-disc ml-5">
+                            {issue}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+
+            {managedStatusLoading || managedStatsLoading || managedImportStatusLoading || managedListLoading ? (
               <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
             ) : managedSectionError ? (
               <div className="space-y-2">
@@ -574,13 +697,17 @@ export default function MemoryPage() {
               </div>
             ) : managedStatus && managedStats && managedImportStatus && managedList ? (
               <>
-                <div className="rounded-[1.15rem] border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+                <div className={managedRuntimeInteractive
+                  ? 'rounded-[1.15rem] border border-emerald-500/20 bg-emerald-500/5 px-4 py-3'
+                  : 'rounded-[1.15rem] border border-border/70 bg-background/70 px-4 py-3'}>
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                        <span className={managedRuntimeInteractive
+                          ? 'inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400'
+                          : 'inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground'}>
                           <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>{t('memory.managedReadyBadge')}</span>
+                          <span>{managedRuntimeInteractive ? t('memory.managedReadyBadge') : t('memory.managedBridgeNeedsSync')}</span>
                         </span>
                         <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
                           {managedStats.engine}
@@ -589,7 +716,7 @@ export default function MemoryPage() {
                           {managedStats.storageType}
                         </span>
                       </div>
-                      <p className="text-sm text-muted-foreground">{managedRuntimeNote}</p>
+                      <p className="text-sm text-muted-foreground">{managedRuntimeSummaryNote}</p>
                     </div>
                   </div>
                   <div className="mt-3 grid gap-3 text-xs text-muted-foreground md:grid-cols-3">
@@ -609,102 +736,12 @@ export default function MemoryPage() {
                 <div className="section-subcard space-y-3">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                      <h4 className="text-sm font-medium text-foreground">{t('memory.managedBridgeTitle')}</h4>
-                      <p className="mt-1 text-sm text-muted-foreground">{t('memory.managedBridgeHelp')}</p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={managedBridgeSyncLoading || managedBridgeStatusLoading}
-                      onClick={() => void handleSyncManagedBridge()}
-                      className="button-secondary shrink-0 disabled:opacity-50"
-                    >
-                      <Wrench className={`h-4 w-4 ${managedBridgeSyncLoading ? 'animate-spin' : ''}`} />
-                      <span>
-                        {managedBridgeSyncLoading ? t('memory.managedBridgeSyncing') : t('memory.managedBridgeSyncAction')}
-                      </span>
-                    </button>
-                  </div>
-
-                  {managedBridgeStatusLoading ? (
-                    <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
-                  ) : managedBridgeStatusErr ? (
-                    <p className="text-sm text-red-500">{managedBridgeStatusErr}</p>
-                  ) : managedBridgeStatus ? (
-                    <>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={
-                            managedBridgeStatus.state === 'ready'
-                              ? 'inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400'
-                              : managedBridgeStatus.state === 'unsupported'
-                                ? 'inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400'
-                                : 'inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground'
-                          }
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>
-                            {managedBridgeStatus.state === 'ready'
-                              ? t('memory.managedBridgeReady')
-                              : managedBridgeStatus.state === 'unsupported'
-                                ? t('memory.managedBridgeUnsupported')
-                                : t('memory.managedBridgeNeedsSync')}
-                          </span>
-                        </span>
-                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                          {managedBridgeStatus.pluginId}
-                        </span>
-                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                          {managedBridgeStatus.installed
-                            ? t('memory.managedBridgeInstalled')
-                            : t('memory.managedBridgeNotInstalled')}
-                        </span>
-                      </div>
-
-                      <div className="grid gap-3 text-xs text-muted-foreground md:grid-cols-2">
-                        <p>
-                          {t('memory.managedBridgeSlotLabel')}: <span className="font-mono">{managedBridgeStatus.currentSlotValue ?? '—'}</span>
-                        </p>
-                        <p>
-                          {t('memory.managedBridgeRuntimePathLabel')}:{' '}
-                          <span className="font-mono break-all">{managedBridgeStatus.runtimePluginPath ?? '—'}</span>
-                        </p>
-                        <p>
-                          {t('memory.managedBridgePluginPathLabel')}:{' '}
-                          <span className="font-mono break-all">{managedBridgeStatus.pluginPath}</span>
-                        </p>
-                        <p>
-                          {t('memory.managedBridgeDataRootLabel')}:{' '}
-                          <span className="font-mono break-all">{managedBridgeStatus.desired.entry?.config.dataRoot ?? '—'}</span>
-                        </p>
-                      </div>
-
-                      {managedBridgeStatus.issues.length > 0 ? (
-                        <div className="rounded-[1rem] border border-border/70 bg-background/70 px-4 py-3">
-                          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                            {t('memory.managedBridgeIssuesTitle')}
-                          </p>
-                          <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                            {managedBridgeStatus.issues.map((issue) => (
-                              <li key={issue} className="list-disc ml-5">
-                                {issue}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
-
-                <div className="section-subcard space-y-3">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
                       <h4 className="text-sm font-medium text-foreground">{t('memory.managedImportTitle')}</h4>
                       <p className="mt-1 text-sm text-muted-foreground">{t('memory.managedImportHelp')}</p>
                     </div>
                     <button
                       type="button"
-                      disabled={managedImportLoading}
+                      disabled={managedImportLoading || !managedRuntimeInteractive}
                       onClick={() => void handleImportOpenclawMemory()}
                       className="button-secondary shrink-0 disabled:opacity-50"
                     >
@@ -859,11 +896,12 @@ export default function MemoryPage() {
                         placeholder={t('memory.managedComparisonPlaceholder')}
                         value={comparisonQuery}
                         onChange={(event) => setComparisonQuery(event.target.value)}
+                        disabled={!managedRuntimeInteractive}
                         className="control-input flex-1"
                       />
                       <button
                         type="button"
-                        disabled={comparisonLoading}
+                        disabled={comparisonLoading || !managedRuntimeInteractive}
                         onClick={() => void handleComparisonSearch()}
                         className="button-secondary shrink-0 disabled:opacity-50"
                       >
@@ -924,6 +962,7 @@ export default function MemoryPage() {
                     placeholder={t('memory.managedUserPlaceholder')}
                     value={managedUserId}
                     onChange={(event) => setManagedUserId(event.target.value)}
+                    disabled={!managedRuntimeInteractive}
                     className="control-input"
                   />
                   <input
@@ -931,6 +970,7 @@ export default function MemoryPage() {
                     placeholder={t('memory.managedAgentPlaceholder')}
                     value={managedAgentId}
                     onChange={(event) => setManagedAgentId(event.target.value)}
+                    disabled={!managedRuntimeInteractive}
                     className="control-input"
                   />
                 </div>
@@ -939,6 +979,7 @@ export default function MemoryPage() {
                   placeholder={t('memory.managedContentPlaceholder')}
                   value={managedContent}
                   onChange={(event) => setManagedContent(event.target.value)}
+                  disabled={!managedRuntimeInteractive}
                   className="control-input min-h-28 resize-y"
                 />
 
@@ -948,11 +989,12 @@ export default function MemoryPage() {
                     placeholder={t('memory.managedSearchPlaceholder')}
                     value={managedQuery}
                     onChange={(event) => setManagedQuery(event.target.value)}
+                    disabled={!managedRuntimeInteractive}
                     className="control-input flex-1"
                   />
                   <button
                     type="button"
-                    disabled={managedMutationLoading}
+                    disabled={managedMutationLoading || !managedRuntimeInteractive}
                     onClick={() => void handleAddManagedMemory()}
                     className="button-primary shrink-0 disabled:opacity-50"
                   >
@@ -960,7 +1002,7 @@ export default function MemoryPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={managedSearchLoading}
+                    disabled={managedSearchLoading || !managedRuntimeInteractive}
                     onClick={() => void runManagedSearch()}
                     className="button-secondary shrink-0 disabled:opacity-50"
                   >
@@ -1003,9 +1045,9 @@ export default function MemoryPage() {
 
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-foreground">{t('memory.managedRecentTitle')}</h4>
-                  {managedList.memories.length > 0 ? (
+                  {managedMemories.length > 0 ? (
                     <ul className="space-y-3">
-                      {managedList.memories.map((memory) => (
+                      {managedMemories.map((memory) => (
                         <li key={memory.memoryId} className="list-card bg-background/70 text-sm">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
@@ -1028,9 +1070,9 @@ export default function MemoryPage() {
                             </div>
                             <button
                               type="button"
-                              disabled={managedMutationLoading}
+                              disabled={managedMutationLoading || !managedRuntimeInteractive}
                               onClick={() => void handleDeleteManagedMemory(memory.memoryId)}
-                              className="button-danger shrink-0 px-2 py-1 text-xs"
+                              className="button-danger shrink-0 px-2 py-1 text-xs disabled:opacity-50"
                               aria-label={`${t('common.delete')} ${memory.memoryId}`}
                             >
                               <Trash2 className="h-3.5 w-3.5" />

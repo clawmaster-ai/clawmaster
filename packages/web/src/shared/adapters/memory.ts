@@ -14,10 +14,77 @@ import type {
 import { tauriInvoke } from '@/shared/adapters/invoke'
 import { fromPromise } from '@/shared/adapters/resultHelpers'
 import type { AdapterResult } from '@/shared/adapters/types'
-import { fail, ok } from '@/shared/adapters/types'
+import { ok } from '@/shared/adapters/types'
 import { getIsTauri } from '@/shared/adapters/platform'
 import { createDangerousActionHeaders, webFetchJson, webFetchVoid } from '@/shared/adapters/webHttp'
 import { parseOpenclawMemorySearchJson, type OpenclawMemoryHit } from '@/shared/memoryOpenclawParse'
+
+function findBalancedJsonEnd(raw: string, start: number): number | null {
+  const first = raw[start]
+  if (first !== '{' && first !== '[') return null
+
+  const expectedClosers: string[] = [first === '{' ? '}' : ']']
+  let inString = false
+  let escaped = false
+
+  for (let index = start + 1; index < raw.length; index += 1) {
+    const ch = raw[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (ch === '\\') {
+        escaped = true
+        continue
+      }
+      if (ch === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      inString = true
+      continue
+    }
+    if (ch === '{') {
+      expectedClosers.push('}')
+      continue
+    }
+    if (ch === '[') {
+      expectedClosers.push(']')
+      continue
+    }
+    if (ch === '}' || ch === ']') {
+      const expected = expectedClosers.pop()
+      if (expected !== ch) {
+        return null
+      }
+      if (expectedClosers.length === 0) {
+        return index
+      }
+    }
+  }
+
+  return null
+}
+
+function extractFirstJsonValue(raw: string): unknown | null {
+  for (let index = 0; index < raw.length; index += 1) {
+    const ch = raw[index]
+    if (ch !== '{' && ch !== '[') continue
+    const end = findBalancedJsonEnd(raw, index)
+    if (end === null) continue
+    const candidate = raw.slice(index, end + 1)
+    try {
+      return JSON.parse(candidate)
+    } catch {
+      continue
+    }
+  }
+  return null
+}
 
 function parseStdoutJsonLoose(stdout: string): unknown {
   const t = stdout.trim()
@@ -25,13 +92,9 @@ function parseStdoutJsonLoose(stdout: string): unknown {
   try {
     return JSON.parse(t)
   } catch {
-    const m = t.match(/\{[\s\S]*\}/)
-    if (m) {
-      try {
-        return JSON.parse(m[0])
-      } catch {
-        /* ignore */
-      }
+    const extracted = extractFirstJsonValue(t)
+    if (extracted !== null) {
+      return extracted
     }
     return { raw: t }
   }
@@ -49,8 +112,105 @@ function hasFtsUnavailableError(message: string): boolean {
   return lower.includes('fts5') && lower.includes('no such module')
 }
 
-function desktopManagedMemoryUnavailable<T>(): AdapterResult<T> {
-  return fail('Managed PowerMem memory is available in web/backend mode first. Desktop integration lands in a later PR.')
+interface TauriCapturedCommandResult {
+  code: number
+  stdout: string
+  stderr: string
+}
+
+function isStructuredManagedDesktopJson(value: unknown): boolean {
+  if (Array.isArray(value)) return true
+  if (!value || typeof value !== 'object') return false
+  return !('raw' in (value as Record<string, unknown>))
+}
+
+function parseManagedDesktopJson<T>(captured: TauriCapturedCommandResult): T {
+  const parsedStdout = parseStdoutJsonLoose(captured.stdout)
+  if (isStructuredManagedDesktopJson(parsedStdout)) {
+    return parsedStdout as T
+  }
+  const parsedStderr = parseStdoutJsonLoose(captured.stderr)
+  if (isStructuredManagedDesktopJson(parsedStderr)) {
+    return parsedStderr as T
+  }
+  const detail = captured.stderr?.trim() || captured.stdout?.trim() || 'Managed PowerMem command failed'
+  throw new Error(detail)
+}
+
+async function runTauriManagedMemoryCommand<T>(args: string[]): Promise<T> {
+  const captured = await tauriInvoke<TauriCapturedCommandResult>('run_openclaw_command_captured', { args })
+  return parseManagedDesktopJson<T>(captured)
+}
+
+function isMissingManagedMemoryCommand(message: string): boolean {
+  return /unknown command ['"`]?ltm['"`]?/i.test(message)
+}
+
+function resolveManagedMemoryStorageType(engine: ManagedMemoryStatusPayload['engine']): string {
+  return engine === 'powermem-seekdb' ? 'seekdb' : 'sqlite'
+}
+
+function buildManagedMemoryStatusFromBridge(
+  bridge: ManagedMemoryBridgeStatusPayload,
+): ManagedMemoryStatusPayload {
+  return {
+    ...bridge.store,
+    available: true,
+    backend: 'service',
+    storageType: resolveManagedMemoryStorageType(bridge.store.engine),
+    provisioned: false,
+  }
+}
+
+function buildManagedMemoryStatsFromBridge(
+  bridge: ManagedMemoryBridgeStatusPayload,
+): ManagedMemoryStatsPayload {
+  return {
+    ...bridge.store,
+    storageType: resolveManagedMemoryStorageType(bridge.store.engine),
+    totalMemories: 0,
+    userCount: 0,
+    oldestMemory: null,
+    newestMemory: null,
+  }
+}
+
+function buildManagedMemoryImportStatusFromBridge(
+  bridge: ManagedMemoryBridgeStatusPayload,
+): ManagedMemoryImportStatusPayload {
+  return {
+    profileKey: bridge.store.profileKey,
+    runtimeRoot: bridge.store.runtimeRoot,
+    stateFile: `${bridge.store.runtimeRoot}/openclaw-import-state.json`,
+    availableSourceCount: 0,
+    trackedSources: 0,
+    importedMemoryCount: 0,
+    lastImportedAt: null,
+    lastRun: null,
+  }
+}
+
+async function getTauriManagedMemoryBridgeStatus(): Promise<ManagedMemoryBridgeStatusPayload> {
+  return tauriInvoke<ManagedMemoryBridgeStatusPayload>('get_managed_memory_bridge_status')
+}
+
+async function runTauriManagedMemoryReadWithBridgeFallback<T>(
+  args: string[],
+  buildFallback: (bridge: ManagedMemoryBridgeStatusPayload) => T,
+): Promise<T> {
+  try {
+    return await runTauriManagedMemoryCommand<T>(args)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!isMissingManagedMemoryCommand(message)) {
+      throw error
+    }
+    const bridge = await getTauriManagedMemoryBridgeStatus()
+    if (bridge.state === 'ready') {
+      throw error
+    }
+    return buildFallback(bridge)
+  }
 }
 
 async function tauriOpenclawMemoryStatus(): Promise<OpenclawMemoryStatusPayload> {
@@ -154,34 +314,64 @@ export async function deleteOpenclawMemoryFileResult(relativePath: string): Prom
 }
 
 export async function managedMemoryStatusResult(): Promise<AdapterResult<ManagedMemoryStatusPayload>> {
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    return fromPromise(() =>
+      runTauriManagedMemoryReadWithBridgeFallback<ManagedMemoryStatusPayload>(
+        ['ltm', 'status', '--json'],
+        buildManagedMemoryStatusFromBridge,
+      ),
+    )
+  }
   return webFetchJson<ManagedMemoryStatusPayload>('/api/memory/managed/status')
 }
 
 export async function managedMemoryBridgeStatusResult(): Promise<AdapterResult<ManagedMemoryBridgeStatusPayload>> {
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    return fromPromise(() => tauriInvoke<ManagedMemoryBridgeStatusPayload>('get_managed_memory_bridge_status'))
+  }
   return webFetchJson<ManagedMemoryBridgeStatusPayload>('/api/memory/managed/bridge/status')
 }
 
 export async function syncManagedMemoryBridgeResult(): Promise<AdapterResult<ManagedMemoryBridgeStatusPayload>> {
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    return fromPromise(() => tauriInvoke<ManagedMemoryBridgeStatusPayload>('sync_managed_memory_bridge'))
+  }
   return webFetchJson<ManagedMemoryBridgeStatusPayload>('/api/memory/managed/bridge/sync', {
     method: 'POST',
+    headers: createDangerousActionHeaders(),
   })
 }
 
 export async function managedMemoryStatsResult(): Promise<AdapterResult<ManagedMemoryStatsPayload>> {
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    return fromPromise(() =>
+      runTauriManagedMemoryReadWithBridgeFallback<ManagedMemoryStatsPayload>(
+        ['ltm', 'stats', '--json'],
+        buildManagedMemoryStatsFromBridge,
+      ),
+    )
+  }
   return webFetchJson<ManagedMemoryStatsPayload>('/api/memory/managed/stats')
 }
 
 export async function managedMemoryImportStatusResult(): Promise<AdapterResult<ManagedMemoryImportStatusPayload>> {
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    return fromPromise(() =>
+      runTauriManagedMemoryReadWithBridgeFallback<ManagedMemoryImportStatusPayload>(
+        ['ltm', 'import-status', '--json'],
+        buildManagedMemoryImportStatusFromBridge,
+      ),
+    )
+  }
   return webFetchJson<ManagedMemoryImportStatusPayload>('/api/memory/managed/import/status')
 }
 
 export async function importOpenclawManagedMemoryResult(): Promise<AdapterResult<ManagedMemoryImportStatusPayload>> {
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    return fromPromise(() =>
+      runTauriManagedMemoryCommand<ManagedMemoryImportStatusPayload>(['ltm', 'import', '--json']),
+    )
+  }
   return webFetchJson<ManagedMemoryImportStatusPayload>('/api/memory/managed/import/openclaw', {
     method: 'POST',
   })
@@ -193,7 +383,21 @@ export async function managedMemoryListResult(options?: {
   limit?: number
   offset?: number
 }): Promise<AdapterResult<ManagedMemoryListPayload>> {
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    const args = ['ltm', 'list', '--json']
+    if (options?.limit) args.push('--limit', String(options.limit))
+    if (options?.offset) args.push('--offset', String(options.offset))
+    if (options?.userId) args.push('--user', options.userId)
+    if (options?.agentId) args.push('--agent', options.agentId)
+    return fromPromise(() =>
+      runTauriManagedMemoryReadWithBridgeFallback<ManagedMemoryListPayload>(args, () => ({
+        memories: [],
+        total: 0,
+        limit: options?.limit ?? 20,
+        offset: options?.offset ?? 0,
+      })),
+    )
+  }
   const params = new URLSearchParams()
   if (options?.userId) params.set('userId', options.userId)
   if (options?.agentId) params.set('agentId', options.agentId)
@@ -213,7 +417,27 @@ export async function managedMemorySearchResult(
 ): Promise<AdapterResult<ManagedMemorySearchHit[]>> {
   const trimmed = query.trim()
   if (!trimmed) return ok([])
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    const args = ['ltm', 'search', '--json', '--query', trimmed]
+    if (options?.limit) args.push('--limit', String(options.limit))
+    if (options?.userId) args.push('--user', options.userId)
+    if (options?.agentId) args.push('--agent', options.agentId)
+    return fromPromise(async () => {
+      try {
+        return await runTauriManagedMemoryCommand<ManagedMemorySearchHit[]>(args)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (!isMissingManagedMemoryCommand(message)) {
+          throw error
+        }
+        const bridge = await getTauriManagedMemoryBridgeStatus()
+        if (bridge.state === 'ready') {
+          throw error
+        }
+        return []
+      }
+    })
+  }
   return webFetchJson<ManagedMemorySearchHit[]>('/api/memory/managed/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -232,7 +456,13 @@ export async function addManagedMemoryResult(input: {
   agentId?: string
   metadata?: Record<string, unknown>
 }): Promise<AdapterResult<ManagedMemoryRecord>> {
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    const args = ['ltm', 'add', '--json']
+    if (input.userId) args.push('--user', input.userId)
+    if (input.agentId) args.push('--agent', input.agentId)
+    args.push('--', input.content)
+    return fromPromise(() => runTauriManagedMemoryCommand<ManagedMemoryRecord>(args))
+  }
   return webFetchJson<ManagedMemoryRecord>('/api/memory/managed/add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -241,7 +471,11 @@ export async function addManagedMemoryResult(input: {
 }
 
 export async function deleteManagedMemoryResult(memoryId: string): Promise<AdapterResult<{ deleted: boolean }>> {
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    return fromPromise(() =>
+      runTauriManagedMemoryCommand<{ deleted: boolean }>(['ltm', 'delete', '--json', memoryId]),
+    )
+  }
   return webFetchJson<{ deleted: boolean }>('/api/memory/managed/delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -250,7 +484,9 @@ export async function deleteManagedMemoryResult(memoryId: string): Promise<Adapt
 }
 
 export async function resetManagedMemoryResult(): Promise<AdapterResult<ManagedMemoryStatsPayload>> {
-  if (getIsTauri()) return desktopManagedMemoryUnavailable()
+  if (getIsTauri()) {
+    return fromPromise(() => runTauriManagedMemoryCommand<ManagedMemoryStatsPayload>(['ltm', 'reset', '--json']))
+  }
   return webFetchJson<ManagedMemoryStatsPayload>('/api/memory/managed/reset', {
     method: 'POST',
     headers: createDangerousActionHeaders(),

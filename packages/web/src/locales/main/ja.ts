@@ -1522,6 +1522,7 @@ export default {
   "memory.managedFoundationHelp": "ClawMaster 管理の PowerMem でローカルなセマンティック記憶を扱います。下には確認用の既存 OpenClaw メモリを残します。",
   "memory.managedFoundationTitle": "PowerMem 基盤",
   "memory.managedFoundationUnavailable": "この管理セクションは PR1 では web/backend 先行です。下の OpenClaw ネイティブメモリは引き続き使えます。",
+  "memory.managedDesktopSyncRequired": "デスクトップで管理 PowerMem を使う前に、まず OpenClaw ブリッジを同期してください。",
   "memory.managedBridgeTitle": "OpenClaw ブリッジ",
   "memory.managedBridgeHelp": "同梱したローカル PowerMem プラグインを OpenClaw に入れ、memory slot をそのプラグインへ向け、現在の profile と設定を揃えます。",
   "memory.managedBridgeSyncAction": "ブリッジを同期",

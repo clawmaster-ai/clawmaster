@@ -173,7 +173,7 @@ export function registerMemoryRoutes(app: express.Express): void {
     }
   })
 
-  app.post('/api/memory/managed/bridge/sync', async (_req, res) => {
+  app.post('/api/memory/managed/bridge/sync', requireDangerousServiceAuth, async (_req, res) => {
     try {
       const payload = await syncManagedMemoryBridge()
       res.json(payload)

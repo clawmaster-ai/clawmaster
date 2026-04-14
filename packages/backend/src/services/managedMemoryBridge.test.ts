@@ -6,6 +6,7 @@ import test from 'node:test'
 
 import {
   buildManagedMemoryBridgeEntry,
+  resolveManagedMemoryBridgeImportContextForTest,
   getManagedMemoryBridgePluginPathIssue,
   getManagedMemoryBridgeStatusPayload,
   getManagedMemoryBridgePluginIssue,
@@ -13,6 +14,7 @@ import {
   resolveManagedMemoryBridgeImportModeForTest,
   resolveInstalledPluginPath,
   resolveManagedMemoryPluginRootPath,
+  shouldIgnoreManagedMemoryBridgeReindexErrorForTest,
   windowsPathToWslPath,
 } from './managedMemoryBridge.js'
 
@@ -47,7 +49,7 @@ test('buildManagedMemoryBridgeEntry points native runtimes at the managed data r
   })
 })
 
-test('buildManagedMemoryBridgeEntry converts the data root for WSL runtimes', () => {
+test('buildManagedMemoryBridgeEntry returns null when WSL runtime is selected without a valid distro', () => {
   const entry = buildManagedMemoryBridgeEntry({
     platform: 'win32',
     homeDir: 'C:\\Users\\haili',
@@ -55,18 +57,7 @@ test('buildManagedMemoryBridgeEntry converts the data root for WSL runtimes', ()
     profileSelection: { kind: 'named', name: 'lab' },
   })
 
-  assert.deepEqual(entry, {
-    enabled: true,
-    config: {
-      dataRoot: '/mnt/c/Users/haili/.clawmaster/data/named/lab',
-      engine: 'powermem-sqlite',
-      autoCapture: true,
-      autoRecall: true,
-      inferOnAdd: false,
-      recallLimit: 5,
-      recallScoreThreshold: 0,
-    },
-  })
+  assert.equal(entry, null)
 })
 
 test('resolveManagedMemoryPluginRootPath prefers packaged plugin resources when present', async () => {
@@ -89,6 +80,26 @@ test('resolveManagedMemoryPluginRootPath prefers packaged plugin resources when 
   }
 })
 
+test('resolveManagedMemoryPluginRootPath keeps the packaged root when configured, even if files are missing', () => {
+  const previous = process.env.CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT
+  process.env.CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT = path.join(
+    os.tmpdir(),
+    'clawmaster-memory-plugin-missing',
+  )
+  try {
+    assert.equal(
+      resolveManagedMemoryPluginRootPath(),
+      process.env.CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT,
+    )
+  } finally {
+    if (previous === undefined) {
+      delete process.env.CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT
+    } else {
+      process.env.CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT = previous
+    }
+  }
+})
+
 test('bridge status stays non-ready until the managed bridge config is synced', async () => {
   const status = await getManagedMemoryBridgeStatusPayload({
     platform: 'linux',
@@ -106,6 +117,32 @@ test('bridge status stays non-ready until the managed bridge config is synced', 
     status.issues.join('\n'),
     /not installed in OpenClaw yet|plugins\.slots\.memory is not set|plugins\.entries\.memory-clawmaster-powermem/
   )
+})
+
+test('bridge status reports unsupported when the packaged plugin files are missing', async () => {
+  const missingRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'clawmaster-memory-plugin-missing-status-'))
+  const previous = process.env.CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT
+  process.env.CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT = missingRoot
+  try {
+    const status = await getManagedMemoryBridgeStatusPayload({
+      platform: 'linux',
+      homeDir: path.join(os.tmpdir(), 'clawmaster-memory-plugin-status-missing'),
+      runtimeSelection: { mode: 'native' },
+      profileSelection: { kind: 'default' },
+    })
+
+    assert.equal(status.pluginPath, missingRoot)
+    assert.equal(status.pluginPathExists, false)
+    assert.equal(status.state, 'unsupported')
+    assert.match(status.issues.join('\n'), /plugin files are missing/)
+  } finally {
+    if (previous === undefined) {
+      delete process.env.CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT
+    } else {
+      process.env.CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT = previous
+    }
+    await fs.rm(missingRoot, { recursive: true, force: true })
+  }
 })
 
 test('isManagedMemoryBridgePluginReady only treats active plugin states as ready', () => {
@@ -135,6 +172,7 @@ test('getManagedMemoryBridgePluginIssue flags disabled installed plugins as drif
 test('getManagedMemoryBridgePluginPathIssue detects stale linked plugin paths', () => {
   assert.equal(
     getManagedMemoryBridgePluginPathIssue(
+      true,
       '/opt/clawmaster-old/plugins/memory-clawmaster-powermem',
       '/opt/clawmaster/plugins/memory-clawmaster-powermem',
     ),
@@ -142,11 +180,41 @@ test('getManagedMemoryBridgePluginPathIssue detects stale linked plugin paths', 
   )
   assert.equal(
     getManagedMemoryBridgePluginPathIssue(
+      true,
       'global:/opt/clawmaster/plugins/memory-clawmaster-powermem/index.ts',
       '/opt/clawmaster/plugins/memory-clawmaster-powermem',
     ),
     null,
   )
+  assert.equal(
+    getManagedMemoryBridgePluginPathIssue(
+      true,
+      null,
+      '/opt/clawmaster/plugins/memory-clawmaster-powermem',
+    ),
+    'memory-clawmaster-powermem is installed but its linked source path is unknown.',
+  )
+  assert.equal(
+    getManagedMemoryBridgePluginPathIssue(
+      false,
+      null,
+      '/opt/clawmaster/plugins/memory-clawmaster-powermem',
+    ),
+    null,
+  )
+})
+
+test('bridge status reports unsupported when WSL runtime is selected without a valid distro', async () => {
+  const status = await getManagedMemoryBridgeStatusPayload({
+    platform: 'win32',
+    homeDir: 'C:\\Users\\haili',
+    runtimeSelection: { mode: 'wsl2', wslDistro: 'Missing-Ubuntu' },
+    profileSelection: { kind: 'default' },
+  })
+
+  assert.equal(status.state, 'unsupported')
+  assert.equal(status.runtimePluginPath, null)
+  assert.match(status.issues.join('\n'), /WSL2 runtime is selected, but the configured distro is missing or unavailable/i)
 })
 
 test('resolveInstalledPluginPath only trusts explicit source paths', () => {
@@ -166,7 +234,7 @@ test('resolveInstalledPluginPath only trusts explicit source paths', () => {
       name: 'memory-clawmaster-powermem',
       description: '/opt/clawmaster/plugins/memory-clawmaster-powermem',
     }),
-    null,
+    '/opt/clawmaster/plugins/memory-clawmaster-powermem',
   )
 })
 
@@ -189,5 +257,36 @@ test('resolveManagedMemoryBridgeImportModeForTest uses OpenClaw reindex for WSL 
       profileSelection: { kind: 'default' },
     }),
     'openclaw-reindex',
+  )
+})
+
+test('resolveManagedMemoryBridgeImportContextForTest maps WSL workspace imports to a host UNC path', () => {
+  const context = resolveManagedMemoryBridgeImportContextForTest({
+    platform: 'win32',
+    homeDir: 'C:\\Users\\haili',
+    runtimeSelection: { mode: 'wsl2', wslDistro: 'Ubuntu-24.04' },
+    profileSelection: { kind: 'named', name: 'lab' },
+  })
+
+  assert.equal(
+    context.openclawDataRootOverride,
+    '\\\\wsl.localhost\\Ubuntu-24.04\\home\\haili\\.openclaw-lab',
+  )
+})
+
+test('shouldIgnoreManagedMemoryBridgeReindexErrorForTest tolerates legacy missing memory commands', () => {
+  assert.equal(
+    shouldIgnoreManagedMemoryBridgeReindexErrorForTest(new Error("error: unknown command 'memory'")),
+    true,
+  )
+  assert.equal(
+    shouldIgnoreManagedMemoryBridgeReindexErrorForTest(
+      new Error('OpenClaw requires Node >= 20. Upgrade Node and re-run OpenClaw.'),
+    ),
+    true,
+  )
+  assert.equal(
+    shouldIgnoreManagedMemoryBridgeReindexErrorForTest(new Error('permission denied')),
+    false,
   )
 })
