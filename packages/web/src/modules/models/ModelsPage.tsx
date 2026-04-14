@@ -437,9 +437,9 @@ function ProviderCard({
       {showModelPicker && displayModels.length > 0 && (
         <div
           id={`models-provider-picker-${providerId}`}
-          className="mt-4 rounded-2xl border border-primary/15 bg-primary/[0.04] p-4"
+          className="mt-4 rounded-2xl border border-primary/15 bg-primary/[0.04] p-3.5"
         >
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold">{t('models.pickModel')}</p>
               <p className="text-xs text-muted-foreground">{t('models.pickModelDesc')}</p>
@@ -449,42 +449,46 @@ function ProviderCard({
             </span>
           </div>
 
-          <div className="mt-4 space-y-3">
-            <label className="block space-y-2">
+          <div className="mt-3 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="control-label">{t('common.search')}</span>
+              <p className="text-[11px] text-muted-foreground">
+                {t('models.showingModels', { count: filteredModels.length, total: displayModels.length })}
+              </p>
+            </div>
+            <label className="block">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="search"
                   value={modelQuery}
                   onChange={(event) => setModelQuery(event.target.value)}
                   placeholder={t('models.searchModelsPlaceholder')}
-                  className="control-input pl-9"
+                  className="control-input h-10 pl-9"
                 />
               </div>
             </label>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/80 px-4 py-3">
-              <div className="space-y-2">
-                <p className="control-label">{t('models.showingModels', { count: filteredModels.length, total: displayModels.length })}</p>
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-background/80 px-3 py-2.5">
+              <div className="min-w-0">
                 {selectedModelId === currentModelId ? (
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
+                  <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                    <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
                       {t('models.current')}
                     </span>
                     <span className="font-medium">{currentModel?.name ?? currentModelId ?? '-'}</span>
                     {currentModel?.id && (
-                      <span className="font-mono text-xs text-muted-foreground">{currentModel.id}</span>
+                      <span className="truncate font-mono text-[11px] text-muted-foreground">{currentModel.id}</span>
                     )}
                   </div>
                 ) : (
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="rounded-full border border-border/80 bg-card px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                    <span className="rounded-full border border-border/80 bg-card px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                       {t('models.current')}
                     </span>
                     <span className="font-medium">{currentModel?.name ?? currentModelId ?? '-'}</span>
                     <span className="text-muted-foreground">→</span>
-                    <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
+                    <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
                       {t('models.selected')}
                     </span>
                     <span className="font-medium text-primary">{selectedModel?.name ?? '-'}</span>
@@ -494,7 +498,7 @@ function ProviderCard({
             </div>
           </div>
 
-          <div className="mt-4 grid max-h-80 gap-2 overflow-y-auto pr-1">
+          <div className="mt-3 grid max-h-[44vh] gap-1.5 overflow-y-auto pr-1">
             {filteredModels.map((model) => {
               const selected = selectedModelId === model.id
               const current = currentModelId === model.id
@@ -503,15 +507,15 @@ function ProviderCard({
                   key={model.id}
                   type="button"
                   onClick={() => setSelectedModelId(model.id)}
-                  className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition ${
+                  className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-left transition ${
                     selected
                       ? 'border-primary/40 bg-background shadow-sm ring-1 ring-primary/15'
                       : 'border-border/80 bg-card/60 hover:border-primary/20 hover:bg-background/80'
                   }`}
                 >
-                  <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex min-w-0 items-start gap-2.5">
                     <span
-                      className={`mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full border ${
+                      className={`mt-0.5 inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border ${
                         selected
                           ? 'border-primary bg-primary text-primary-foreground'
                           : current
@@ -519,21 +523,21 @@ function ProviderCard({
                             : 'border-border bg-background text-transparent'
                       }`}
                     >
-                      <Check className="h-3.5 w-3.5" />
+                      <Check className="h-3 w-3" />
                     </span>
-                    <div className="min-w-0 space-y-1">
-                      <p className="text-sm font-medium">{model.name}</p>
-                      <p className="truncate text-xs font-mono text-muted-foreground">{model.id}</p>
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="text-[13px] font-medium leading-5">{model.name}</p>
+                      <p className="truncate text-[11px] font-mono text-muted-foreground">{model.id}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="ml-3 flex items-center gap-1.5">
                     {current && (
-                      <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">
+                      <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                         {t('models.current')}
                       </span>
                     )}
                     {selected && (
-                      <span className="rounded-full bg-foreground px-2 py-1 text-[11px] font-medium text-background">
+                      <span className="rounded-full bg-foreground px-2 py-0.5 text-[10px] font-medium text-background">
                         {t('models.selected')}
                       </span>
                     )}
@@ -553,13 +557,13 @@ function ProviderCard({
             <p className="mt-3 text-xs text-red-500">{setModelError}</p>
           )}
 
-          <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-3 flex flex-col gap-2.5 rounded-2xl border border-border/70 bg-background/80 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="control-label">
                 {selectedModelId === currentModelId ? t('models.current') : t('models.selected')}
               </p>
-              <p className="truncate text-sm font-medium">{selectedModel?.name ?? currentModel?.name ?? '-'}</p>
-              <p className="truncate text-xs font-mono text-muted-foreground">{selectedModel?.id ?? currentModel?.id ?? currentModelId ?? '-'}</p>
+              <p className="truncate text-[13px] font-medium">{selectedModel?.name ?? currentModel?.name ?? '-'}</p>
+              <p className="truncate text-[11px] font-mono text-muted-foreground">{selectedModel?.id ?? currentModel?.id ?? currentModelId ?? '-'}</p>
             </div>
             <div className="flex justify-end gap-2">
             <button
