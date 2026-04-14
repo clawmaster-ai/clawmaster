@@ -12,8 +12,6 @@
   <strong>A guided desktop app and self-hosted web console for OpenClaw.</strong>
 </p>
 
-<p align="center">Desktop + Web &nbsp;·&nbsp; Guided Setup &nbsp;·&nbsp; Multi-platform CI &nbsp;·&nbsp; 3 Languages</p>
-
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-006DFF?style=for-the-badge" alt="Quick Start" /></a>
   <a href="#roadmap"><img src="https://img.shields.io/badge/Roadmap-6_capabilities-ff69b4?style=for-the-badge" alt="Roadmap" /></a>
