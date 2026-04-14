@@ -60,6 +60,9 @@ npm install
 # Web app + backend
 npm run dev:web
 
+# Windows helper
+npm run dev:windows
+
 # Desktop app
 npm run tauri:dev
 ```
