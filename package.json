@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=@openclaw-manager/web",
-    "dev:web": "npm run dev --workspace=@openclaw-manager/backend & npm run dev --workspace=@openclaw-manager/web",
+    "dev:web": "concurrently -k -n backend,web \"npm run dev --workspace=@openclaw-manager/backend\" \"npm run dev --workspace=@openclaw-manager/web\"",
     "dev:backend": "npm run dev --workspace=@openclaw-manager/backend",
     "build": "npm run build --workspace=@openclaw-manager/web",
     "tauri": "tauri",
@@ -28,6 +28,7 @@
   "license": "MIT",
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.1",
+    "concurrently": "^9.2.1",
     "js-yaml": "^4.1.1"
   },
   "dependencies": {

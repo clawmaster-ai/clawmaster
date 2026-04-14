@@ -726,30 +726,23 @@ const BUNDLED_PADDLEOCR_FILES: &[BundledPaddleocrFile] = &[
     },
     BundledPaddleocrFile {
         module_id: PADDLEOCR_TEXT_SKILL_ID,
-        relative_path: "scripts/lib.py",
+        relative_path: "scripts/lib.mjs",
         contents: include_str!(
-            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/lib.py"
+            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/lib.mjs"
         ),
     },
     BundledPaddleocrFile {
         module_id: PADDLEOCR_TEXT_SKILL_ID,
-        relative_path: "scripts/ocr_caller.py",
+        relative_path: "scripts/ocr_caller.mjs",
         contents: include_str!(
-            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/ocr_caller.py"
+            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/ocr_caller.mjs"
         ),
     },
     BundledPaddleocrFile {
         module_id: PADDLEOCR_TEXT_SKILL_ID,
-        relative_path: "scripts/requirements.txt",
+        relative_path: "scripts/smoke_test.mjs",
         contents: include_str!(
-            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/requirements.txt"
-        ),
-    },
-    BundledPaddleocrFile {
-        module_id: PADDLEOCR_TEXT_SKILL_ID,
-        relative_path: "scripts/smoke_test.py",
-        contents: include_str!(
-            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/smoke_test.py"
+            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/smoke_test.mjs"
         ),
     },
     BundledPaddleocrFile {
@@ -766,37 +759,23 @@ const BUNDLED_PADDLEOCR_FILES: &[BundledPaddleocrFile] = &[
     },
     BundledPaddleocrFile {
         module_id: PADDLEOCR_DOC_SKILL_ID,
-        relative_path: "scripts/lib.py",
+        relative_path: "scripts/lib.mjs",
         contents: include_str!(
-            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/lib.py"
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/lib.mjs"
         ),
     },
     BundledPaddleocrFile {
         module_id: PADDLEOCR_DOC_SKILL_ID,
-        relative_path: "scripts/optimize_file.py",
+        relative_path: "scripts/smoke_test.mjs",
         contents: include_str!(
-            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/optimize_file.py"
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/smoke_test.mjs"
         ),
     },
     BundledPaddleocrFile {
         module_id: PADDLEOCR_DOC_SKILL_ID,
-        relative_path: "scripts/requirements.txt",
+        relative_path: "scripts/vl_caller.mjs",
         contents: include_str!(
-            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/requirements.txt"
-        ),
-    },
-    BundledPaddleocrFile {
-        module_id: PADDLEOCR_DOC_SKILL_ID,
-        relative_path: "scripts/smoke_test.py",
-        contents: include_str!(
-            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/smoke_test.py"
-        ),
-    },
-    BundledPaddleocrFile {
-        module_id: PADDLEOCR_DOC_SKILL_ID,
-        relative_path: "scripts/vl_caller.py",
-        contents: include_str!(
-            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/vl_caller.py"
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/vl_caller.mjs"
         ),
     },
 ];
