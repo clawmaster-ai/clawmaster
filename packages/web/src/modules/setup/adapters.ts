@@ -86,12 +86,21 @@ const realOnboardingAdapter: OnboardingAdapter = {
       const id = typeof model === 'string' ? model.trim() : model?.id?.trim()
       return id && id === activeModelId
     }) ?? configuredProvider?.models?.[0]
-    const model =
-      activeModelId
-      || (typeof configuredModel === 'string' ? configuredModel.trim() : configuredModel?.id?.trim())
-      || cfg?.models?.[0]?.id
-      || 'gpt-4o-mini'
-    try {
+    const configuredModelId = typeof configuredModel === 'string'
+      ? configuredModel.trim()
+      : configuredModel?.id?.trim()
+    const probeModels = [
+      activeModelId?.trim() || undefined,
+      cfg?.defaultModel,
+      cfg?.models?.[0]?.id,
+      configuredModelId,
+      'gpt-4o-mini',
+    ].filter((model, index, array): model is string => {
+      if (!model) return false
+      return array.indexOf(model) === index
+    })
+
+    const probeModel = async (model: string) => {
       const result = await probeHttpStatusResult({
         url: `${endpoint}/chat/completions`,
         method: 'POST',
@@ -103,6 +112,16 @@ const realOnboardingAdapter: OnboardingAdapter = {
         timeoutMs: 10000,
       })
       return result.success && result.data?.status === 200
+    }
+
+    try {
+      for (const model of probeModels) {
+        if (await probeModel(model)) {
+          return true
+        }
+      }
+
+      return false
     } catch {
       return false
     }

@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Check, ChevronsUpDown, Search, Sparkles } from 'lucide-react'
 import { platform } from '@/adapters'
 import { PasswordField } from '@/shared/components/PasswordField'
+import { getProviderModelCatalogResult } from '@/shared/adapters/openclaw'
+import { supportsProviderCatalog, type ProviderCatalogModel } from '@/shared/providerCatalog'
 import { getSetupAdapter } from '@/modules/setup/adapters'
 import { PROVIDERS, PRIMARY_PROVIDERS, PROVIDER_BADGES, getProviderCredentialLabel, getProviderLabel } from '@/modules/setup/types'
 import type { OpenClawConfig, ModelInfo, OpenClawModelProvider, OpenClawModelRef } from '@/lib/types'
@@ -34,6 +36,8 @@ type ProviderModelOption = {
   id: string
   name: string
 }
+
+type ProviderCatalogStatus = 'idle' | 'loading' | 'live' | 'fallback' | 'error'
 
 function getModelSourceId(model: string | OpenClawModelRef | undefined): string | null {
   if (!model) return null
@@ -76,21 +80,41 @@ function hasSelectableProviderModels(models: Array<string | OpenClawModelRef> | 
   return Boolean(models?.some((model) => getModelSourceId(model)))
 }
 
+function mergeProviderModelOptions(
+  ...sources: Array<Array<string | OpenClawModelRef | ProviderModelOption> | undefined>
+) {
+  const merged: ProviderModelOption[] = []
+
+  for (const source of sources) {
+    if (!source?.length) continue
+    for (const model of source) {
+      const option = typeof model === 'object' && model !== null && 'id' in model && 'name' in model
+        ? model as ProviderModelOption
+        : normalizeModelOption(model as string | OpenClawModelRef | undefined)
+      if (!option) continue
+      if (merged.some((item) => item.id === option.id)) continue
+      merged.push(option)
+    }
+  }
+
+  return merged
+}
+
 function getProviderModelOptions(
   providerId: string,
   provider: OpenClawModelProvider,
   currentModelId: string | null,
+  remoteModels: ProviderModelOption[] | null,
 ): ProviderModelOption[] {
   const knownProvider = PROVIDERS[providerId]
   const legacyModels = provider.models?.length ? provider.models : undefined
   const savedModels = hasSelectableProviderModels(legacyModels) ? legacyModels : undefined
-  const sourceModels = shouldUseCanonicalErnieCatalog(providerId, legacyModels)
-    ? knownProvider?.models
-    : savedModels ?? knownProvider?.models ?? []
-
-  const options = sourceModels
-    .map((model) => normalizeModelOption(model))
-    .filter((model): model is ProviderModelOption => model !== null)
+  const shouldUseCanonicalFallback = shouldUseCanonicalErnieCatalog(providerId, legacyModels)
+  const options = remoteModels?.length
+    ? mergeProviderModelOptions(remoteModels)
+    : shouldUseCanonicalFallback
+      ? mergeProviderModelOptions(knownProvider?.models)
+      : mergeProviderModelOptions(savedModels, knownProvider?.models)
 
   if (currentModelId && !options.some((option) => option.id === currentModelId)) {
     options.unshift({ id: currentModelId, name: currentModelId })
@@ -310,20 +334,29 @@ function ProviderCard({
   const [modelQuery, setModelQuery] = useState('')
   const [settingDefault, setSettingDefault] = useState(false)
   const [setModelError, setSetModelError] = useState<string | null>(null)
+  const [remoteModels, setRemoteModels] = useState<ProviderModelOption[] | null>(null)
+  const [catalogStatus, setCatalogStatus] = useState<ProviderCatalogStatus>('idle')
+  const [catalogError, setCatalogError] = useState<string | null>(null)
   const adapter = getSetupAdapter()
   const currentModelId = getCurrentModelId(defaultModel, providerId)
+  const canLoadProviderCatalog = supportsProviderCatalog(providerId, provider)
   const displayModels = useMemo(
-    () => getProviderModelOptions(providerId, provider, currentModelId),
-    [providerId, provider, currentModelId],
+    () => getProviderModelOptions(providerId, provider, currentModelId, remoteModels),
+    [providerId, provider, currentModelId, remoteModels],
   )
   const quickPicks = useMemo(
     () => getQuickPickModels(displayModels, currentModelId),
     [displayModels, currentModelId],
   )
+  const selectedModelExists = displayModels.some((model) => model.id === selectedModelId)
 
   useEffect(() => {
-    setSelectedModelId(currentModelId || displayModels[0]?.id || '')
-  }, [currentModelId, displayModels])
+    setSelectedModelId(currentModelId || '')
+  }, [providerId, currentModelId])
+
+  useEffect(() => {
+    setSelectedModelId((previous) => previous || displayModels[0]?.id || '')
+  }, [providerId, displayModels])
 
   useEffect(() => {
     if (!showModelPicker) {
@@ -331,8 +364,55 @@ function ProviderCard({
     }
   }, [showModelPicker])
 
+  const loadRemoteModels = useCallback(async () => {
+    if (!canLoadProviderCatalog) {
+      setRemoteModels(null)
+      setCatalogStatus('fallback')
+      setCatalogError(null)
+      return
+    }
+
+    setCatalogStatus('loading')
+    setCatalogError(null)
+    const result = await getProviderModelCatalogResult({
+      providerId,
+      apiKey: provider.apiKey || provider.api_key || undefined,
+      baseUrl: provider.baseUrl,
+    })
+
+    if (result.success && result.data?.length) {
+      setRemoteModels(result.data.map((model: ProviderCatalogModel) => ({
+        id: model.id,
+        name: model.name,
+      })))
+      setCatalogStatus('live')
+      setCatalogError(null)
+      return
+    }
+
+    setRemoteModels(null)
+    setCatalogStatus(result.success ? 'fallback' : 'error')
+    setCatalogError(result.success ? null : (result.error ?? t('common.requestFailed')))
+  }, [canLoadProviderCatalog, providerId, provider.apiKey, provider.api_key, provider.baseUrl, t])
+
+  useEffect(() => {
+    let active = true
+
+    const run = async () => {
+      await loadRemoteModels()
+      if (!active) return
+    }
+
+    run()
+
+    return () => {
+      active = false
+    }
+  }, [loadRemoteModels])
+
   const selectedModel = displayModels.find((model) => model.id === selectedModelId) ?? null
   const currentModel = displayModels.find((model) => model.id === currentModelId) ?? null
+  const isLiveCatalog = catalogStatus === 'live'
   const normalizedQuery = modelQuery.trim().toLowerCase()
   const filteredModels = useMemo(() => {
     const rankedModels = [...displayModels].sort((left, right) => {
@@ -392,6 +472,16 @@ function ProviderCard({
           )}
         </div>
         <div className="flex gap-2">
+          {canLoadProviderCatalog && (
+            <button
+              type="button"
+              onClick={() => { void loadRemoteModels() }}
+              disabled={catalogStatus === 'loading'}
+              className="button-secondary inline-flex items-center gap-2 px-3 py-1"
+            >
+              {catalogStatus === 'loading' ? t('models.refreshingModels') : t('models.refreshModels')}
+            </button>
+          )}
           {displayModels.length > 0 && (
             <button
               type="button"
@@ -413,6 +503,31 @@ function ProviderCard({
           {testResult === false && <span className="text-red-500 text-sm self-center">{t('models.connectionFailed')}</span>}
         </div>
       </div>
+
+      {canLoadProviderCatalog && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+          <span className={`rounded-full border px-2.5 py-1 font-medium ${
+            isLiveCatalog
+              ? 'border-emerald-300/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              : catalogStatus === 'error'
+                ? 'border-red-300/60 bg-red-500/10 text-red-700 dark:text-red-300'
+                : 'border-border/80 bg-card text-muted-foreground'
+          }`}>
+            {isLiveCatalog
+              ? t('models.liveCatalog')
+              : catalogStatus === 'loading'
+                ? t('models.loadingLiveModels')
+                : catalogStatus === 'error'
+                  ? t('models.catalogUnavailable')
+                  : t('models.fallbackCatalog')}
+          </span>
+          <span className="text-muted-foreground">
+            {isLiveCatalog
+              ? t('models.liveCatalogDesc')
+              : t('models.fallbackCatalogDesc')}
+          </span>
+        </div>
+      )}
 
       {quickPicks.length > 0 && (
         <div className="mb-4 rounded-2xl border border-border/70 bg-background/70 p-4">
@@ -473,7 +588,9 @@ function ProviderCard({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="control-label">{t('common.search')}</span>
               <p className="text-[11px] text-muted-foreground">
-                {t('models.showingModels', { count: filteredModels.length, total: displayModels.length })}
+                {catalogStatus === 'loading'
+                  ? t('models.loadingLiveModels')
+                  : t('models.showingModels', { count: filteredModels.length, total: displayModels.length })}
               </p>
             </div>
             <label className="block">
@@ -490,6 +607,15 @@ function ProviderCard({
             </label>
 
             <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-background/80 px-3 py-2.5">
+              {canLoadProviderCatalog && (
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                  isLiveCatalog
+                    ? 'border-emerald-300/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : 'border-border bg-card text-muted-foreground'
+                }`}>
+                  {isLiveCatalog ? t('models.liveCatalog') : t('models.fallbackCatalog')}
+                </span>
+              )}
               <div className="min-w-0">
                 {selectedModelId === currentModelId ? (
                   <div className="flex flex-wrap items-center gap-2 text-[13px]">
@@ -573,6 +699,19 @@ function ProviderCard({
             </div>
           )}
 
+          {catalogError && (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-300/50 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+              <span>{catalogError}</span>
+              <button
+                type="button"
+                onClick={() => { void loadRemoteModels() }}
+                className="button-secondary px-2.5 py-1 text-xs"
+              >
+                {t('common.refresh')}
+              </button>
+            </div>
+          )}
+
           {setModelError && (
             <p className="mt-3 text-xs text-red-500">{setModelError}</p>
           )}
@@ -582,8 +721,12 @@ function ProviderCard({
               <p className="control-label">
                 {selectedModelId === currentModelId ? t('models.current') : t('models.selected')}
               </p>
-              <p className="truncate text-[13px] font-medium">{selectedModel?.name ?? currentModel?.name ?? '-'}</p>
-              <p className="truncate text-[11px] font-mono text-muted-foreground">{selectedModel?.id ?? currentModel?.id ?? currentModelId ?? '-'}</p>
+              <p className="truncate text-[13px] font-medium">
+                {selectedModel?.name ?? (selectedModelId !== currentModelId ? selectedModelId : currentModel?.name) ?? '-'}
+              </p>
+              <p className="truncate text-[11px] font-mono text-muted-foreground">
+                {selectedModel?.id ?? (selectedModelId !== currentModelId ? selectedModelId : currentModel?.id) ?? currentModelId ?? '-'}
+              </p>
             </div>
             <div className="flex justify-end gap-2">
             <button
@@ -596,7 +739,7 @@ function ProviderCard({
             <button
               type="button"
               onClick={handleSetDefaultModel}
-              disabled={!selectedModelId || selectedModelId === currentModelId || settingDefault}
+              disabled={!selectedModelId || !selectedModelExists || selectedModelId === currentModelId || settingDefault}
               className="button-primary px-3 py-1"
             >
               {settingDefault ? t('models.settingDefault') : t('models.setAsDefault')}

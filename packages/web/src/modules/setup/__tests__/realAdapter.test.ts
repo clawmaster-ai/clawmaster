@@ -255,7 +255,7 @@ describe('realSetupAdapter', () => {
     })
   })
 
-  it('prefers the saved provider model when probing a legacy baidu-aistudio config', async () => {
+  it('probes the stable built-in provider default before falling back to a saved legacy model', async () => {
     vi.mocked(getConfigResult).mockResolvedValue({
       success: true,
       data: {
@@ -272,17 +272,37 @@ describe('realSetupAdapter', () => {
       },
       error: null,
     } as any)
-    vi.mocked(probeHttpStatusResult).mockResolvedValue({
-      success: true,
-      data: { ok: true, status: 200 },
-      error: null,
-    })
+    vi.mocked(probeHttpStatusResult)
+      .mockResolvedValueOnce({
+        success: true,
+        data: { ok: false, status: 404 },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { ok: true, status: 200 },
+        error: null,
+      })
 
     await expect(
       realSetupAdapter.onboarding.testApiKey('baidu-aistudio', 'bce-test-token'),
     ).resolves.toBe(true)
 
-    expect(probeHttpStatusResult).toHaveBeenCalledWith({
+    expect(probeHttpStatusResult).toHaveBeenNthCalledWith(1, {
+      url: 'https://aistudio.baidu.com/llm/lmapi/v3/chat/completions',
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer bce-test-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'ernie-5.0-thinking-preview',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      }),
+      timeoutMs: 10000,
+    })
+    expect(probeHttpStatusResult).toHaveBeenNthCalledWith(2, {
       url: 'https://aistudio.baidu.com/llm/lmapi/v3/chat/completions',
       method: 'POST',
       headers: {
@@ -341,6 +361,75 @@ describe('realSetupAdapter', () => {
       },
       body: JSON.stringify({
         model: 'ernie-4.5-turbo-vl',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      }),
+      timeoutMs: 10000,
+    })
+  })
+
+  it('probes a live-selected default model before falling back to the built-in provider default', async () => {
+    vi.mocked(getConfigResult).mockResolvedValue({
+      success: true,
+      data: {
+        agents: {
+          defaults: {
+            model: {
+              primary: 'openai/gpt-5-preview-live',
+            },
+          },
+        },
+        models: {
+          providers: {
+            openai: {
+              models: [
+                { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
+              ],
+            },
+          },
+        },
+      },
+      error: null,
+    } as any)
+    vi.mocked(probeHttpStatusResult)
+      .mockResolvedValueOnce({
+        success: true,
+        data: { ok: false, status: 404 },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { ok: true, status: 200 },
+        error: null,
+      })
+
+    await expect(
+      realSetupAdapter.onboarding.testApiKey('openai', 'sk-test'),
+    ).resolves.toBe(true)
+
+    expect(probeHttpStatusResult).toHaveBeenNthCalledWith(1, {
+      url: 'https://api.openai.com/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer sk-test',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-5-preview-live',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      }),
+      timeoutMs: 10000,
+    })
+    expect(probeHttpStatusResult).toHaveBeenNthCalledWith(2, {
+      url: 'https://api.openai.com/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer sk-test',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4.1-mini',
         messages: [{ role: 'user', content: 'hi' }],
         max_tokens: 1,
       }),

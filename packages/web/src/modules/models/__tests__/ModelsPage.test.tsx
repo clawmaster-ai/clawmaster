@@ -8,6 +8,7 @@ const mockGetModels = vi.fn()
 const mockSetDefaultModel = vi.fn()
 const mockTestApiKey = vi.fn()
 const mockSetApiKey = vi.fn()
+const mockGetProviderModelCatalog = vi.fn()
 
 vi.mock('@/adapters', () => ({
   platform: {
@@ -26,12 +27,21 @@ vi.mock('@/modules/setup/adapters', () => ({
   }),
 }))
 
+vi.mock('@/shared/adapters/openclaw', () => ({
+  getProviderModelCatalogResult: (...args: any[]) => mockGetProviderModelCatalog(...args),
+}))
+
 describe('ModelsPage', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await changeLanguage('en')
     mockGetModels.mockResolvedValue([])
     mockSetDefaultModel.mockResolvedValue(undefined)
+    mockGetProviderModelCatalog.mockResolvedValue({
+      success: true,
+      data: [],
+      error: null,
+    })
     mockGetConfig.mockResolvedValue({
       agents: {
         defaults: {
@@ -227,7 +237,7 @@ describe('ModelsPage', () => {
     expect(within(picker!).queryByRole('button', { name: /deepseek-r1 deepseek-r1/i })).not.toBeInTheDocument()
   })
 
-  it('preserves saved model lists for built-in providers outside the stale ERNIE migration case', async () => {
+  it('merges built-in models into saved provider snapshots for supported providers', async () => {
     mockGetConfig.mockResolvedValueOnce({
       agents: {
         defaults: {
@@ -252,7 +262,97 @@ describe('ModelsPage', () => {
     expect(await screen.findByRole('heading', { name: 'Model Configuration' })).toBeInTheDocument()
     expect(screen.getByText('GPT-4.1 Custom')).toBeInTheDocument()
     expect(screen.getByText('o3 Enterprise')).toBeInTheDocument()
-    expect(screen.queryByText('GPT-4.1 Mini')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Model' }))
+    const picker = document.getElementById('models-provider-picker-openai')
+    expect(picker).not.toBeNull()
+    expect(within(picker!).getByRole('button', { name: /GPT-4.1 Mini gpt-4.1-mini/ })).toBeInTheDocument()
+  })
+
+  it('uses the live provider catalog as the authoritative picker source when remote discovery succeeds', async () => {
+    mockGetConfig.mockResolvedValueOnce({
+      agents: {
+        defaults: {
+          model: { primary: 'openai/gpt-4.1-custom' },
+        },
+      },
+      models: {
+        providers: {
+          openai: {
+            apiKey: 'sk-openai',
+            models: [
+              { id: 'gpt-4.1-custom', name: 'GPT-4.1 Custom' },
+            ],
+          },
+        },
+      },
+    })
+    mockGetProviderModelCatalog.mockResolvedValueOnce({
+      success: true,
+      data: [
+        { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
+      ],
+      error: null,
+    })
+
+    render(<ModelsPage />)
+
+    expect(await screen.findByRole('heading', { name: 'Model Configuration' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(mockGetProviderModelCatalog).toHaveBeenCalledWith({
+        providerId: 'openai',
+        apiKey: 'sk-openai',
+        baseUrl: undefined,
+      })
+    })
+    expect(screen.getByText('Live catalog')).toBeInTheDocument()
+    expect(screen.getByText('Loaded from the provider account in real time.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh Models' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Model' }))
+    const picker = document.getElementById('models-provider-picker-openai')
+    expect(picker).not.toBeNull()
+    expect(within(picker!).getByText('Live catalog')).toBeInTheDocument()
+    expect(within(picker!).getByRole('button', { name: /GPT-5 Mini gpt-5-mini/ })).toBeInTheDocument()
+    expect(within(picker!).getByRole('button', { name: /gpt-4\.1-custom gpt-4\.1-custom/i })).toBeInTheDocument()
+    expect(within(picker!).queryByRole('button', { name: /GPT-4.1 Mini gpt-4.1-mini/ })).not.toBeInTheDocument()
+  })
+
+  it('shows fallback state when live catalog loading fails', async () => {
+    mockGetConfig.mockResolvedValueOnce({
+      agents: {
+        defaults: {
+          model: { primary: 'siliconflow/deepseek-ai/DeepSeek-V3' },
+        },
+      },
+      models: {
+        providers: {
+          siliconflow: {
+            apiKey: 'sk-silicon',
+            baseUrl: 'https://api.siliconflow.cn/v1',
+            models: [{ id: 'deepseek-ai/DeepSeek-V3', name: 'DeepSeek V3' }],
+          },
+        },
+      },
+    })
+    mockGetProviderModelCatalog.mockResolvedValueOnce({
+      success: false,
+      data: undefined,
+      error: 'Remote catalog failed',
+    })
+
+    render(<ModelsPage />)
+
+    expect(await screen.findByRole('heading', { name: 'Model Configuration' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Catalog unavailable')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Model' }))
+    const picker = document.getElementById('models-provider-picker-siliconflow')
+    expect(picker).not.toBeNull()
+    expect(within(picker!).getByText('Fallback catalog')).toBeInTheDocument()
+    expect(within(picker!).getByText('Remote catalog failed')).toBeInTheDocument()
   })
 
   it('falls back to the built-in catalog when a configured provider saves an empty model list', async () => {
@@ -283,6 +383,40 @@ describe('ModelsPage', () => {
     expect(picker).not.toBeNull()
     expect(within(picker!).getByRole('button', { name: /GPT-4.1 gpt-4.1/ })).toBeInTheDocument()
     expect(within(picker!).getByRole('button', { name: /GPT-4.1 Mini gpt-4.1-mini/ })).toBeInTheDocument()
+  })
+
+  it('does not enter the live catalog flow for custom openai-compatible providers', async () => {
+    mockGetConfig.mockResolvedValueOnce({
+      agents: {
+        defaults: {
+          model: { primary: 'custom-openai-compatible/my-custom-model' },
+        },
+      },
+      models: {
+        providers: {
+          'custom-openai-compatible': {
+            apiKey: 'sk-custom',
+            api: 'openai-completions',
+            baseUrl: 'https://llm.example.com/v1',
+            models: [],
+          },
+        },
+      },
+    })
+
+    render(<ModelsPage />)
+
+    expect(await screen.findByRole('heading', { name: 'Model Configuration' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Refresh Models' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Catalog unavailable')).not.toBeInTheDocument()
+    expect(mockGetProviderModelCatalog).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Model' }))
+    const picker = document.getElementById('models-provider-picker-custom-openai-compatible')
+    expect(picker).not.toBeNull()
+    expect(within(picker!).queryByText('Live catalog')).not.toBeInTheDocument()
+    expect(within(picker!).queryByText('Fallback catalog')).not.toBeInTheDocument()
+    expect(within(picker!).getByRole('button', { name: /my-custom-model my-custom-model/i })).toBeInTheDocument()
   })
 
   it('ignores name-only saved entries and falls back to built-in model ids for built-in providers', async () => {
@@ -344,15 +478,15 @@ describe('ModelsPage', () => {
     const picker = document.getElementById('models-provider-picker-baidu-aistudio')
     expect(picker).not.toBeNull()
     expect(within(picker!).getByPlaceholderText('Search by model name or ID...')).toBeInTheDocument()
-    expect(within(picker!).getByText('Showing 3 of 3 models')).toBeInTheDocument()
+    expect(within(picker!).getByText(/Showing \d+ of \d+ models/)).toBeInTheDocument()
 
     fireEvent.change(within(picker!).getByPlaceholderText('Search by model name or ID...'), {
       target: { value: 'Turbo VL' },
     })
-    expect(within(picker!).getByText('Showing 1 of 3 models')).toBeInTheDocument()
+    expect(within(picker!).getByText('Showing 3 of 27 models')).toBeInTheDocument()
     expect(within(picker!).queryByRole('button', { name: /ERNIE 5.0 Thinking Preview/ })).not.toBeInTheDocument()
 
-    fireEvent.click(within(picker!).getByRole('button', { name: /ERNIE 4.5 Turbo VL/ }))
+    fireEvent.click(within(picker!).getByRole('button', { name: /^ERNIE 4\.5 Turbo VL ernie-4\.5-turbo-vl$/ }))
     await waitFor(() => {
       expect(within(picker!).getByRole('button', { name: 'Set as Default' })).toBeEnabled()
     })
@@ -361,5 +495,60 @@ describe('ModelsPage', () => {
     await waitFor(() => {
       expect(mockSetDefaultModel).toHaveBeenCalledWith('baidu-aistudio/ernie-4.5-turbo-vl')
     })
+  })
+
+  it('does not reset an in-progress picker selection when the live catalog refresh finishes', async () => {
+    let resolveCatalog: ((value: { success: boolean; data: Array<{ id: string; name: string }>; error: null }) => void) | null = null
+    mockGetProviderModelCatalog.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveCatalog = resolve
+    }))
+    mockGetConfig.mockResolvedValueOnce({
+      agents: {
+        defaults: {
+          model: { primary: 'openai/gpt-4.1-custom' },
+        },
+      },
+      models: {
+        providers: {
+          openai: {
+            apiKey: 'sk-openai',
+            models: [
+              { id: 'gpt-4.1-custom', name: 'GPT-4.1 Custom' },
+              { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
+            ],
+          },
+        },
+      },
+    })
+
+    render(<ModelsPage />)
+
+    expect(await screen.findByRole('heading', { name: 'Model Configuration' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Model' }))
+
+    const picker = document.getElementById('models-provider-picker-openai')
+    expect(picker).not.toBeNull()
+    fireEvent.click(within(picker!).getByRole('button', { name: /GPT-4.1 Mini gpt-4.1-mini/ }))
+
+    await waitFor(() => {
+      expect(within(picker!).getByRole('button', { name: 'Set as Default' })).toBeEnabled()
+    })
+    expect(within(picker!).getByRole('button', { name: /GPT-4.1 Mini gpt-4.1-mini/ })).toBeInTheDocument()
+    expect(resolveCatalog).not.toBeNull()
+
+    resolveCatalog?.({
+      success: true,
+      data: [
+        { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
+      ],
+      error: null,
+    })
+
+    await waitFor(() => {
+      expect(within(picker!).getByText('Live catalog')).toBeInTheDocument()
+    })
+    expect(within(picker!).getByRole('button', { name: 'Set as Default' })).toBeEnabled()
+    expect(within(picker!).getByRole('button', { name: /GPT-4.1 Mini gpt-4.1-mini/ })).toBeInTheDocument()
+    expect(within(picker!).getByRole('button', { name: /gpt-4\.1-custom gpt-4\.1-custom/i })).toBeInTheDocument()
   })
 })
