@@ -102,13 +102,15 @@ Add the key to **all three** files before opening a PR:
 
 ## Fixing a bug
 
-1. **Write a failing test first** that reproduces the bug.
+1. **Write a failing unit test first** that reproduces the bug.
 2. Fix the code until the test passes.
 3. Run `npm test` — all tests must be green.
+4. For UI bugs, verify the fix visually with dev-browser before opening a PR.
 
 ```bash
 npm test                         # full suite
 npx vitest run src/path/to/test  # single file, from packages/web/
+dev-browser --help               # full UI automation API reference
 ```
 
 ---
@@ -128,6 +130,7 @@ rejects PRs with an empty `## What` section.
 - [ ] `npm test` passes locally
 - [ ] `npm run build` passes (catches TypeScript errors)
 - [ ] New behavior has unit tests (happy path + at least one error path)
+- [ ] UI changes verified with `dev-browser` against `npm run dev:web`
 - [ ] All i18n keys added to `zh.json`, `en.json`, `ja.json`
 - [ ] No `console.log` left in production paths
 - [ ] No screenshots, test logs, or generated files committed (`dist/`, `coverage/`)
@@ -263,11 +266,52 @@ Language switcher in the header and setup wizard.
 
 ### Testing
 
+**Unit tests (Vitest)**
+
 - Framework: Vitest + jsdom + @testing-library/react
 - Config: `packages/web/vitest.config.ts`
 - Location: co-located `__tests__/` directories
 - Run single file: `npx vitest run src/path/to/test.ts` (from `packages/web/`)
 - Architecture boundary rules: `shared/__tests__/architecture.boundary.test.ts`
+
+**UI flow testing (dev-browser)**
+
+For verifying UI behaviour end-to-end, use [dev-browser](https://github.com/sawyerhood/dev-browser) — a sandboxed Playwright runner built for AI agents.
+
+```bash
+# one-time setup
+npm install -g dev-browser
+dev-browser install          # installs Playwright + Chromium
+```
+
+Walk a UI flow against the running dev server:
+
+```bash
+# start the app first
+npm run dev:web              # http://localhost:3000
+
+# then drive it
+dev-browser --headless <<'EOF'
+const page = await browser.getPage("main");
+await page.goto("http://localhost:3000", { waitUntil: "domcontentloaded" });
+await page.screenshot({ path: "screenshot.png" });
+console.log(await page.title());
+EOF
+```
+
+Connect to an already-open Chrome instead of launching headless:
+
+```bash
+# launch Chrome with remote debugging enabled first
+# macOS: open -a "Google Chrome" --args --remote-debugging-port=9222
+dev-browser --connect <<'EOF'
+const page = await browser.getPage("main");
+// interact with the live app
+EOF
+```
+
+The YAML-based UI test plans in `tests/ui/` describe the flows to walk through.
+Run `dev-browser --help` for the full LLM-oriented API reference.
 
 ### UI conventions
 

@@ -94,6 +94,7 @@ Every pull request must be tested before review:
 
 > [!TIP]
 > `npm test && npm run build` is the minimum bar. Run both locally before pushing.
+> For UI changes, also verify the affected flows with [dev-browser](https://github.com/sawyerhood/dev-browser) against `npm run dev:web`.
 
 ## What Not to Include in PRs
 
