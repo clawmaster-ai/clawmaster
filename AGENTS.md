@@ -182,6 +182,10 @@ npm run build                # production build + TypeScript check
 npm run tauri:build          # desktop build (platform-specific)
 
 npm test                     # run all Vitest tests
+
+# Tauri build on Linux requires:
+export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+export PKG_CONFIG_PATH_x86_64_unknown_linux_gnu=$PKG_CONFIG_PATH
 ```
 
 ### Two-mode runtime
@@ -202,22 +206,37 @@ Never call `invoke()` or `fetch('/api/exec')` directly from a module or page.
 ### Repo map
 
 ```
-packages/web/src/
-├── modules/            feature modules (new features go here)
-│   ├── setup/          installation wizard + onboarding (special — see below)
-│   ├── observe/        cost/token monitoring
-│   ├── memory/         PowerMem management
-│   └── ...             (dashboard, gateway, channels, models, skills, ...)
-├── shared/
-│   ├── adapters/       per-tool adapters returning AdapterResult<T>
-│   │   ├── platform.ts runtime detection + execCommand (single entry point)
-│   │   ├── invoke.ts   tauriInvoke helper (only legitimate @tauri-apps/api import)
-│   │   └── *.ts        one file per OpenClaw tool
-│   ├── hooks/          useAdapterCall, useInstallTask
-│   └── components/     ErrorBoundary, LoadingState, CapabilityGuard, PasswordField
-├── app/                routing, sidebar, startup, command registry
-├── pages/              legacy pages (do not add new code here)
-└── i18n/               zh.json · en.json · ja.json
+clawmaster/
+├── packages/web/src/
+│   ├── modules/            feature modules (new features go here)
+│   │   ├── setup/          installation wizard + onboarding (special — see below)
+│   │   ├── observe/        cost/token monitoring (Recharts)
+│   │   ├── memory/         PowerMem management
+│   │   ├── dashboard/      system overview + entry cards
+│   │   ├── gateway/        runtime status and config
+│   │   ├── channels/       channel setup and accounts
+│   │   ├── models/         provider and model management
+│   │   ├── skills/         ClawHub / skill install flows
+│   │   ├── plugins/        plugin inventory
+│   │   ├── mcp/            MCP install / import / manual config
+│   │   ├── sessions/       runtime sessions
+│   │   ├── settings/       profile, diagnostics, danger zone
+│   │   ├── config/         raw openclaw.json editor
+│   │   └── agents/         agent inventory
+│   ├── shared/
+│   │   ├── adapters/       per-tool adapters returning AdapterResult<T>
+│   │   │   ├── platform.ts runtime detection + execCommand (single entry point)
+│   │   │   ├── invoke.ts   tauriInvoke helper (only place @tauri-apps/api is allowed)
+│   │   │   └── *.ts        one file per OpenClaw tool
+│   │   ├── hooks/          useAdapterCall, useInstallTask
+│   │   └── components/     ErrorBoundary, LoadingState, CapabilityGuard, PasswordField
+│   ├── app/                routing, sidebar, startup, command registry
+│   ├── pages/              legacy pages — do not add new code here
+│   └── i18n/               zh.json · en.json · ja.json
+├── packages/backend/       Express API server (web mode, port 3001)
+├── src-tauri/              Tauri 2 desktop backend (Rust)
+├── bin/clawmaster.mjs      CLI entry point
+└── tests/ui/               YAML-based manual UI test plans
 ```
 
 ### setup module
@@ -225,7 +244,7 @@ packages/web/src/
 `modules/setup/` is special — it exports:
 - `SetupWizard` component
 - `getSetupAdapter()` returning `demoSetupAdapter` | `realSetupAdapter`
-- Types used by `CapabilityGuard` in `shared/components/`
+- `CAPABILITIES` and `CapabilityId` type (used by `CapabilityGuard`)
 
 It covers 16 LLM providers and 6 channel types.
 
@@ -238,8 +257,9 @@ packages/web/src/i18n/
 └── ja.json   Japanese
 ```
 
-Language preference stored in `localStorage` key `clawmaster-language`.
+Language preference in `localStorage` key `clawmaster-language`.
 `changeLanguage()` exported from `src/i18n/index.ts`.
+Language switcher in the header and setup wizard.
 
 ### Testing
 
@@ -247,15 +267,26 @@ Language preference stored in `localStorage` key `clawmaster-language`.
 - Config: `packages/web/vitest.config.ts`
 - Location: co-located `__tests__/` directories
 - Run single file: `npx vitest run src/path/to/test.ts` (from `packages/web/`)
+- Architecture boundary rules: `shared/__tests__/architecture.boundary.test.ts`
+
+### UI conventions
+
+- Styling: Tailwind CSS only — no custom CSS files
+- Icons: Lucide React only — no other icon libraries, no emoji in UI
+- Dark mode toggle (independent from color theme)
+- Color themes: Lobster Orange, Ocean Blue
+- Responsive: mobile hamburger menu
 
 ### Rust / Tauri
 
-- Minimum Rust version: 1.77.2
+- Minimum Rust: 1.77.2
 - Commands registered in `src-tauri/src/lib.rs` via `tauri::generate_handler![]`
-- Config path resolution uses `dirs` crate (`dirs::home_dir()`)
-- Linux build deps: `libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev patchelf`
+- Config path: `dirs::home_dir()` / `dirs::config_dir()` from the `dirs` crate
+- Linux system deps: `libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev patchelf`
+- Desktop targets: Linux (deb, rpm, AppImage), macOS (dmg, x64 + ARM64), Windows (msi + exe)
 
 ### CI
 
-Every push/PR runs: `npm ci` → TypeScript check → `npm test` → `npm run build`.
-Tag pushes additionally trigger multi-platform Tauri builds (Linux x64, macOS x64/ARM64, Windows x64).
+Every push/PR: `npm ci` → TypeScript check → `npm test` → `npm run build`.
+Tags + main + manual dispatch: multi-platform Tauri builds (Linux x64, macOS x64/ARM64, Windows x64).
+Draft GitHub releases created on tag pushes; non-tag builds upload artifacts with 7-day retention.
