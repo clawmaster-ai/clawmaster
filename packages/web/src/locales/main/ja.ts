@@ -261,6 +261,7 @@ export default {
   "models.verifyAndAdding": "検証して追加中...",
   "models.enterBaseUrl": "API Base URLを入力してください",
   "providers.badgeGoldenSponsor": "ゴールデンスポンサー",
+  "providers.ernieQuotaNote": "登録後に100万トークン、プロフィール情報の入力完了後にさらに100万トークンを受け取れます。",
   "channels.title": "チャネル管理",
   "channels.configured": "設定済み",
   "channels.accountCount": "{{count}} アカウント",

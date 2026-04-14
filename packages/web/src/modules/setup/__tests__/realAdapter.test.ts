@@ -135,7 +135,7 @@ describe('realSetupAdapter', () => {
     })
   })
 
-  it('writes baidu ai studio as a custom openai-compatible provider', async () => {
+  it('writes the ERNIE provider as a custom openai-compatible provider', async () => {
     vi.mocked(setConfigResult).mockResolvedValue({
       success: true,
       data: undefined,
@@ -146,17 +146,30 @@ describe('realSetupAdapter', () => {
       realSetupAdapter.onboarding.setApiKey('baidu-aistudio', 'bce-test-token'),
     ).resolves.toBeUndefined()
 
-    expect(setConfigResult).toHaveBeenCalledWith('models.providers.baidu-aistudio', {
+    expect(setConfigResult).toHaveBeenCalledTimes(1)
+    const [configPath, providerConfig] = vi.mocked(setConfigResult).mock.calls[0]!
+    const typedProviderConfig = providerConfig as {
+      models: Array<{ id: string; name: string }>
+    }
+
+    expect(configPath).toBe('models.providers.baidu-aistudio')
+    expect(providerConfig).toMatchObject({
       apiKey: 'bce-test-token',
       api: 'openai-completions',
       baseUrl: 'https://aistudio.baidu.com/llm/lmapi/v3',
-      models: [
-        { id: 'deepseek-v3', name: 'DeepSeek V3' },
-        { id: 'deepseek-r1', name: 'DeepSeek R1' },
-        { id: 'ernie-4.5-turbo-128k-preview', name: 'ERNIE 4.5 Turbo' },
+      models: expect.arrayContaining([
+        { id: 'ernie-5.0-thinking-preview', name: 'ERNIE 5.0 Thinking Preview' },
+        { id: 'ernie-4.5-turbo-vl', name: 'ERNIE 4.5 Turbo VL' },
+        { id: 'ernie-4.5-21b-a3b-thinking', name: 'ERNIE 4.5 21B A3B Thinking' },
         { id: 'ernie-3.5-8k', name: 'ERNIE 3.5 8K' },
-      ],
+      ]),
     })
+    expect(typedProviderConfig.models).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'deepseek-v3' }),
+        expect.objectContaining({ id: 'deepseek-r1' }),
+      ]),
+    )
   })
 
   it('probes Ollama via the dedicated HTTP probe adapter', async () => {
@@ -197,6 +210,33 @@ describe('realSetupAdapter', () => {
       },
       body: JSON.stringify({
         model: 'deepseek-ai/DeepSeek-V3',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      }),
+      timeoutMs: 10000,
+    })
+  })
+
+  it('probes the ERNIE provider through the chat completions endpoint with the default ERNIE model', async () => {
+    vi.mocked(probeHttpStatusResult).mockResolvedValue({
+      success: true,
+      data: { ok: true, status: 200 },
+      error: null,
+    })
+
+    await expect(
+      realSetupAdapter.onboarding.testApiKey('baidu-aistudio', 'bce-test-token'),
+    ).resolves.toBe(true)
+
+    expect(probeHttpStatusResult).toHaveBeenCalledWith({
+      url: 'https://aistudio.baidu.com/llm/lmapi/v3/chat/completions',
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer bce-test-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'ernie-5.0-thinking-preview',
         messages: [{ role: 'user', content: 'hi' }],
         max_tokens: 1,
       }),

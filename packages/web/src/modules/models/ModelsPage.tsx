@@ -4,7 +4,7 @@ import { Sparkles } from 'lucide-react'
 import { platform } from '@/adapters'
 import { PasswordField } from '@/shared/components/PasswordField'
 import { getSetupAdapter } from '@/modules/setup/adapters'
-import { PROVIDERS, PRIMARY_PROVIDERS, PROVIDER_BADGES, getProviderCredentialLabel } from '@/modules/setup/types'
+import { PROVIDERS, PRIMARY_PROVIDERS, PROVIDER_BADGES, getProviderCredentialLabel, getProviderLabel } from '@/modules/setup/types'
 import type { OpenClawConfig, ModelInfo } from '@/lib/types'
 
 const providerBadgeToneClass = 'border-amber-400/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
@@ -45,7 +45,7 @@ function ProviderBadge({ providerId }: { providerId: string }) {
 }
 
 export default function Models() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [config, setConfig] = useState<OpenClawConfig | null>(null)
   const [, setModels] = useState<ModelInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -94,6 +94,7 @@ export default function Models() {
           </p>
         </div>
         <button
+          id="models-add-provider-trigger"
           onClick={() => {
             setPreferredProvider('baidu-aistudio')
             setShowAdd(true)
@@ -157,7 +158,7 @@ export default function Models() {
                   >
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{PROVIDERS[providerId]?.label ?? providerId}</p>
+                        <p className="font-medium">{getProviderLabel(providerId, i18n.language)}</p>
                         <ProviderBadge providerId={providerId} />
                       </div>
                       <p className="text-sm text-muted-foreground">
@@ -203,11 +204,12 @@ function ProviderCard({
   isDefault: boolean
   onRefresh: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<boolean | null>(null)
   const adapter = getSetupAdapter()
   const knownProvider = PROVIDERS[providerId]
+  const displayModels = knownProvider?.models ?? provider.models
 
   const handleTest = async () => {
     setTesting(true)
@@ -226,7 +228,7 @@ function ProviderCard({
       <div className="section-heading mb-4">
         <div className="flex items-center gap-2">
           <span className={`w-3 h-3 rounded-full ${isDefault ? 'bg-primary' : 'bg-green-500'}`} />
-          <span className="font-medium">{knownProvider?.label ?? providerId}</span>
+          <span className="font-medium">{getProviderLabel(providerId, i18n.language)}</span>
           <ProviderBadge providerId={providerId} />
           {isDefault && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">{t('models.default')}</span>}
           {provider.baseUrl && (
@@ -253,9 +255,9 @@ function ProviderCard({
         </div>
       )}
 
-      {provider.models?.length > 0 && (
+      {displayModels?.length > 0 && (
         <div className="text-sm text-muted-foreground">
-          {t('models.availableModels', { models: provider.models.map((m: any) => m.name || m.id).join(', ') })}
+          {t('models.availableModels', { models: displayModels.map((m: any) => m.name || m.id).join(', ') })}
         </div>
       )}
     </div>
@@ -271,15 +273,18 @@ function ProviderSelectButton({
   selected: boolean
   onSelect: () => void
 }) {
+  const { i18n } = useTranslation()
   return (
     <button
+      type="button"
+      data-provider-id={providerId}
       onClick={onSelect}
       className={`px-3 py-1.5 rounded-lg text-sm border transition ${
         selected ? 'bg-foreground text-background border-foreground' : 'border-border hover:bg-accent'
       }`}
     >
       <span className="inline-flex items-center gap-2">
-        <span>{PROVIDERS[providerId].label}</span>
+        <span>{getProviderLabel(providerId, i18n.language)}</span>
         <ProviderBadge providerId={providerId} />
       </span>
     </button>
@@ -312,6 +317,7 @@ function AddProviderPanel({
   const { sponsorIds, otherIds } = splitProviderIds(visibleIds)
   const cfg = PROVIDERS[provider]
   const credentialLabel = getProviderCredentialLabel(provider, i18n.language)
+  const providerLabel = getProviderLabel(provider, i18n.language)
 
   useEffect(() => {
     setProvider(initialProvider)
@@ -345,7 +351,11 @@ function AddProviderPanel({
   }
 
   return (
-    <div id="models-add-provider" className="surface-card-muted space-y-3">
+    <div
+      id="models-add-provider"
+      data-provider={provider}
+      className="surface-card-muted space-y-3"
+    >
       <div className="flex items-center justify-between">
         <h3 className="section-title text-lg">{t('models.addProviderTitle')}</h3>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">{t('common.cancel')}</button>
@@ -387,11 +397,20 @@ function AddProviderPanel({
       )}
       {cfg?.keyUrl && (
         <a href={cfg.keyUrl} target="_blank" rel="noopener noreferrer" className="block text-xs text-primary hover:underline">
-          {t('models.getApiKey', { provider: cfg.label, credential: credentialLabel })} &rarr;
+          {t('models.getApiKey', { provider: providerLabel, credential: credentialLabel })} &rarr;
         </a>
+      )}
+      {cfg?.noteKey && (
+        <p
+          id="models-provider-note"
+          className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100"
+        >
+          {t(cfg.noteKey)}
+        </p>
       )}
       {cfg?.needsBaseUrl && (
         <input
+          id="models-provider-base-url"
           type="url"
           placeholder={t('models.baseUrlPlaceholder')}
           value={customBaseUrl}
@@ -400,9 +419,10 @@ function AddProviderPanel({
         />
       )}
       <input
+        id="models-provider-api-key"
         type="password"
         placeholder={t('models.apiKeyPlaceholder', {
-          provider: cfg?.label ?? provider,
+          provider: providerLabel,
           credential: credentialLabel,
         })}
         value={apiKey}

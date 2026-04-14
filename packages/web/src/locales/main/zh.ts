@@ -261,6 +261,7 @@ export default {
   "models.verifyAndAdding": "验证并添加中...",
   "models.enterBaseUrl": "请输入 API Base URL",
   "providers.badgeGoldenSponsor": "金牌赞助",
+  "providers.ernieQuotaNote": "注册后可领取 100 万 Tokens，完善用户资料后再领取 100 万 Tokens。",
   "channels.title": "通道管理",
   "channels.configured": "已配置",
   "channels.accountCount": "{{count}} 个账号",

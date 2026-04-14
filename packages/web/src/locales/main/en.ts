@@ -261,6 +261,7 @@ export default {
   "models.verifyAndAdding": "Verifying & adding...",
   "models.enterBaseUrl": "Please enter API Base URL",
   "providers.badgeGoldenSponsor": "Golden Sponsor",
+  "providers.ernieQuotaNote": "Get 1,000,000 free tokens after registration, then another 1,000,000 after completing your profile.",
   "channels.title": "Channel Management",
   "channels.configured": "Configured",
   "channels.accountCount": "{{count}} accounts",

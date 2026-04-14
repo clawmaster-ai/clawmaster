@@ -51,18 +51,19 @@ describe('ModelsPage', () => {
     expect(screen.getByText('Recommended providers')).toBeInTheDocument()
     expect(screen.getByText('OpenAI')).toBeInTheDocument()
     expect(screen.getByText('Anthropic')).toBeInTheDocument()
-    expect(screen.getByText('Baidu AI Studio')).toBeInTheDocument()
+    expect(screen.getByText('ERNIE LLM API')).toBeInTheDocument()
     expect(screen.getByText('Golden Sponsor')).toBeInTheDocument()
 
     const cta = screen.getAllByText('Use this provider')[0]
     fireEvent.click(cta.closest('button')!)
 
     expect(await screen.findByRole('heading', { name: 'Add Provider' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Get Baidu AI Studio Access Token →' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Get ERNIE LLM API Access Token →' })).toHaveAttribute(
       'href',
       'https://aistudio.baidu.com/usercenter/token',
     )
-    expect(screen.getByPlaceholderText('Enter Baidu AI Studio Access Token')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Enter ERNIE LLM API Access Token')).toBeInTheDocument()
+    expect(screen.getByText('Get 1,000,000 free tokens after registration, then another 1,000,000 after completing your profile.')).toBeInTheDocument()
   })
 
   it('requires a base URL for providers that need a custom endpoint before verifying', async () => {
@@ -86,7 +87,7 @@ describe('ModelsPage', () => {
     expect(mockSetApiKey).not.toHaveBeenCalled()
   })
 
-  it('lists Baidu AI Studio in the expanded provider catalog and can submit it', async () => {
+  it('lists ERNIE LLM API in the expanded provider catalog and can submit it', async () => {
     render(<ModelsPage />)
 
     expect(await screen.findByRole('heading', { name: 'Model Configuration' })).toBeInTheDocument()
@@ -99,8 +100,8 @@ describe('ModelsPage', () => {
     const panel = within(addPanel!)
 
     fireEvent.click(panel.getByRole('button', { name: /More/ }))
-    fireEvent.click(panel.getByRole('button', { name: /Baidu AI Studio/ }))
-    fireEvent.change(screen.getByPlaceholderText('Enter Baidu AI Studio Access Token'), {
+    fireEvent.click(panel.getByRole('button', { name: /ERNIE LLM API/ }))
+    fireEvent.change(screen.getByPlaceholderText('Enter ERNIE LLM API Access Token'), {
       target: { value: 'bce-test-token' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Verify & Add' }))
@@ -117,7 +118,7 @@ describe('ModelsPage', () => {
     mockGetConfig.mockResolvedValueOnce({
       agents: {
         defaults: {
-          model: { primary: 'baidu-aistudio/deepseek-v3' },
+          model: { primary: 'baidu-aistudio/ernie-5.0-thinking-preview' },
         },
       },
       models: {
@@ -130,7 +131,7 @@ describe('ModelsPage', () => {
           'baidu-aistudio': {
             apiKey: 'sk-baidu',
             baseUrl: 'https://aistudio.baidu.com/llm/lmapi/v3',
-            models: [{ id: 'deepseek-v3', name: 'DeepSeek V3' }],
+            models: [{ id: 'ernie-5.0-thinking-preview', name: 'ERNIE 5.0 Thinking Preview' }],
           },
         },
       },
@@ -142,7 +143,7 @@ describe('ModelsPage', () => {
 
     const configuredCards = Array.from(container.querySelectorAll('#models-providers > .surface-card'))
     expect(configuredCards).toHaveLength(2)
-    expect(configuredCards[0]?.textContent).toContain('Baidu AI Studio')
+    expect(configuredCards[0]?.textContent).toContain('ERNIE LLM API')
     expect(configuredCards[1]?.textContent).toContain('SiliconFlow')
 
     fireEvent.click(screen.getByRole('button', { name: '+ Add Provider' }))
@@ -151,7 +152,37 @@ describe('ModelsPage', () => {
 
     const sponsorLabel = within(addPanel!).getAllByText('Golden Sponsor')[0]
     const sponsorSection = sponsorLabel.parentElement
-    expect(sponsorSection?.textContent).toContain('Baidu AI Studio')
+    expect(sponsorSection?.textContent).toContain('ERNIE LLM API')
     expect(sponsorSection?.textContent).not.toContain('OpenAI')
+  })
+
+  it('shows the canonical ERNIE catalog on configured cards even when saved config still has the old model list', async () => {
+    mockGetConfig.mockResolvedValueOnce({
+      agents: {
+        defaults: {
+          model: { primary: 'baidu-aistudio/deepseek-v3' },
+        },
+      },
+      models: {
+        providers: {
+          'baidu-aistudio': {
+            apiKey: 'sk-baidu',
+            baseUrl: 'https://aistudio.baidu.com/llm/lmapi/v3',
+            models: [
+              { id: 'deepseek-v3', name: 'DeepSeek V3' },
+              { id: 'deepseek-r1', name: 'DeepSeek R1' },
+            ],
+          },
+        },
+      },
+    })
+
+    render(<ModelsPage />)
+
+    expect(await screen.findByRole('heading', { name: 'Model Configuration' })).toBeInTheDocument()
+    expect(screen.getByText(/Available models:/)).toHaveTextContent('ERNIE 5.0 Thinking Preview')
+    expect(screen.getByText(/Available models:/)).toHaveTextContent('ERNIE 4.5 Turbo VL')
+    expect(screen.getByText(/Available models:/)).not.toHaveTextContent('DeepSeek V3')
+    expect(screen.getByText(/Available models:/)).not.toHaveTextContent('DeepSeek R1')
   })
 })
