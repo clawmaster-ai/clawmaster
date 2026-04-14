@@ -93,10 +93,10 @@ const { t } = useTranslation()
 <h2>My Feature</h2>
 ```
 
-Add the key to **all three** files before opening a PR:
-- `packages/web/src/i18n/zh.json` (Chinese — primary)
-- `packages/web/src/i18n/en.json`
-- `packages/web/src/i18n/ja.json`
+Add the key to **all three** runtime locale files before opening a PR:
+- `packages/web/src/locales/main/zh.ts` (Chinese — primary)
+- `packages/web/src/locales/main/en.ts`
+- `packages/web/src/locales/main/ja.ts`
 
 ---
 
@@ -131,7 +131,7 @@ rejects PRs with an empty `## What` section.
 - [ ] `npm run build` passes (catches TypeScript errors)
 - [ ] New behavior has unit tests (happy path + at least one error path)
 - [ ] UI changes verified with `dev-browser` against `npm run dev:web`
-- [ ] All i18n keys added to `zh.json`, `en.json`, `ja.json`
+- [ ] All i18n keys added to `packages/web/src/locales/main/{zh,en,ja}.ts`
 - [ ] No `console.log` left in production paths
 - [ ] No screenshots, test logs, or generated files committed (`dist/`, `coverage/`)
 - [ ] PR is a **draft** if not yet ready for review
@@ -235,7 +235,7 @@ clawmaster/
 │   │   └── components/     ErrorBoundary, LoadingState, CapabilityGuard, PasswordField
 │   ├── app/                routing, sidebar, startup, command registry
 │   ├── pages/              legacy pages — do not add new code here
-│   └── i18n/               zh.json · en.json · ja.json
+│   └── locales/main/       zh.ts · en.ts · ja.ts
 ├── packages/backend/       Express API server (web mode, port 3001)
 ├── src-tauri/              Tauri 2 desktop backend (Rust)
 ├── bin/clawmaster.mjs      CLI entry point
@@ -254,10 +254,10 @@ It covers 16 LLM providers and 6 channel types.
 ### i18n
 
 ```
-packages/web/src/i18n/
-├── zh.json   Chinese (primary / fallback)
-├── en.json   English
-└── ja.json   Japanese
+packages/web/src/locales/main/
+├── zh.ts   Chinese (primary / fallback)
+├── en.ts   English
+└── ja.ts   Japanese
 ```
 
 Language preference in `localStorage` key `clawmaster-language`.

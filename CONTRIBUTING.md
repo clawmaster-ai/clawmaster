@@ -8,7 +8,7 @@ Thank you for your interest in contributing to ClawMaster! This guide will help 
 - **Feature requests**: Describe the use case and proposed solution in an issue.
 - **Code**: Fix bugs, implement features, or improve performance.
 - **Documentation**: Improve README, inline docs, or this guide.
-- **Translations**: Add or improve i18n strings in `packages/web/src/i18n/`.
+- **Translations**: Add or improve i18n strings in `packages/web/src/locales/main/`.
 - **Testing**: Add test cases or improve existing coverage.
 
 ## Development Setup
@@ -50,11 +50,11 @@ Keep PRs focused -- one logical change per PR.
 
 All user-facing UI text **must** go through the `t()` translation function. Hard-coded strings in components are not accepted.
 
-- Add keys to all three locale files: `zh.json`, `en.json`, `ja.json` in `packages/web/src/i18n/`.
+- Add keys to all three runtime locale files: `zh.ts`, `en.ts`, `ja.ts` in `packages/web/src/locales/main/`.
 - Use nested keys that match the module structure: e.g., `observe.chart.title`.
-- Chinese (`zh.json`) is the primary language. English and Japanese translations should also be provided.
+- Chinese (`zh.ts`) is the primary language. English and Japanese translations should also be provided.
 
-<!-- 所有界面文字必须通过 t() 函数调用，不允许硬编码字符串。新增键值需同时添加到 zh.json、en.json 和 ja.json。 -->
+<!-- 所有界面文字必须通过 t() 函数调用，不允许硬编码字符串。新增键值需同时添加到 locales/main 下的 zh.ts、en.ts 和 ja.ts。 -->
 
 ## Commit Message Convention
 

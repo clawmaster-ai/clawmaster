@@ -5,32 +5,36 @@
 -->
 
 <h1 align="center">
-  <code>clawmaster</code> · ClawMaster · 龙虾管理大师
+  <code>clawmaster</code> · OpenClaw Control Plane
 </h1>
 
 <p align="center">
-  <strong>A control plane for OpenClaw — setup, observe, and operate from one UI.</strong>
+  <strong>A guided desktop app and self-hosted web console for OpenClaw.</strong>
 </p>
 
-**ClawMaster** wraps OpenClaw in a desktop app (Tauri) and a self-hosted web console (Express + Vite). Run the guided wizard, flip settings in a UI, and watch ClawProbe track token spend — all without touching a config file.
+<p align="center">
+  Install faster, configure providers and channels, inspect memory and sessions, and watch runtime health without hand-editing <code>~/.openclaw/openclaw.json</code>.
+</p>
 
-**Join the community**: contribute modules, translations, and harness improvements for the OpenClaw ecosystem.
+<p align="center">
+  <code>Setup wizard</code> · <code>Profiles</code> · <code>Desktop + Web</code> · <code>ClawProbe observability</code>
+</p>
 
-| **16 LLM Providers** | **6 Channel Types** | **74 Tests Passing** | **3 Languages** |
+| **Desktop + Web** | **Guided Setup** | **Multi-platform CI** | **3 Languages** |
 |:---:|:---:|:---:|:---:|
 
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="Quick Start" /></a>
-  <a href="#roadmap"><img src="https://img.shields.io/badge/Roadmap-6_capabilities-ff69b4?style=for-the-badge" alt="Roadmap" /></a>
+  <a href="https://github.com/clawmaster-ai/clawmaster/releases"><img src="https://img.shields.io/badge/Releases-downloads-2ea44f?style=for-the-badge" alt="Releases" /></a>
   <a href="./CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributing-welcome-green?style=for-the-badge" alt="Contributing" /></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License" /></a>
+  <a href="#roadmap"><img src="https://img.shields.io/badge/Roadmap-6_capabilities-ff69b4?style=for-the-badge" alt="Roadmap" /></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/clawmaster-ai/clawmaster/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/clawmaster-ai/clawmaster/build.yml?branch=main" alt="Build" /></a>
   <a href="https://github.com/clawmaster-ai/clawmaster/releases"><img src="https://img.shields.io/github/v/release/clawmaster-ai/clawmaster?color=blue" alt="Release" /></a>
   <a href="https://github.com/clawmaster-ai/clawmaster/stargazers"><img src="https://img.shields.io/github/stars/clawmaster-ai/clawmaster?style=social" alt="Stars" /></a>
-  <img src="https://img.shields.io/badge/tests-74_passing-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/CI-multi_platform-brightgreen" alt="CI" />
 </p>
 
 <!-- Recognition badges — uncomment once listed:
@@ -51,13 +55,9 @@
   English &nbsp;·&nbsp; <a href="./README_CN.md">中文</a> &nbsp;·&nbsp; <a href="./README_JP.md">日本語</a>
 </p>
 
----
-
-> **The GUI for OpenClaw** — install, configure, and observe without editing JSON files.
->
-> **Platforms**: macOS · Windows · Linux · Web
-
----
+<p align="center">
+  <strong>Platforms:</strong> macOS · Windows · Linux · Web
+</p>
 
 ## ClawMaster vs. CLI Only
 
@@ -173,9 +173,9 @@ Browse [`label:roadmap`](https://github.com/clawmaster-ai/clawmaster/issues?q=la
 
 ## 📰 News
 
-- **2026-04-13** 🏗️ OSS governance overhaul — CODEOWNERS, PR template (What/Why/How/Testing), YAML issue forms, `pr-description-check` CI, architecture boundary tests ([#35](https://github.com/clawmaster-ai/clawmaster/pull/35))
+- **2026-04-13** 🏗️ Contribution workflow tightened with issue forms, a stronger PR template, PR description validation, and architecture boundary tests.
 
-<!-- Add entries here as notable changes ship. Format: **YYYY-MM-DD** emoji **description** — detail ([#PR](link)) -->
+<!-- Add entries here as notable user-facing changes ship. -->
 
 ## Development
 
@@ -199,7 +199,7 @@ npm run test:desktop  # desktop smoke (macOS: real Tauri build; Linux/Win: WebDr
 > [!TIP]
 > Run `npm test && npm run build` before opening a PR — the same steps run in CI.
 
-CI covers: TypeScript check, unit tests, backend integration smoke, web smoke, selected YAML UI suites, multi-platform Tauri builds.
+CI covers: TypeScript check, unit tests, backend integration smoke, web smoke, desktop smoke, and multi-platform Tauri builds.
 
 - [Test Suite](https://github.com/clawmaster-ai/clawmaster/actions/workflows/test.yml)
 - [Desktop Bundles](https://github.com/clawmaster-ai/clawmaster/actions/workflows/build.yml)
@@ -214,7 +214,7 @@ clawmaster/
 ├── packages/web/          React + Vite frontend
 ├── packages/backend/      Express backend for web mode
 ├── src-tauri/             Tauri desktop host
-├── tests/ui/              YAML-based UI test suites
+├── tests/ui/              YAML-based manual UI flow specs
 └── bin/clawmaster.mjs     CLI entry point
 ```
 

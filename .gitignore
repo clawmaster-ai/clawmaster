@@ -9,7 +9,8 @@ build/
 
 # Tauri
 src-tauri/target/
-# Cargo.lock is intentionally committed for this binary crate (reproducible builds)
+src-tauri/Cargo.lock
+.tauri-resources/
 
 # Environment
 .env

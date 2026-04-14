@@ -39,7 +39,7 @@
 
 - [ ] PR is a **draft** if not yet ready for review
 - [ ] Branch name follows convention (`feat/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/`)
-- [ ] All new i18n strings added to `zh.json`, `en.json`, and `ja.json`
+- [ ] All new i18n strings added to `packages/web/src/locales/main/{zh,en,ja}.ts`
 
 > [!CAUTION]
 > This PR does **not** contain: screenshots, screen recordings, test output logs, generated files (`dist/`, `coverage/`), or `console.log` debug calls. Delete this line when confirmed.
