@@ -78,9 +78,17 @@ const realOnboardingAdapter: OnboardingAdapter = {
     const endpoint = baseUrl || cfg?.baseUrl || 'https://api.openai.com/v1'
     const configResult = await getConfigResult()
     const configuredProvider = configResult.success ? configResult.data?.models?.providers?.[provider] : undefined
-    const configuredModel = configuredProvider?.models?.[0]
+    const defaultModel = configResult.success ? configResult.data?.agents?.defaults?.model?.primary : undefined
+    const activeModelId = defaultModel?.startsWith(`${provider}/`)
+      ? defaultModel.slice(provider.length + 1)
+      : undefined
+    const configuredModel = configuredProvider?.models?.find((model) => {
+      const id = typeof model === 'string' ? model.trim() : model?.id?.trim()
+      return id && id === activeModelId
+    }) ?? configuredProvider?.models?.[0]
     const model =
-      (typeof configuredModel === 'string' ? configuredModel : configuredModel?.id)
+      activeModelId
+      || (typeof configuredModel === 'string' ? configuredModel.trim() : configuredModel?.id?.trim())
       || cfg?.models?.[0]?.id
       || 'gpt-4o-mini'
     try {

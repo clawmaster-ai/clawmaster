@@ -42,7 +42,7 @@ function getModelSourceId(model: string | OpenClawModelRef | undefined): string 
     return id || null
   }
 
-  const id = model.id?.trim() || model.name?.trim()
+  const id = model.id?.trim()
   return id || null
 }
 
@@ -64,12 +64,16 @@ function normalizeModelOption(model: string | OpenClawModelRef | undefined): Pro
     return id ? { id, name: id } : null
   }
 
-  const id = model.id?.trim() || model.name?.trim()
+  const id = model.id?.trim()
   if (!id) return null
   return {
     id,
     name: model.name?.trim() || id,
   }
+}
+
+function hasSelectableProviderModels(models: Array<string | OpenClawModelRef> | undefined) {
+  return Boolean(models?.some((model) => getModelSourceId(model)))
 }
 
 function getProviderModelOptions(
@@ -78,8 +82,9 @@ function getProviderModelOptions(
   currentModelId: string | null,
 ): ProviderModelOption[] {
   const knownProvider = PROVIDERS[providerId]
-  const savedModels = provider.models?.length ? provider.models : undefined
-  const sourceModels = shouldUseCanonicalErnieCatalog(providerId, savedModels)
+  const legacyModels = provider.models?.length ? provider.models : undefined
+  const savedModels = hasSelectableProviderModels(legacyModels) ? legacyModels : undefined
+  const sourceModels = shouldUseCanonicalErnieCatalog(providerId, legacyModels)
     ? knownProvider?.models
     : savedModels ?? knownProvider?.models ?? []
 

@@ -297,4 +297,54 @@ describe('realSetupAdapter', () => {
       timeoutMs: 10000,
     })
   })
+
+  it('probes the active default model when the saved provider catalog is stale', async () => {
+    vi.mocked(getConfigResult).mockResolvedValue({
+      success: true,
+      data: {
+        agents: {
+          defaults: {
+            model: {
+              primary: 'baidu-aistudio/ernie-4.5-turbo-vl',
+            },
+          },
+        },
+        models: {
+          providers: {
+            'baidu-aistudio': {
+              models: [
+                { id: 'deepseek-v3', name: 'DeepSeek V3' },
+                { id: 'deepseek-r1', name: 'DeepSeek R1' },
+              ],
+            },
+          },
+        },
+      },
+      error: null,
+    } as any)
+    vi.mocked(probeHttpStatusResult).mockResolvedValue({
+      success: true,
+      data: { ok: true, status: 200 },
+      error: null,
+    })
+
+    await expect(
+      realSetupAdapter.onboarding.testApiKey('baidu-aistudio', 'bce-test-token'),
+    ).resolves.toBe(true)
+
+    expect(probeHttpStatusResult).toHaveBeenCalledWith({
+      url: 'https://aistudio.baidu.com/llm/lmapi/v3/chat/completions',
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer bce-test-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'ernie-4.5-turbo-vl',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      }),
+      timeoutMs: 10000,
+    })
+  })
 })

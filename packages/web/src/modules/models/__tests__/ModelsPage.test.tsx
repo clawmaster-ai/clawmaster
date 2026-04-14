@@ -285,6 +285,34 @@ describe('ModelsPage', () => {
     expect(within(picker!).getByRole('button', { name: /GPT-4.1 Mini gpt-4.1-mini/ })).toBeInTheDocument()
   })
 
+  it('ignores name-only saved entries and falls back to built-in model ids for built-in providers', async () => {
+    mockGetConfig.mockResolvedValueOnce({
+      agents: {
+        defaults: {
+          model: { primary: 'openai/gpt-4.1-mini' },
+        },
+      },
+      models: {
+        providers: {
+          openai: {
+            apiKey: 'sk-openai',
+            models: [{ name: 'GPT-4.1 Mini' }],
+          },
+        },
+      },
+    })
+
+    render(<ModelsPage />)
+
+    expect(await screen.findByRole('heading', { name: 'Model Configuration' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Model' }))
+
+    const picker = document.getElementById('models-provider-picker-openai')
+    expect(picker).not.toBeNull()
+    expect(within(picker!).queryByRole('button', { name: /^GPT-4\.1 Mini GPT-4\.1 Mini$/ })).not.toBeInTheDocument()
+    expect(within(picker!).getByRole('button', { name: /GPT-4.1 Mini gpt-4.1-mini/ })).toBeInTheDocument()
+  })
+
   it('lets users pick and set a model from the configured provider card', async () => {
     mockGetConfig.mockResolvedValueOnce({
       agents: {
