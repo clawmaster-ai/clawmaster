@@ -1,0 +1,60 @@
+name: "👋 Contributor Sign-Up"
+description: "Sign up to contribute a roadmap feature and join the contributor program."
+title: "[Contributor Sign-Up] "
+labels: ["contributor-signup"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Welcome to ClawMaster!
+
+        Core contributors who land a roadmap feature are eligible for model credits from the OpenClaw team.
+        Please read [CONTRIBUTING.md](https://github.com/clawmaster-ai/clawmaster/blob/main/CONTRIBUTING.md) before starting — in particular the Testing Requirements and Dependency Policy sections.
+
+  - type: checkboxes
+    id: contributing-read
+    attributes:
+      label: Before you start
+      options:
+        - label: I have read CONTRIBUTING.md, including the Testing Requirements and Dependency Policy sections.
+          required: true
+
+  - type: dropdown
+    id: roadmap-item
+    attributes:
+      label: Which roadmap capability are you planning to work on?
+      options:
+        - "能省钱 Save — PowerMem UI, seekdb integration, token-reduction workflows"
+        - "能应用 Apply — Photo OCR, invoice processing, flashcard tools"
+        - "能构建 Build — Conversational agent builder (LangChain DeepAgents)"
+        - "能守护 Guard — Key encryption, spend limits, RBAC"
+        - "Other / Infrastructure improvement"
+    validations:
+      required: true
+
+  - type: textarea
+    id: plan
+    attributes:
+      label: What do you plan to build?
+      description: A short description of the feature or improvement you have in mind.
+      placeholder: "e.g., Add a PowerMem dashboard page to the observe module showing memory usage and eviction stats..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: experience
+    attributes:
+      label: Relevant experience
+      placeholder: "e.g., 2 years of React/TypeScript, contributed to X project, familiar with Tauri..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: agreement
+    attributes:
+      label: Agreement
+      options:
+        - label: I will leave a comment on the relevant issue before starting work to avoid duplicate efforts.
+          required: true
+        - label: My PR will include tests covering the happy path and at least one error path.
+          required: true

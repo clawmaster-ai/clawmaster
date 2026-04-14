@@ -1,70 +1,132 @@
-# ClawMaster
+<!-- Hero image / demo GIF: replace comment with actual asset when available
+<p align="center">
+  <img src="docs/hero.gif" width="800" alt="ClawMaster demo" />
+</p>
+-->
 
-**A control plane for OpenClaw. Configure runtime, channels, skills, plugins, MCP servers, and observability from one UI.**
+<h1 align="center">
+  <code>clawmaster</code> · OpenClaw Control Plane
+</h1>
 
-[中文](./README_CN.md) | [日本語](./README_JP.md)
+<p align="center">
+  <strong>A guided desktop app and self-hosted web console for OpenClaw.</strong>
+</p>
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Web-lightgrey.svg)
-![Build](https://img.shields.io/github/actions/workflow/status/clawmaster-ai/clawmaster/build.yml?branch=main)
-![Languages](https://img.shields.io/badge/i18n-中文%20%7C%20English%20%7C%20日本語-green.svg)
+<p align="center">
+  Install faster, configure providers and channels, inspect memory and sessions, and watch runtime health without hand-editing <code>~/.openclaw/openclaw.json</code>.
+</p>
 
-ClawMaster wraps the OpenClaw ecosystem in a desktop app (Tauri) and a web console (Express + Vite). It is designed for people who want OpenClaw to be easier to install, inspect, and operate day to day without hand-editing config files for every change.
+<p align="center">
+  <code>Setup wizard</code> · <code>Profiles</code> · <code>Desktop + Web</code> · <code>ClawProbe observability</code>
+</p>
 
-## Why ClawMaster
+| **Desktop + Web** | **Guided Setup** | **Multi-platform CI** | **3 Languages** |
+|:---:|:---:|:---:|:---:|
 
-- **Start faster** with a guided setup flow for OpenClaw, providers, models, gateway, and channels.
-- **Manage the full stack** from one place: models, agents, sessions, memory, plugins, skills, MCP, and settings.
-- **Operate with visibility** through ClawProbe-backed status, token usage, context health, and cost views.
-- **Run the same product in two modes**: desktop app for local operators, web mode for browser-based management.
-- **Stay config-first**: ClawMaster works with OpenClaw's file-based runtime instead of introducing a separate database layer.
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="Quick Start" /></a>
+  <a href="https://github.com/clawmaster-ai/clawmaster/releases"><img src="https://img.shields.io/badge/Releases-downloads-2ea44f?style=for-the-badge" alt="Releases" /></a>
+  <a href="./CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributing-welcome-green?style=for-the-badge" alt="Contributing" /></a>
+  <a href="#roadmap"><img src="https://img.shields.io/badge/Roadmap-6_capabilities-ff69b4?style=for-the-badge" alt="Roadmap" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/clawmaster-ai/clawmaster/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/clawmaster-ai/clawmaster/build.yml?branch=main" alt="Build" /></a>
+  <a href="https://github.com/clawmaster-ai/clawmaster/releases"><img src="https://img.shields.io/github/v/release/clawmaster-ai/clawmaster?color=blue" alt="Release" /></a>
+  <a href="https://github.com/clawmaster-ai/clawmaster/stargazers"><img src="https://img.shields.io/github/stars/clawmaster-ai/clawmaster?style=social" alt="Stars" /></a>
+  <img src="https://img.shields.io/badge/CI-multi_platform-brightgreen" alt="CI" />
+</p>
+
+<!-- Recognition badges — uncomment once listed:
+<p align="center">
+  <a href="https://hellogithub.com/repository/FILL_IN"><img src="https://img.shields.io/badge/HelloGitHub-%E6%94%B6%E5%BD%95-red.svg" alt="HelloGitHub" /></a>
+  <a href="https://www.producthunt.com/posts/FILL_IN"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=FILL_IN&theme=light" alt="Product Hunt" height="28" /></a>
+</p>
+-->
+
+<p align="center">
+  <a href="https://github.com/clawmaster-ai/clawmaster/releases"><strong>📦 Releases</strong></a> &nbsp;·&nbsp;
+  <a href="https://github.com/clawmaster-ai/clawmaster/discussions"><strong>💬 Discussions</strong></a> &nbsp;·&nbsp;
+  <a href="https://github.com/clawmaster-ai/clawmaster/issues"><strong>🐛 Issues</strong></a> &nbsp;·&nbsp;
+  <a href="https://discord.gg/openclaw"><strong>Discord</strong></a>
+</p>
+
+<p align="center">
+  English &nbsp;·&nbsp; <a href="./README_CN.md">中文</a> &nbsp;·&nbsp; <a href="./README_JP.md">日本語</a>
+</p>
+
+<p align="center">
+  <strong>Platforms:</strong> macOS · Windows · Linux · Web
+</p>
+
+## ClawMaster vs. CLI Only
+
+| | OpenClaw CLI alone | ClawMaster |
+|---|---|---|
+| Initial setup | Hand-edit `~/.openclaw/openclaw.json` | Guided wizard |
+| Provider & model config | Edit JSON, restart | Form UI with live validation |
+| Channel setup | Read docs, edit config | Step-by-step guides per platform |
+| Observability | None built-in | ClawProbe dashboard (cost, tokens, health) |
+| Memory management | `powermem` CLI | Management UI |
+| Multiple profiles | Manual file juggling | Profile switcher |
+| Desktop app | No | Yes — ships as `.dmg` / `.msi` / `.AppImage` |
+| Self-hosted web console | No | Yes — Express, runs anywhere Node.js runs |
+
+## Who It Is For
+
+**"I manage OpenClaw for my team."**
+One place to configure channels, rotate API keys, and monitor token spend — no SSH, no JSON editing.
+
+**"I'm building agents with LangChain."**
+Quick observability into context usage, memory snapshots, and cost-per-session without writing monitoring code.
+
+**"I'm setting up OpenClaw for the first time."**
+The setup wizard walks you through provider, model, gateway, and channel in one flow. No docs required to reach a working state.
 
 ## What You Can Do
 
-- **Setup and profiles**
-  Detect OpenClaw, install missing pieces, create or switch profiles, and bootstrap a usable local environment.
-
-- **Models and providers**
-  Configure OpenAI-compatible and provider-specific endpoints, validate API keys, and choose defaults for runtime use.
-
-- **Gateway and channels**
-  Bring up the gateway, configure common channel integrations, and follow guided setup for platforms such as Feishu, WeChat, Discord, Slack, Telegram, and WhatsApp.
-
-- **Plugins, skills, and MCP**
-  Enable or disable installed capabilities, install curated items, add MCP servers manually, and import MCP definitions from existing tool configs.
-
-- **Sessions, memory, and observability**
-  Inspect sessions, manage memory backends, and track ClawProbe state, token usage, and estimated spend.
+- **Setup and profiles** — Detect OpenClaw, install missing pieces, create or switch profiles, bootstrap a local environment.
+- **Models and providers** — Configure OpenAI-compatible and provider-specific endpoints, validate API keys, set runtime defaults.
+- **Gateway and channels** — Bring up the gateway, follow guided setup for Feishu, WeChat, Discord, Slack, Telegram, and WhatsApp.
+- **Plugins, skills, and MCP** — Enable or disable capabilities, install curated items, add MCP servers, import MCP definitions.
+- **Sessions, memory, and observability** — Inspect sessions, manage memory backends, track token usage and estimated spend.
 
 ## Quick Start
 
-### Option 1: Download a Desktop Build
+<details>
+<summary>Option 1: Desktop installer</summary>
 
 Download the latest installer from [GitHub Releases](https://github.com/clawmaster-ai/clawmaster/releases).
 
-Current CI packaging targets:
-- Linux x64: `.deb`, `.rpm`, `.AppImage`
-- macOS Intel: `.dmg`
-- macOS Apple Silicon: `.dmg`
-- Windows x64: `.msi`, `.exe`
+| Platform | Format |
+|---|---|
+| Linux x64 | `.deb`, `.rpm`, `.AppImage` |
+| macOS Intel | `.dmg` |
+| macOS Apple Silicon | `.dmg` |
+| Windows x64 | `.msi`, `.exe` |
 
-For unreleased QA builds, GitHub Actions also uploads per-platform workflow artifacts.
+> [!NOTE]
+> CI also uploads per-platform artifacts for every push to `main` (7-day retention) if you need an unreleased build.
 
-### Option 2: Run from Source
+</details>
+
+<details>
+<summary>Option 2: Run from source</summary>
 
 ```bash
 git clone https://github.com/clawmaster-ai/clawmaster.git
 cd clawmaster
 npm install
-
-# Web app + backend
-npm run dev:web
-
-# Desktop app
-npm run tauri:dev
+npm run dev:web     # web app + backend
+npm run tauri:dev   # desktop app
 ```
 
-### Option 3: Install the Service CLI
+Requirements: Node.js 20+. For Tauri desktop builds, also Rust — see [tauri.app/start/prerequisites](https://tauri.app/start/prerequisites/).
+
+</details>
+
+<details>
+<summary>Option 3: Service CLI</summary>
 
 ```bash
 npm i -g clawmaster
@@ -73,103 +135,119 @@ clawmaster serve --daemon
 clawmaster status
 ```
 
-Default service URL:
-- `http://127.0.0.1:3001`
-- `clawmaster serve` prints a service token. Enter that token in the browser UI when prompted.
+Default service URL: `http://127.0.0.1:3001`. `clawmaster serve` prints a service token — enter it in the browser UI when prompted.
 
-Useful commands:
-- `clawmaster serve --host 127.0.0.1 --port 3001`
-- `clawmaster serve --host 127.0.0.1 --port 3001 --daemon`
-- `clawmaster serve --host 127.0.0.1 --port 3001 --token your-own-token`
-- `clawmaster status`
-- `clawmaster status --token your-own-token`
-- `clawmaster stop`
-- `clawmaster doctor`
-
-Production builds:
+Common flags:
 
 ```bash
-npm run build
-npm run tauri:build
+clawmaster serve --host 127.0.0.1 --port 3001 --daemon
+clawmaster serve --host 127.0.0.1 --port 3001 --token your-own-token
+clawmaster stop
+clawmaster doctor
 ```
 
-Requirements:
-- Node.js 20 or newer
-- Rust and platform prerequisites for Tauri desktop builds
-- See [Tauri prerequisites](https://tauri.app/start/prerequisites/)
+</details>
 
-## First Run Flow
+## First Run
 
 1. Launch ClawMaster.
 2. Choose an existing OpenClaw profile or create a new one.
 3. Connect at least one model provider and set a default model.
 4. Enable gateway or observability if you need runtime inspection.
-5. Add channels, plugins, skills, or MCP servers as needed for your workflow.
+5. Add channels, plugins, skills, or MCP servers as needed.
+
+## Roadmap
+
+Six capabilities — tracked as labeled issues:
+
+| Capability | Status | What it covers |
+|---|---|---|
+| 能接管 Setup | Released | Wizard, 16 providers, 6 channel types, profile management |
+| 能观测 Observe | Released | ClawProbe integration, cost / token / health dashboard |
+| 能省钱 Save | In progress | PowerMem UI, seekdb integration, token-reduction workflows |
+| 能应用 Apply | Planned | Photo OCR, invoice processing, flashcard tools |
+| 能构建 Build | Planned | Conversational agent builder (LangChain DeepAgents) |
+| 能守护 Guard | Planned | Key encryption, spend limits, RBAC |
+
+Browse [`label:roadmap`](https://github.com/clawmaster-ai/clawmaster/issues?q=label%3Aroadmap) to pick up an item. Leave a comment before starting — core contributors who land roadmap features can claim model credits from the OpenClaw team.
+
+## 📰 News
+
+- **2026-04-13** 🏗️ Contribution workflow tightened with issue forms, a stronger PR template, PR description validation, and architecture boundary tests.
+
+<!-- Add entries here as notable user-facing changes ship. -->
 
 ## Development
 
 ```bash
 npm install
-
-# Frontend only
-npm run dev
-
-# Frontend + backend
-npm run dev:web
-
-# Backend only
-npm run dev:backend
-
-# Tauri desktop
-npm run tauri:dev
+npm run dev:web       # frontend + backend
+npm run dev           # frontend only (port 3000)
+npm run dev:backend   # backend only (port 3001)
+npm run tauri:dev     # desktop app
 ```
 
-## Testing and CI
-
-Local verification:
+<details>
+<summary>Testing and CI</summary>
 
 ```bash
-npm test
-npm run build
-npm run test:desktop
+npm test              # unit tests (Vitest)
+npm run build         # type check + production build
+npm run test:desktop  # desktop smoke (macOS: real Tauri build; Linux/Win: WebDriver)
 ```
 
-`npm run test:desktop` behaves differently by platform:
-- macOS: real Tauri build + launch smoke
-- Linux / Windows: native desktop WebDriver smoke
+> [!TIP]
+> Run `npm test && npm run build` before opening a PR — the same steps run in CI.
 
-What the repository CI covers:
-- TypeScript check and unit tests
-- Backend integration smoke checks
-- Web smoke rendering
-- Selected YAML UI suites
-- Multi-platform desktop bundle builds
+CI covers: TypeScript check, unit tests, backend integration smoke, web smoke, desktop smoke, and multi-platform Tauri builds.
 
-Workflows:
 - [Test Suite](https://github.com/clawmaster-ai/clawmaster/actions/workflows/test.yml)
 - [Desktop Bundles](https://github.com/clawmaster-ai/clawmaster/actions/workflows/build.yml)
 
-## Project Layout
+</details>
+
+<details>
+<summary>Project layout</summary>
 
 ```text
 clawmaster/
 ├── packages/web/          React + Vite frontend
 ├── packages/backend/      Express backend for web mode
 ├── src-tauri/             Tauri desktop host
-├── tests/ui/              YAML-based UI test suites
+├── tests/ui/              YAML-based manual UI flow specs
 └── bin/clawmaster.mjs     CLI entry point
 ```
 
-Runtime model:
-- **Desktop**: React calls Tauri commands
-- **Web**: React calls the Express backend through `/api`
+Runtime model: Desktop — React calls Tauri commands via `invoke()`; Web — React proxies `/api` to Express.
 
-## Acknowledgments
+</details>
 
-ClawMaster builds on top of:
+## Contributing
+
+**Using an AI coding agent?** Point it at [AGENTS.md](./AGENTS.md) first — it covers the full contribution workflow, module patterns, and hard rules in agent-readable form.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, testing requirements, dependency policy, commit convention, and PR checklist.
+
+> [!IMPORTANT]
+> PRs must pass `npm test` locally before opening. No screenshots, test logs, or generated files in commits. Node.js is the only permitted runtime — no new language dependencies.
+
+Community: [GitHub Discussions](https://github.com/clawmaster-ai/clawmaster/discussions) · [Discord](https://discord.gg/openclaw) · [Feishu](https://openclaw.feishu.cn/community)
+
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=clawmaster-ai/clawmaster)](https://github.com/clawmaster-ai/clawmaster/graphs/contributors)
+
+---
+
+<!-- Repobeats activity widget — configure at repobeats.axiom.co then uncomment:
+[![Repobeats analytics image](https://repobeats.axiom.co/api/embed/HASH.svg "Repobeats analytics image")](https://repobeats.axiom.co)
+-->
+
+<details>
+<summary>Acknowledgments</summary>
 
 | Project | Role |
-| --- | --- |
+|---|---|
 | [OpenClaw](https://github.com/openclaw/openclaw) | Core runtime and configuration model |
 | [ClawProbe](https://github.com/openclaw/clawprobe) | Observability daemon |
 | [ClawHub](https://clawhub.ai) | Skill registry |
@@ -179,15 +257,7 @@ ClawMaster builds on top of:
 | [Vite](https://vitejs.dev) | Frontend toolchain |
 | [Playwright](https://playwright.dev) | Browser automation and smoke testing |
 
-## Contributing
-
-Contributions are welcome.
-
-1. Fork the repository.
-2. Create a branch from `main`.
-3. Make changes with tests where appropriate.
-4. Run `npm test` and `npm run build`.
-5. Open a pull request.
+</details>
 
 ## License
 

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussions
+    url: https://github.com/clawmaster-ai/clawmaster/discussions
+    about: Ask questions and discuss ideas here — faster responses than an issue.
+  - name: Discord
+    url: https://discord.gg/openclaw
+    about: Real-time help from the OpenClaw community.

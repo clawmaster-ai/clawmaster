@@ -1,0 +1,25 @@
+name: Question
+description: Ask a question about ClawMaster usage or configuration
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!TIP]
+        > For real-time help, try [GitHub Discussions](https://github.com/clawmaster-ai/clawmaster/discussions) first — questions often get faster responses there.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: What have you already tried?
+      description: ClawMaster version, platform, and any steps you have taken.
+    validations:
+      required: false

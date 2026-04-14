@@ -215,6 +215,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v5
         with:
           path: release-bundles
@@ -241,6 +243,19 @@ jobs:
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Verify tag matches package version
+        env:
+          TAG: ${{ steps.release_meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="${TAG#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+
+          if [ "$EXPECTED_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Release tag $TAG does not match package.json version $PACKAGE_VERSION" >&2
+            exit 1
+          fi
+
       - name: Collect release assets
         run: |
           set -euo pipefail
@@ -263,17 +278,46 @@ jobs:
 
       - name: Create release notes
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
           TAG: ${{ steps.release_meta.outputs.tag }}
+          TARGET_COMMITISH: ${{ github.sha }}
         run: |
+          set -euo pipefail
+
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$REPOSITORY/releases/generate-notes" \
+            -f tag_name="$TAG" \
+            -f target_commitish="$TARGET_COMMITISH" \
+            > generated-release-notes.json
+
+          GENERATED_BODY="$(node -e "const fs=require('fs'); const body=JSON.parse(fs.readFileSync('generated-release-notes.json','utf8')).body || ''; process.stdout.write(body.trim());")"
+
           cat <<EOF > RELEASE_NOTES.md
-          ClawMaster desktop installers built by CI.
+          ## Release Overview
 
-          Downloads included in this release:
-          - Linux: .AppImage, .deb, .rpm
-          - macOS: .dmg
-          - Windows: .msi, .exe
+          This release ships ClawMaster desktop installers built by CI.
 
-          Checksums are included in \`SHA256SUMS.txt\`.
+          ## Installers
+
+          - Linux: \`.AppImage\`, \`.deb\`, \`.rpm\`
+          - macOS: \`.dmg\`
+          - Windows: \`.msi\`, \`.exe\`
+
+          ## Checksums
+
+          - Verify downloads with \`SHA256SUMS.txt\`
+
+          ## Upgrade Notes
+
+          - Canonical release notes live on GitHub Releases rather than \`CHANGELOG.md\`
+          - Use installers and service packages from the same tag when validating a release
+
+          ## What's Changed
+
+          $GENERATED_BODY
           EOF
 
       - name: Create or update GitHub release
@@ -303,6 +347,9 @@ jobs:
           fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "ClawMaster $TAG" \
+              --notes-file RELEASE_NOTES.md
             gh release upload "$TAG" release-assets/* --clobber
           else
             gh release create "$TAG" release-assets/* \

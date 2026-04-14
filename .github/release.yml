@@ -1,0 +1,22 @@
+changelog:
+  change-template: "- $TITLE (#$NUMBER) @$AUTHOR"
+  categories:
+    - title: Highlights
+      labels:
+        - feat
+        - feature
+        - enhancement
+    - title: Fixes
+      labels:
+        - fix
+        - bug
+        - regression
+    - title: Docs and DX
+      labels:
+        - docs
+        - ci
+        - dx
+        - chore
+  exclude:
+    labels:
+      - skip-release-notes
