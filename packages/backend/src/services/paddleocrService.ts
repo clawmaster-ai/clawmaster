@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { readConfigJsonOrEmpty, updateConfigJson } from '../configJson.js'
 import { getOpenclawDataDir } from '../paths.js'
@@ -78,7 +77,6 @@ type PaddleOcrServiceDeps = {
   ) => Promise<void>
 }
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const RESOURCE_ROOT_ENV_KEY = 'CLAWMASTER_RESOURCES_DIR'
 const ASSET_ROOT_ENV_KEY = 'CLAWMASTER_PADDLEOCR_ASSET_ROOT'
 const SAMPLE_IMAGE_ENV_KEY = 'CLAWMASTER_PADDLEOCR_SAMPLE_IMAGE'
@@ -132,8 +130,6 @@ function getResourceRootCandidates(explicitResourceRoot?: string): string[] {
     process.env[RESOURCE_ROOT_ENV_KEY],
     path.join(cwd, 'src-tauri', 'resources'),
     path.join(cwd, 'resources'),
-    path.resolve(__dirname, '../../../../src-tauri/resources'),
-    path.resolve(__dirname, '../../../resources'),
     path.join(execDir, 'resources'),
     path.resolve(execDir, '..', 'resources'),
   ])
