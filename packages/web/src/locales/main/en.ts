@@ -293,7 +293,6 @@ export default {
   "models.verifyAndAdd": "Verify & Add",
   "models.verifyAndAdding": "Verifying & adding...",
   "models.enterBaseUrl": "Please enter API Base URL",
-  "providers.badgeGoldenSponsor": "Golden Sponsor",
   "providers.ernieQuotaNote": "Get 1,000,000 free tokens after registration, then another 1,000,000 after completing your profile.",
   "providers.ernieImageNote": "Uses the same Baidu AI Studio Access Token. Verification performs a real image generation request.",
   "providers.ernieImageGuide": "Use this provider for image generation, not as the primary agent chat model.",

@@ -11,7 +11,7 @@ metadata:
       bins:
         - node
     primaryEnv: PADDLEOCR_ACCESS_TOKEN
-    emoji: "馃敜"
+    emoji: "🔎"
     homepage: https://github.com/PaddlePaddle/PaddleOCR/tree/main/skills/paddleocr-text-recognition
 ---
 
@@ -32,7 +32,7 @@ Do not use this skill in the following situations:
 
 ## How to Use This Skill
 
-**鉀?MANDATORY RESTRICTIONS - DO NOT VIOLATE 鉀?*
+**MANDATORY RESTRICTIONS - DO NOT VIOLATE**
 
 1. **ONLY use PaddleOCR Text Recognition API** - Execute the script `node scripts/ocr_caller.mjs`
 2. **NEVER read images directly** - Do NOT read images yourself

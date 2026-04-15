@@ -66,21 +66,9 @@ import type {
   ChannelTypeConfig,
 } from './types'
 import type {
-  PaddleOcrModuleId,
   PaddleOcrModuleStatus,
   PaddleOcrPreviewPayload,
-  SystemInfo,
 } from '@/lib/types'
-import type { OpenclawProfileInput, OpenclawProfileSeedInput } from '@/shared/adapters/system'
-import type { SetupAdapter } from './adapters'
-import type {
-  CapabilityStatus,
-  InstallProgress,
-  SetupPhase,
-  CapabilityId,
-  OnboardingState,
-  ChannelTypeConfig,
-} from './types'
 interface SetupWizardProps {
   onComplete: () => void
 }

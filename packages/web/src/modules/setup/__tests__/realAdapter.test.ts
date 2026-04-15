@@ -121,7 +121,6 @@ describe('realSetupAdapter', () => {
       },
       error: null,
     })
-    })
   })
 
   it('throws when a capability install fails', async () => {

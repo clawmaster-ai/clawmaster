@@ -11,7 +11,7 @@ metadata:
       bins:
         - node
     primaryEnv: PADDLEOCR_ACCESS_TOKEN
-    emoji: "馃搫"
+    emoji: "📄"
     homepage: https://github.com/PaddlePaddle/PaddleOCR/tree/main/skills/paddleocr-doc-parsing
 ---
 
@@ -34,7 +34,7 @@ metadata:
 
 ## How to Use This Skill
 
-**鉀?MANDATORY RESTRICTIONS - DO NOT VIOLATE 鉀?*
+**MANDATORY RESTRICTIONS - DO NOT VIOLATE**
 
 1. **ONLY use PaddleOCR Document Parsing API** - Execute the script `node scripts/vl_caller.mjs`
 2. **NEVER parse documents directly** - Do NOT parse documents yourself

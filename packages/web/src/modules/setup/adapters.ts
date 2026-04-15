@@ -472,10 +472,6 @@ const realPaddleOcrAdapter: PaddleOcrAdapter = {
 }
 
 function detectInstalledCapability(cap: (typeof CAPABILITIES)[number]): Promise<CapabilityStatus> {
-  if (cap.id === 'memory') {
-    return detectMemoryCapability()
-  }
-
   return execCommand(cap.detectCmd, cap.detectArgs).then((output) => {
     const match = output.match(/v?(\d+\.\d+[\w.-]*)/)
     return {

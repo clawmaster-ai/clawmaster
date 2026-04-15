@@ -6,7 +6,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 
 const CMD_ERR_PREFIX: &str = "CLAWMASTER_ERR:";
@@ -1538,6 +1538,912 @@ fn get_config_path() -> PathBuf {
     get_config_resolution().config_path
 }
 
+const PADDLEOCR_TEXT_SKILL_ID: &str = "paddleocr-text-recognition";
+const PADDLEOCR_DOC_SKILL_ID: &str = "paddleocr-doc-parsing";
+const PADDLEOCR_SKILL_IDS: [&str; 2] = [PADDLEOCR_TEXT_SKILL_ID, PADDLEOCR_DOC_SKILL_ID];
+const PADDLEOCR_SAMPLE_IMAGE_BASE64: &str =
+    include_str!("../resources/paddleocr-preview/sample_image.base64");
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PaddleocrSetupPayload {
+    module_id: String,
+    api_url: String,
+    access_token: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PaddleocrClearPayload {
+    module_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PaddleocrModuleStatus {
+    configured: bool,
+    enabled: bool,
+    missing: bool,
+    api_url_configured: bool,
+    access_token_configured: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    api_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PaddleocrStatusPayload {
+    configured: bool,
+    enabled_modules: Vec<String>,
+    missing_modules: Vec<String>,
+    text_recognition: PaddleocrModuleStatus,
+    doc_parsing: PaddleocrModuleStatus,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PaddleocrPreviewPayload {
+    module_id: String,
+    api_url: String,
+    latency_ms: u128,
+    page_count: usize,
+    text_line_count: usize,
+    extracted_text: String,
+    response_preview: String,
+}
+
+struct BundledPaddleocrFile {
+    module_id: &'static str,
+    relative_path: &'static str,
+    contents: &'static str,
+}
+
+const BUNDLED_PADDLEOCR_FILES: &[BundledPaddleocrFile] = &[
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "SKILL.md",
+        contents: include_str!("../resources/paddleocr-skills/paddleocr-text-recognition/SKILL.md"),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "references/output_schema.md",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-text-recognition/references/output_schema.md"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "scripts/lib.mjs",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/lib.mjs"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "scripts/ocr_caller.mjs",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/ocr_caller.mjs"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_TEXT_SKILL_ID,
+        relative_path: "scripts/smoke_test.mjs",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-text-recognition/scripts/smoke_test.mjs"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "SKILL.md",
+        contents: include_str!("../resources/paddleocr-skills/paddleocr-doc-parsing/SKILL.md"),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "references/output_schema.md",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/references/output_schema.md"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "scripts/lib.mjs",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/lib.mjs"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "scripts/smoke_test.mjs",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/smoke_test.mjs"
+        ),
+    },
+    BundledPaddleocrFile {
+        module_id: PADDLEOCR_DOC_SKILL_ID,
+        relative_path: "scripts/vl_caller.mjs",
+        contents: include_str!(
+            "../resources/paddleocr-skills/paddleocr-doc-parsing/scripts/vl_caller.mjs"
+        ),
+    },
+];
+
+fn trim_trailing_slashes(value: &str) -> String {
+    value.trim_end_matches('/').to_string()
+}
+
+fn paddleocr_module_endpoint_suffix(module_id: &str) -> Result<&'static str, String> {
+    match module_id {
+        PADDLEOCR_TEXT_SKILL_ID => Ok("/ocr"),
+        PADDLEOCR_DOC_SKILL_ID => Ok("/layout-parsing"),
+        _ => Err("Unsupported PaddleOCR module.".to_string()),
+    }
+}
+
+fn paddleocr_module_api_env_key(module_id: &str) -> Result<&'static str, String> {
+    match module_id {
+        PADDLEOCR_TEXT_SKILL_ID => Ok("PADDLEOCR_OCR_API_URL"),
+        PADDLEOCR_DOC_SKILL_ID => Ok("PADDLEOCR_DOC_PARSING_API_URL"),
+        _ => Err("Unsupported PaddleOCR module.".to_string()),
+    }
+}
+
+fn paddleocr_module_timeout_env_key(module_id: &str) -> Result<&'static str, String> {
+    match module_id {
+        PADDLEOCR_TEXT_SKILL_ID => Ok("PADDLEOCR_OCR_TIMEOUT"),
+        PADDLEOCR_DOC_SKILL_ID => Ok("PADDLEOCR_DOC_PARSING_TIMEOUT"),
+        _ => Err("Unsupported PaddleOCR module.".to_string()),
+    }
+}
+
+fn paddleocr_module_timeout_default(module_id: &str) -> Result<&'static str, String> {
+    match module_id {
+        PADDLEOCR_TEXT_SKILL_ID => Ok("120"),
+        PADDLEOCR_DOC_SKILL_ID => Ok("600"),
+        _ => Err("Unsupported PaddleOCR module.".to_string()),
+    }
+}
+
+fn paddleocr_validation_label(module_id: &str) -> Result<&'static str, String> {
+    match module_id {
+        PADDLEOCR_TEXT_SKILL_ID => Ok("PaddleOCR text recognition"),
+        PADDLEOCR_DOC_SKILL_ID => Ok("PaddleOCR document parsing"),
+        _ => Err("Unsupported PaddleOCR module.".to_string()),
+    }
+}
+
+fn normalize_paddleocr_api_url(module_id: &str, value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("API endpoint is required.".to_string());
+    }
+
+    let normalized = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        trimmed.to_string()
+    } else {
+        format!("https://{trimmed}")
+    };
+
+    if normalized.chars().any(char::is_whitespace) {
+        return Err("Enter a valid PaddleOCR API endpoint.".to_string());
+    }
+
+    let Some((scheme, rest)) = normalized.split_once("://") else {
+        return Err("Enter a valid PaddleOCR API endpoint.".to_string());
+    };
+    if scheme != "http" && scheme != "https" {
+        return Err("Enter a valid PaddleOCR API endpoint.".to_string());
+    }
+
+    let rest = rest.split('#').next().unwrap_or(rest);
+    let rest = rest.split('?').next().unwrap_or(rest);
+    let api_url = trim_trailing_slashes(&format!("{scheme}://{}", rest.trim_end_matches('/')));
+    let expected_suffix = paddleocr_module_endpoint_suffix(module_id)?;
+    if !api_url.ends_with(expected_suffix) {
+        return Err(format!(
+            "Enter the full PaddleOCR endpoint ending with {expected_suffix}."
+        ));
+    }
+
+    let host = api_url
+        .split_once("://")
+        .map(|(_, remainder)| remainder)
+        .unwrap_or("")
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .trim();
+    if host.is_empty() {
+        return Err("Enter a valid PaddleOCR API endpoint.".to_string());
+    }
+
+    Ok(api_url)
+}
+
+fn get_paddleocr_skills_dir() -> PathBuf {
+    get_config_resolution()
+        .data_dir
+        .join("workspace")
+        .join("skills")
+}
+
+fn get_paddleocr_skill_dir(skills_dir: &Path, module_id: &str) -> PathBuf {
+    skills_dir.join(module_id)
+}
+
+fn ensure_json_object(
+    value: &mut serde_json::Value,
+) -> &mut serde_json::Map<String, serde_json::Value> {
+    if !value.is_object() {
+        *value = serde_json::json!({});
+    }
+    value
+        .as_object_mut()
+        .expect("object should exist after normalization")
+}
+
+fn ensure_object_property<'a>(
+    map: &'a mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> &'a mut serde_json::Map<String, serde_json::Value> {
+    let entry = map
+        .entry(key.to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if !entry.is_object() {
+        *entry = serde_json::json!({});
+    }
+    entry
+        .as_object_mut()
+        .expect("object should exist after normalization")
+}
+
+fn load_config_json_value() -> Result<serde_json::Value, String> {
+    get_config().map(|config| config.data)
+}
+
+fn save_config_json_value(config: serde_json::Value) -> Result<(), String> {
+    save_config(config)
+}
+
+fn read_paddleocr_skill_entry<'a>(
+    config: &'a serde_json::Value,
+    module_id: &str,
+) -> Option<&'a serde_json::Map<String, serde_json::Value>> {
+    config
+        .get("skills")?
+        .as_object()?
+        .get("entries")?
+        .as_object()?
+        .get(module_id)?
+        .as_object()
+}
+
+fn read_paddleocr_api_url_from_entry(
+    entry: Option<&serde_json::Map<String, serde_json::Value>>,
+    module_id: &str,
+) -> Option<String> {
+    let entry = entry?;
+    if let Some(config) = entry.get("config").and_then(|value| value.as_object()) {
+        if let Some(api_url) = config
+            .get("apiUrl")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if let Ok(normalized) = normalize_paddleocr_api_url(module_id, api_url) {
+                return Some(normalized);
+            }
+        }
+    }
+
+    let env = entry.get("env").and_then(|value| value.as_object())?;
+    let env_key = paddleocr_module_api_env_key(module_id).ok()?;
+    let env_url = env.get(env_key).and_then(|value| value.as_str())?.trim();
+    if env_url.is_empty() {
+        return None;
+    }
+
+    normalize_paddleocr_api_url(module_id, env_url).ok()
+}
+
+fn read_paddleocr_access_token_from_entry(
+    entry: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Option<String> {
+    let entry = entry?;
+
+    if let Some(token) = entry
+        .get("apiKey")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(token.to_string());
+    }
+
+    if let Some(token) = entry
+        .get("config")
+        .and_then(|value| value.as_object())
+        .and_then(|config| config.get("accessToken"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(token.to_string());
+    }
+
+    entry
+        .get("env")
+        .and_then(|value| value.as_object())
+        .and_then(|env| env.get("PADDLEOCR_ACCESS_TOKEN"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+}
+
+fn paddleocr_has_access_token(entry: Option<&serde_json::Map<String, serde_json::Value>>) -> bool {
+    read_paddleocr_access_token_from_entry(entry).is_some()
+}
+
+fn build_paddleocr_module_status(
+    config: &serde_json::Value,
+    skills_dir: &Path,
+    module_id: &str,
+) -> PaddleocrModuleStatus {
+    let entry = read_paddleocr_skill_entry(config, module_id);
+    let enabled = entry
+        .and_then(|item| item.get("enabled"))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let missing = !get_paddleocr_skill_dir(skills_dir, module_id).exists();
+    let access_token_configured = paddleocr_has_access_token(entry);
+    let api_url = read_paddleocr_api_url_from_entry(entry, module_id);
+    let api_url_configured = api_url.is_some();
+
+    PaddleocrModuleStatus {
+        configured: enabled && !missing && access_token_configured && api_url_configured,
+        enabled,
+        missing,
+        api_url_configured,
+        access_token_configured,
+        api_url,
+    }
+}
+
+fn build_paddleocr_status(config: &serde_json::Value, skills_dir: &Path) -> PaddleocrStatusPayload {
+    let text_recognition =
+        build_paddleocr_module_status(config, skills_dir, PADDLEOCR_TEXT_SKILL_ID);
+    let doc_parsing = build_paddleocr_module_status(config, skills_dir, PADDLEOCR_DOC_SKILL_ID);
+
+    let enabled_modules = PADDLEOCR_SKILL_IDS
+        .iter()
+        .filter_map(|module_id| {
+            let enabled = if *module_id == PADDLEOCR_TEXT_SKILL_ID {
+                text_recognition.enabled
+            } else {
+                doc_parsing.enabled
+            };
+            if enabled {
+                Some((*module_id).to_string())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let missing_modules = PADDLEOCR_SKILL_IDS
+        .iter()
+        .filter_map(|module_id| {
+            let missing = if *module_id == PADDLEOCR_TEXT_SKILL_ID {
+                text_recognition.missing
+            } else {
+                doc_parsing.missing
+            };
+            if missing {
+                Some((*module_id).to_string())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    PaddleocrStatusPayload {
+        configured: text_recognition.configured && doc_parsing.configured,
+        enabled_modules,
+        missing_modules,
+        text_recognition,
+        doc_parsing,
+    }
+}
+
+fn ensure_bundled_paddleocr_meta(skill_dir: &Path, module_id: &str) -> Result<(), String> {
+    let meta_path = skill_dir.join("_meta.json");
+    if meta_path.exists() {
+        return Ok(());
+    }
+
+    let content = serde_json::to_string_pretty(&serde_json::json!({
+        "slug": module_id,
+        "version": "bundled",
+        "source": "clawmaster-bundled",
+        "bundled": true
+    }))
+    .map_err(|e| format!("Failed to serialize bundled PaddleOCR metadata: {e}"))?;
+
+    fs::write(&meta_path, format!("{content}\n"))
+        .map_err(|e| format!("Failed to write bundled PaddleOCR metadata: {e}"))?;
+    Ok(())
+}
+
+fn ensure_bundled_paddleocr_modules(skills_dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(skills_dir)
+        .map_err(|e| format!("Failed to prepare the OpenClaw skills directory: {e}"))?;
+
+    for file in BUNDLED_PADDLEOCR_FILES {
+        let target_path = get_paddleocr_skill_dir(skills_dir, file.module_id)
+            .join(PathBuf::from(file.relative_path));
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Failed to prepare the bundled PaddleOCR module directory {}: {e}",
+                    parent.display()
+                )
+            })?;
+        }
+        if !target_path.exists() {
+            fs::write(&target_path, file.contents).map_err(|e| {
+                format!(
+                    "Failed to copy bundled PaddleOCR module file {}: {e}",
+                    target_path.display()
+                )
+            })?;
+        }
+    }
+
+    for module_id in PADDLEOCR_SKILL_IDS {
+        let skill_dir = get_paddleocr_skill_dir(skills_dir, module_id);
+        fs::create_dir_all(&skill_dir).map_err(|e| {
+            format!(
+                "Failed to prepare bundled PaddleOCR module directory {}: {e}",
+                skill_dir.display()
+            )
+        })?;
+        ensure_bundled_paddleocr_meta(&skill_dir, module_id)?;
+    }
+
+    Ok(())
+}
+
+fn paddleocr_error_detail(payload: Option<&serde_json::Value>, fallback: &str) -> String {
+    if let Some(detail) = payload
+        .and_then(|value| value.get("errorMsg"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return detail.to_string();
+    }
+
+    let trimmed = fallback.trim();
+    if trimmed.is_empty() {
+        "No response body".to_string()
+    } else {
+        shorten_chars(trimmed, 1000)
+    }
+}
+
+fn paddleocr_error_code(payload: Option<&serde_json::Value>) -> i64 {
+    let Some(payload) = payload else {
+        return 0;
+    };
+    let Some(value) = payload.get("errorCode") else {
+        return 0;
+    };
+    value
+        .as_i64()
+        .or_else(|| {
+            value
+                .as_u64()
+                .filter(|number| *number <= i64::MAX as u64)
+                .map(|number| number as i64)
+        })
+        .or_else(|| {
+            value
+                .as_str()
+                .and_then(|text| text.trim().parse::<i64>().ok())
+        })
+        .unwrap_or(0)
+}
+
+fn paddleocr_sample_image_base64() -> String {
+    PADDLEOCR_SAMPLE_IMAGE_BASE64
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect()
+}
+
+fn count_non_empty_lines(text: &str) -> usize {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .count()
+}
+
+fn extract_paddleocr_preview_text(payload: Option<&serde_json::Value>) -> (String, usize) {
+    let Some(payload) = payload else {
+        return (String::new(), 0);
+    };
+
+    let Some(result) = payload.get("result").and_then(|value| value.as_object()) else {
+        let text = payload
+            .get("text")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .unwrap_or("")
+            .to_string();
+        return (text, 0);
+    };
+
+    if let Some(ocr_results) = result.get("ocrResults").and_then(|value| value.as_array()) {
+        let page_texts = ocr_results
+            .iter()
+            .filter_map(|page| page.get("prunedResult"))
+            .filter_map(|value| value.as_object())
+            .map(|pruned_result| {
+                pruned_result
+                    .get("rec_texts")
+                    .and_then(|value| value.as_array())
+                    .map(|texts| {
+                        texts
+                            .iter()
+                            .filter_map(|item| item.as_str())
+                            .map(str::trim)
+                            .filter(|item| !item.is_empty())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default()
+            })
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>();
+
+        let page_count = result
+            .get("dataInfo")
+            .and_then(|value| value.as_object())
+            .and_then(|data_info| data_info.get("numPages"))
+            .and_then(|value| value.as_u64())
+            .map(|value| value as usize)
+            .filter(|value| *value > 0)
+            .unwrap_or(ocr_results.len());
+
+        return (page_texts.join("\n\n"), page_count);
+    }
+
+    if let Some(layout_results) = result
+        .get("layoutParsingResults")
+        .and_then(|value| value.as_array())
+    {
+        let page_texts = layout_results
+            .iter()
+            .filter_map(|page| page.get("markdown"))
+            .filter_map(|value| value.as_object())
+            .filter_map(|markdown| markdown.get("text"))
+            .filter_map(|value| value.as_str())
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(|text| text.to_string())
+            .collect::<Vec<_>>();
+
+        return (page_texts.join("\n\n"), layout_results.len());
+    }
+
+    let text = payload
+        .get("text")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .unwrap_or("")
+        .to_string();
+    (text, 0)
+}
+
+fn format_paddleocr_response_preview(payload: Option<&serde_json::Value>) -> String {
+    let preview_value = payload.and_then(|value| value.get("result").or(Some(value)));
+    let Some(preview_value) = preview_value else {
+        return String::new();
+    };
+
+    let serialized =
+        serde_json::to_string_pretty(preview_value).unwrap_or_else(|_| preview_value.to_string());
+    shorten_chars(&serialized, 4000)
+}
+
+fn resolve_paddleocr_access_token(
+    input_access_token: &str,
+    config: &serde_json::Value,
+    module_id: &str,
+) -> Result<String, String> {
+    let input_access_token = input_access_token.trim();
+    if !input_access_token.is_empty() {
+        return Ok(input_access_token.to_string());
+    }
+
+    read_paddleocr_access_token_from_entry(read_paddleocr_skill_entry(config, module_id))
+        .ok_or_else(|| "Access Token is required.".to_string())
+}
+
+struct PaddleocrRequestResult {
+    status: u16,
+    raw_body: String,
+    payload: Option<serde_json::Value>,
+    latency_ms: u128,
+}
+
+fn run_paddleocr_request(
+    api_url: &str,
+    access_token: &str,
+) -> Result<PaddleocrRequestResult, String> {
+    const STATUS_MARKER: &str = "__CLAWMASTER_PADDLEOCR_STATUS__:";
+    let payload = serde_json::json!({
+        "file": paddleocr_sample_image_base64(),
+        "fileType": 1,
+        "visualize": false,
+        "useDocUnwarping": false,
+        "useDocOrientationClassify": false
+    })
+    .to_string();
+
+    let started_at = Instant::now();
+    let output = Command::new(resolve_system_command_path("curl"))
+        .args([
+            "-sS",
+            "--connect-timeout",
+            "10",
+            "--max-time",
+            "25",
+            "-X",
+            "POST",
+            api_url,
+            "-H",
+            &format!("Authorization: token {access_token}"),
+            "-H",
+            "Content-Type: application/json",
+            "-H",
+            "Client-Platform: clawmaster-bundled",
+            "-d",
+            &payload,
+            "-w",
+            &format!("\n{STATUS_MARKER}%{{http_code}}"),
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("PaddleOCR verification request could not start: {e}"))?;
+    let latency_ms = started_at.elapsed().as_millis();
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !output.status.success() {
+        let detail = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            format!("curl exited with {:?}", output.status.code())
+        };
+        return Err(format!("PaddleOCR verification request failed: {detail}"));
+    }
+
+    let Some((body, status_text)) = stdout.rsplit_once(STATUS_MARKER) else {
+        return Err("PaddleOCR verification returned an unreadable response.".to_string());
+    };
+    let status = status_text
+        .trim()
+        .parse::<u16>()
+        .map_err(|_| "PaddleOCR verification returned an invalid status code.".to_string())?;
+
+    let raw_body = body
+        .trim_end_matches(|ch| ch == '\r' || ch == '\n')
+        .to_string();
+    let payload = serde_json::from_str::<serde_json::Value>(&raw_body).ok();
+
+    Ok(PaddleocrRequestResult {
+        status,
+        raw_body,
+        payload,
+        latency_ms,
+    })
+}
+
+fn validate_single_paddleocr_endpoint(
+    module_id: &str,
+    api_url: &str,
+    access_token: &str,
+) -> Result<(), String> {
+    let label = paddleocr_validation_label(module_id)?;
+    let request = run_paddleocr_request(api_url, access_token)?;
+
+    if request.status != 200 {
+        let detail = paddleocr_error_detail(request.payload.as_ref(), &request.raw_body);
+        return Err(match request.status {
+            403 => format!("{label} rejected the access token (403)."),
+            429 => format!("{label} quota has been exceeded (429)."),
+            500..=599 => {
+                format!(
+                    "{label} service is temporarily unavailable ({}): {detail}",
+                    request.status
+                )
+            }
+            _ => format!("{label} verification failed ({}): {detail}", request.status),
+        });
+    }
+
+    let api_error_code = paddleocr_error_code(request.payload.as_ref());
+    if api_error_code != 0 {
+        let detail = paddleocr_error_detail(request.payload.as_ref(), &request.raw_body);
+        return Err(format!("{label} verification failed: {detail}"));
+    }
+
+    Ok(())
+}
+
+fn validate_paddleocr_credentials(
+    module_id: &str,
+    api_url: &str,
+    access_token: &str,
+) -> Result<(), String> {
+    let token = access_token.trim();
+    if token.is_empty() {
+        return Err("Access Token is required.".to_string());
+    }
+
+    let api_url = normalize_paddleocr_api_url(module_id, api_url)?;
+    validate_single_paddleocr_endpoint(module_id, &api_url, token)?;
+    Ok(())
+}
+
+fn clear_paddleocr_skill_entry(config: &mut serde_json::Value, module_id: &str) {
+    if let Some(entries) = config
+        .get_mut("skills")
+        .and_then(|value| value.as_object_mut())
+        .and_then(|skills| skills.get_mut("entries"))
+        .and_then(|value| value.as_object_mut())
+    {
+        entries.remove(module_id);
+    }
+}
+
+fn write_paddleocr_skill_entries(
+    config: &mut serde_json::Value,
+    module_id: &str,
+    api_url: &str,
+    access_token: &str,
+) -> Result<(), String> {
+    let root = ensure_json_object(config);
+    let skills = ensure_object_property(root, "skills");
+    let entries = ensure_object_property(skills, "entries");
+    let api_env_key = paddleocr_module_api_env_key(module_id)?;
+    let timeout_env_key = paddleocr_module_timeout_env_key(module_id)?;
+    let timeout_default = paddleocr_module_timeout_default(module_id)?;
+
+    let entry_value = entries
+        .entry(module_id.to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let entry = ensure_json_object(entry_value);
+    entry.insert("enabled".to_string(), serde_json::Value::Bool(true));
+    entry.insert(
+        "apiKey".to_string(),
+        serde_json::Value::String(access_token.to_string()),
+    );
+
+    let env = ensure_object_property(entry, "env");
+    env.insert(
+        "PADDLEOCR_ACCESS_TOKEN".to_string(),
+        serde_json::Value::String(access_token.to_string()),
+    );
+    env.insert(
+        api_env_key.to_string(),
+        serde_json::Value::String(api_url.to_string()),
+    );
+    env.insert(
+        timeout_env_key.to_string(),
+        serde_json::Value::String(timeout_default.to_string()),
+    );
+
+    let entry_config = ensure_object_property(entry, "config");
+    entry_config.insert(
+        "apiUrl".to_string(),
+        serde_json::Value::String(api_url.to_string()),
+    );
+    entry_config.insert(
+        "accessToken".to_string(),
+        serde_json::Value::String(access_token.to_string()),
+    );
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_paddleocr_status() -> Result<PaddleocrStatusPayload, String> {
+    let config = load_config_json_value()?;
+    Ok(build_paddleocr_status(&config, &get_paddleocr_skills_dir()))
+}
+
+#[tauri::command]
+fn setup_paddleocr(payload: PaddleocrSetupPayload) -> Result<PaddleocrStatusPayload, String> {
+    let module_id = payload.module_id.trim();
+    let config = load_config_json_value()?;
+    let access_token = resolve_paddleocr_access_token(&payload.access_token, &config, module_id)?;
+    let api_url = normalize_paddleocr_api_url(module_id, &payload.api_url)?;
+    validate_paddleocr_credentials(module_id, &api_url, &access_token)?;
+
+    let skills_dir = get_paddleocr_skills_dir();
+    ensure_bundled_paddleocr_modules(&skills_dir)?;
+
+    let mut config = config;
+    write_paddleocr_skill_entries(&mut config, module_id, &api_url, &access_token)?;
+    save_config_json_value(config)?;
+
+    let updated_config = load_config_json_value()?;
+    Ok(build_paddleocr_status(&updated_config, &skills_dir))
+}
+
+#[tauri::command]
+fn preview_paddleocr(payload: PaddleocrSetupPayload) -> Result<PaddleocrPreviewPayload, String> {
+    let module_id = payload.module_id.trim();
+    let config = load_config_json_value()?;
+    let access_token = resolve_paddleocr_access_token(&payload.access_token, &config, module_id)?;
+    let api_url = normalize_paddleocr_api_url(module_id, &payload.api_url)?;
+    let request = run_paddleocr_request(&api_url, &access_token)?;
+    let label = paddleocr_validation_label(module_id)?;
+
+    if request.status != 200 {
+        let detail = paddleocr_error_detail(request.payload.as_ref(), &request.raw_body);
+        return Err(match request.status {
+            403 => format!("{label} rejected the access token (403)."),
+            429 => format!("{label} quota has been exceeded (429)."),
+            500..=599 => {
+                format!(
+                    "{label} service is temporarily unavailable ({}): {detail}",
+                    request.status
+                )
+            }
+            _ => format!("{label} verification failed ({}): {detail}", request.status),
+        });
+    }
+
+    let api_error_code = paddleocr_error_code(request.payload.as_ref());
+    if api_error_code != 0 {
+        let detail = paddleocr_error_detail(request.payload.as_ref(), &request.raw_body);
+        return Err(format!("{label} verification failed: {detail}"));
+    }
+
+    let (extracted_text, page_count) = extract_paddleocr_preview_text(request.payload.as_ref());
+
+    Ok(PaddleocrPreviewPayload {
+        module_id: module_id.to_string(),
+        api_url,
+        latency_ms: request.latency_ms,
+        page_count,
+        text_line_count: count_non_empty_lines(&extracted_text),
+        extracted_text,
+        response_preview: format_paddleocr_response_preview(request.payload.as_ref()),
+    })
+}
+
+#[tauri::command]
+fn clear_paddleocr(payload: PaddleocrClearPayload) -> Result<PaddleocrStatusPayload, String> {
+    let module_id = payload.module_id.trim();
+    if module_id != PADDLEOCR_TEXT_SKILL_ID && module_id != PADDLEOCR_DOC_SKILL_ID {
+        return Err("Unsupported PaddleOCR module.".to_string());
+    }
+
+    let mut config = load_config_json_value()?;
+    clear_paddleocr_skill_entry(&mut config, module_id);
+    save_config_json_value(config)?;
+
+    let updated_config = load_config_json_value()?;
+    let skills_dir = get_paddleocr_skills_dir();
+    Ok(build_paddleocr_status(&updated_config, &skills_dir))
+}
+
 fn get_openclaw_memory_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     if active_wsl_distro().is_some() {
@@ -2218,7 +3124,15 @@ fn parse_json_lenient(raw: &str) -> Option<serde_json::Value> {
 
 fn managed_memory_runtime_data_root(
     profile_selection: &OpenclawProfileSelection,
-) -> (String, String, Option<String>, String, String, String, String) {
+) -> (
+    String,
+    String,
+    Option<String>,
+    String,
+    String,
+    String,
+    String,
+) {
     let host_platform = normalize_local_data_target_platform(std::env::consts::OS).to_string();
     let host_arch = normalize_arch_label(std::env::consts::ARCH);
 
@@ -2320,7 +3234,11 @@ fn normalize_comparable_plugin_path(value: &str) -> String {
         }
     }
     normalized = normalized.replace('\\', "/");
-    let lower_leaf = normalized.rsplit('/').next().unwrap_or("").to_ascii_lowercase();
+    let lower_leaf = normalized
+        .rsplit('/')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
     if lower_leaf == "openclaw.plugin.json"
         || lower_leaf == "index.js"
         || lower_leaf == "index.mjs"
@@ -2545,8 +3463,14 @@ fn row_is_table_separator(cells: &[String]) -> bool {
         return true;
     }
     inner.iter().all(|cell| {
-        let trimmed = cell.chars().filter(|ch| !ch.is_whitespace()).collect::<String>();
-        trimmed.is_empty() || trimmed.chars().all(|ch| matches!(ch, '-' | '─' | '═' | '┼' | '+'))
+        let trimmed = cell
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>();
+        trimmed.is_empty()
+            || trimmed
+                .chars()
+                .all(|ch| matches!(ch, '-' | '─' | '═' | '┼' | '+'))
     })
 }
 
@@ -2561,10 +3485,22 @@ fn find_openclaw_plugins_table_layout(
         if cells.len() < 6 {
             continue;
         }
-        let c1 = cells.get(1).map(|value| value.to_ascii_lowercase()).unwrap_or_default();
-        let c2 = cells.get(2).map(|value| value.to_ascii_lowercase()).unwrap_or_default();
-        let c3 = cells.get(3).map(|value| value.to_ascii_lowercase()).unwrap_or_default();
-        let c4 = cells.get(4).map(|value| value.to_ascii_lowercase()).unwrap_or_default();
+        let c1 = cells
+            .get(1)
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_default();
+        let c2 = cells
+            .get(2)
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_default();
+        let c3 = cells
+            .get(3)
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_default();
+        let c4 = cells
+            .get(4)
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_default();
         if c1 != "name" || c2 != "id" {
             continue;
         }
@@ -2638,7 +3574,10 @@ fn parse_openclaw_plugin_rows_plain_text(raw: &str) -> Vec<serde_json::Value> {
             continue;
         }
         let cells = split_pipe_row_preserving_cells(line);
-        if cells.len() <= status_index || cells.len() <= version_index || row_is_table_separator(&cells) {
+        if cells.len() <= status_index
+            || cells.len() <= version_index
+            || row_is_table_separator(&cells)
+        {
             continue;
         }
         if let Some(source_index) = source_index {
@@ -2826,7 +3765,9 @@ fn get_installed_managed_memory_plugin_status() -> InstalledManagedMemoryPluginS
 
 fn is_managed_memory_bridge_plugin_ready(plugin_status: Option<&str>) -> bool {
     matches!(
-        plugin_status.map(|value| value.trim().to_ascii_lowercase()).as_deref(),
+        plugin_status
+            .map(|value| value.trim().to_ascii_lowercase())
+            .as_deref(),
         Some("loaded") | Some("enabled") | Some("active") | Some("ready") | Some("ok")
     )
 }
@@ -2836,7 +3777,9 @@ fn managed_memory_bridge_plugin_issue(
     plugin_status: Option<&str>,
 ) -> Option<String> {
     if !installed {
-        return Some(format!("{MEMORY_BRIDGE_PLUGIN_ID} is not installed in OpenClaw yet."));
+        return Some(format!(
+            "{MEMORY_BRIDGE_PLUGIN_ID} is not installed in OpenClaw yet."
+        ));
     }
     if is_managed_memory_bridge_plugin_ready(plugin_status) {
         return None;
@@ -2888,7 +3831,10 @@ fn normalize_managed_memory_bridge_entry(
         return None;
     }
     Some(ManagedMemoryBridgeEntryPayload {
-        enabled: value.get("enabled").and_then(|item| item.as_bool()).unwrap_or(true),
+        enabled: value
+            .get("enabled")
+            .and_then(|item| item.as_bool())
+            .unwrap_or(true),
         config: ManagedMemoryBridgeConfigPayload {
             data_root,
             engine: config
@@ -2986,7 +3932,10 @@ fn resolve_managed_memory_bridge_runtime_paths(
     if store.runtime_target == "wsl2" {
         return (
             host_plugin_path_string.clone(),
-            host_plugin_path.join("openclaw.plugin.json").to_string_lossy().to_string(),
+            host_plugin_path
+                .join("openclaw.plugin.json")
+                .to_string_lossy()
+                .to_string(),
             windows_path_to_wsl_path(&host_plugin_path_string),
             windows_path_to_wsl_path(&store.data_root),
             host_plugin_path,
@@ -2995,7 +3944,10 @@ fn resolve_managed_memory_bridge_runtime_paths(
 
     (
         host_plugin_path_string.clone(),
-        host_plugin_path.join("openclaw.plugin.json").to_string_lossy().to_string(),
+        host_plugin_path
+            .join("openclaw.plugin.json")
+            .to_string_lossy()
+            .to_string(),
         Some(host_plugin_path_string),
         Some(store.data_root),
         host_plugin_path,
@@ -3020,7 +3972,9 @@ fn write_config_json(config_root: &serde_json::Value) -> Result<(), String> {
 fn get_current_managed_memory_bridge_state(
     config_root: &serde_json::Value,
 ) -> (Option<String>, Option<ManagedMemoryBridgeEntryPayload>) {
-    let plugins = config_root.get("plugins").and_then(|value| value.as_object());
+    let plugins = config_root
+        .get("plugins")
+        .and_then(|value| value.as_object());
     let slots = plugins
         .and_then(|value| value.get("slots"))
         .and_then(|value| value.as_object());
@@ -3053,11 +4007,15 @@ fn set_managed_memory_bridge_config(
         .get_mut("plugins")
         .and_then(|value| value.as_object_mut())
         .expect("plugins object");
-    if !plugins.contains_key("slots") || !plugins.get("slots").is_some_and(|value| value.is_object()) {
+    if !plugins.contains_key("slots")
+        || !plugins.get("slots").is_some_and(|value| value.is_object())
+    {
         plugins.insert("slots".to_string(), serde_json::json!({}));
     }
     if !plugins.contains_key("entries")
-        || !plugins.get("entries").is_some_and(|value| value.is_object())
+        || !plugins
+            .get("entries")
+            .is_some_and(|value| value.is_object())
     {
         plugins.insert("entries".to_string(), serde_json::json!({}));
     }
@@ -3082,8 +4040,13 @@ fn set_managed_memory_bridge_config(
 fn get_managed_memory_bridge_status_payload() -> Result<ManagedMemoryBridgeStatusPayload, String> {
     let store = build_managed_memory_store_context();
     let desired_entry = build_managed_memory_bridge_entry();
-    let (plugin_path, plugin_manifest_path, runtime_plugin_path, runtime_data_root, _host_plugin_path) =
-        resolve_managed_memory_bridge_runtime_paths();
+    let (
+        plugin_path,
+        plugin_manifest_path,
+        runtime_plugin_path,
+        runtime_data_root,
+        _host_plugin_path,
+    ) = resolve_managed_memory_bridge_runtime_paths();
     let plugin_path_exists = PathBuf::from(&plugin_manifest_path).exists();
     let config_root = read_config_json_or_empty();
     let (current_slot_value, current_entry) = get_current_managed_memory_bridge_state(&config_root);
@@ -3095,7 +4058,10 @@ fn get_managed_memory_bridge_status_payload() -> Result<ManagedMemoryBridgeStatu
 
     let mut issues = Vec::new();
     if !plugin_path_exists {
-        issues.push("The managed PowerMem plugin files are missing from the ClawMaster package.".to_string());
+        issues.push(
+            "The managed PowerMem plugin files are missing from the ClawMaster package."
+                .to_string(),
+        );
     }
     if let Some(plugin_issue) = managed_memory_bridge_plugin_issue(
         installed_status.installed,
@@ -3135,7 +4101,8 @@ fn get_managed_memory_bridge_status_payload() -> Result<ManagedMemoryBridgeStatu
         && managed_memory_bridge_entries_match(current_entry.as_ref(), &desired_entry)
     {
         "ready".to_string()
-    } else if current_entry.is_some() || current_slot_value.is_some() || installed_status.installed {
+    } else if current_entry.is_some() || current_slot_value.is_some() || installed_status.installed
+    {
         "drifted".to_string()
     } else {
         "missing".to_string()
@@ -3220,8 +4187,12 @@ fn sync_managed_memory_bridge() -> Result<ManagedMemoryBridgeStatusPayload, Stri
         runtime_data_root,
         _host_plugin_path,
     ) = resolve_managed_memory_bridge_runtime_paths();
-    let runtime_plugin_path = runtime_plugin_path
-        .ok_or_else(|| cmd_err_d("MANAGED_MEMORY_BRIDGE_UNSUPPORTED", "Runtime plugin path is unavailable"))?;
+    let runtime_plugin_path = runtime_plugin_path.ok_or_else(|| {
+        cmd_err_d(
+            "MANAGED_MEMORY_BRIDGE_UNSUPPORTED",
+            "Runtime plugin path is unavailable",
+        )
+    })?;
     if !PathBuf::from(&plugin_manifest_path).exists() {
         return Err(cmd_err("MANAGED_MEMORY_BRIDGE_PLUGIN_MISSING"));
     }
@@ -3415,13 +4386,11 @@ fn reindex_openclaw_memory() -> Result<OpenclawMemoryReindexPayload, String> {
 mod tests {
     use super::{
         get_config_path_candidates_for, get_openclaw_profile_args, get_openclaw_profile_data_dir,
-        install_bundled_skill,
-        local_data_profile_key, managed_memory_windows_wsl_data_root,
+        install_bundled_skill, local_data_profile_key, managed_memory_windows_wsl_data_root,
         normalize_clawmaster_runtime_selection, normalize_local_data_target_platform,
-        parse_json_lenient, parse_node_major, parse_wsl_list_verbose,
-        repo_bundled_skill_root, repo_plugin_root, resolve_plugin_root,
-        resolve_config_path_from_candidates, resolve_local_data_status,
-        resolve_selected_wsl_distro_from_list, supports_seekdb_embedded,
+        parse_json_lenient, parse_node_major, parse_wsl_list_verbose, repo_bundled_skill_root,
+        repo_plugin_root, resolve_config_path_from_candidates, resolve_local_data_status,
+        resolve_plugin_root, resolve_selected_wsl_distro_from_list, supports_seekdb_embedded,
         OpenclawProfileSelection,
     };
     use std::fs;
@@ -3816,7 +4785,10 @@ mod tests {
 
         assert_eq!(payload.mode, "unsupported");
         assert_eq!(payload.reason.as_deref(), Some("command_unavailable"));
-        assert_eq!(payload.detail.as_deref(), Some("error: unknown command 'memory'"));
+        assert_eq!(
+            payload.detail.as_deref(),
+            Some("error: unknown command 'memory'")
+        );
     }
 
     #[test]
@@ -3826,10 +4798,7 @@ mod tests {
             name: Some("team-a".to_string()),
         };
 
-        let root = managed_memory_windows_wsl_data_root(
-            &selection,
-            Path::new(r"C:\Users\alice"),
-        );
+        let root = managed_memory_windows_wsl_data_root(&selection, Path::new(r"C:\Users\alice"));
 
         assert_eq!(root, "/mnt/c/Users/alice/.clawmaster/data/named/team-a");
     }
@@ -3841,8 +4810,8 @@ mod tests {
         let resolved = resolve_plugin_root("openclaw-ernie-image".to_string(), vec![])
             .expect("resolve_plugin_root should succeed");
 
-        let expected = repo_plugin_root("openclaw-ernie-image")
-            .expect("repo plugin root should resolve");
+        let expected =
+            repo_plugin_root("openclaw-ernie-image").expect("repo plugin root should resolve");
         assert_eq!(resolved, Some(expected.to_string_lossy().to_string()));
         assert!(expected.join("openclaw.plugin.json").exists());
     }
@@ -3867,8 +4836,8 @@ mod tests {
         )
         .expect("resolve_plugin_root should succeed");
 
-        let expected = repo_plugin_root("openclaw-ernie-image")
-            .expect("repo plugin root should resolve");
+        let expected =
+            repo_plugin_root("openclaw-ernie-image").expect("repo plugin root should resolve");
         assert_eq!(resolved, Some(expected.to_string_lossy().to_string()));
     }
 
@@ -3911,12 +4880,10 @@ mod tests {
             .join("ernie-image")
             .join("SKILL.md");
         assert!(installed_skill.exists());
-        assert!(
-            repo_bundled_skill_root("ernie-image")
-                .expect("repo bundled skill root should resolve")
-                .join("SKILL.md")
-                .exists()
-        );
+        assert!(repo_bundled_skill_root("ernie-image")
+            .expect("repo bundled skill root should resolve")
+            .join("SKILL.md")
+            .exists());
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -4330,7 +5297,10 @@ fn plugin_manifest_matches_id(plugin_root: &Path, plugin_id: &str) -> bool {
 }
 
 #[tauri::command]
-fn resolve_plugin_root(plugin_id: String, candidates: Vec<String>) -> Result<Option<String>, String> {
+fn resolve_plugin_root(
+    plugin_id: String,
+    candidates: Vec<String>,
+) -> Result<Option<String>, String> {
     let trimmed_plugin_id = plugin_id.trim();
     let env_key = match trimmed_plugin_id {
         "memory-clawmaster-powermem" => "CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT",
@@ -4410,7 +5380,10 @@ fn install_bundled_skill(skill_id: String) -> Result<(), String> {
     if !source_path.join("SKILL.md").exists() {
         return Err(cmd_err_d(
             "SKILL_SOURCE_INVALID",
-            format!("Bundled skill source missing SKILL.md: {}", source_path.display()),
+            format!(
+                "Bundled skill source missing SKILL.md: {}",
+                source_path.display()
+            ),
         ));
     }
 
@@ -5824,9 +6797,10 @@ fn fetch_provider_catalog(payload: FetchProviderCatalogPayload) -> Result<String
     let mut curl_config = String::from("silent\nshow-error\nlocation\nmax-time = 10\n");
     for (key, value) in payload.headers {
         curl_config.push_str("header = ");
-        curl_config.push_str(&serde_json::to_string(&format!("{key}: {value}")).map_err(|e| {
-            cmd_err_d("SYSTEM_CMD_CONFIG_ENCODE_FAILED", e)
-        })?);
+        curl_config.push_str(
+            &serde_json::to_string(&format!("{key}: {value}"))
+                .map_err(|e| cmd_err_d("SYSTEM_CMD_CONFIG_ENCODE_FAILED", e))?,
+        );
         curl_config.push('\n');
     }
     curl_config.push_str("write-out = \"\\n__CLAWMASTER_STATUS__:%{http_code}\"\n");
@@ -5903,6 +6877,10 @@ pub fn run() {
             resolve_plugin_root,
             desktop_smoke_diagnostics,
             save_config,
+            get_paddleocr_status,
+            setup_paddleocr,
+            preview_paddleocr,
+            clear_paddleocr,
             reset_openclaw_config,
             install_bundled_skill,
             save_openclaw_profile,
@@ -5953,13 +6931,17 @@ pub fn run() {
                     );
                 }
                 let ernie_image_plugin_root = resource_dir.join("openclaw-ernie-image");
-                if ernie_image_plugin_root.join("openclaw.plugin.json").exists() {
+                if ernie_image_plugin_root
+                    .join("openclaw.plugin.json")
+                    .exists()
+                {
                     std::env::set_var(
                         "CLAWMASTER_PACKAGED_ERNIE_IMAGE_PLUGIN_ROOT",
                         ernie_image_plugin_root.to_string_lossy().to_string(),
                     );
                 }
-                let ernie_image_skill_root = resource_dir.join("bundled-skills").join("ernie-image");
+                let ernie_image_skill_root =
+                    resource_dir.join("bundled-skills").join("ernie-image");
                 if ernie_image_skill_root.join("SKILL.md").exists() {
                     std::env::set_var(
                         "CLAWMASTER_BUNDLED_ERNIE_IMAGE_SKILL_ROOT",
