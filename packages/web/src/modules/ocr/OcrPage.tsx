@@ -184,8 +184,8 @@ export default function OcrPage() {
         }
 
         if (!cancelled) {
-          await Promise.all([refetch(), refetchSkills()])
           setSaveMessage(t('ocr.skillAutoEnabled'))
+          await Promise.all([refetch(), refetchSkills()])
         }
       } catch (error: unknown) {
         if (!cancelled) {
@@ -214,12 +214,7 @@ export default function OcrPage() {
     .filter(Boolean)
     .join('\n\n')
 
-  async function ensureSkillInstalledAndEnabled(nextConfig: OpenClawConfig) {
-    const installResult = await installSkillResult(PADDLEOCR_SKILL_ID)
-    if (!installResult.success) {
-      throw new Error(installResult.error ?? t('ocr.skillInstallFailed'))
-    }
-
+  function buildSkillEnabledConfig(nextConfig: OpenClawConfig) {
     const updatedConfig: OpenClawConfig = {
       ...nextConfig,
       skills: {
@@ -234,6 +229,13 @@ export default function OcrPage() {
       },
     }
     return updatedConfig
+  }
+
+  async function installAndEnableSkillAfterSave() {
+    const installResult = await installSkillResult(PADDLEOCR_SKILL_ID)
+    if (!installResult.success) {
+      throw new Error(installResult.error ?? t('ocr.skillInstallFailed'))
+    }
   }
 
   function updateOption<K extends keyof OcrFormState>(key: K, value: OcrFormState[K]) {
@@ -274,7 +276,7 @@ export default function OcrPage() {
     setSaveMessage(null)
     try {
       const currentConfig = config ?? {}
-      const nextConfig = await ensureSkillInstalledAndEnabled({
+      const nextConfig = buildSkillEnabledConfig({
         ...currentConfig,
         ocr: {
           ...(currentConfig.ocr ?? {}),
@@ -305,6 +307,7 @@ export default function OcrPage() {
       if (!saveResult.success) {
         throw new Error(saveResult.error ?? t('ocr.saveFailedFallback'))
       }
+      await installAndEnableSkillAfterSave()
       await Promise.all([refetch(), refetchSkills()])
       setSaveMessage(t('ocr.saveSuccess'))
     } catch (saveErr: unknown) {
@@ -708,7 +711,7 @@ function SampleCard({
     >
       <div className="aspect-[4/3] w-full bg-muted/30">
         {asset.previewUrl ? (
-          <img src={asset.previewUrl} alt={asset.name} className="h-full w-full object-cover" />
+          <img src={asset.previewUrl} alt={t(asset.name)} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center text-muted-foreground">
             {asset.type === 'pdf' ? <FileText className="h-8 w-8" /> : <ImageIcon className="h-8 w-8" />}

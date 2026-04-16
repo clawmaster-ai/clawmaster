@@ -151,10 +151,137 @@ describe('OcrPage', () => {
     await waitFor(() => {
       expect(mockSetSkillEnabledResult).toHaveBeenCalledWith('paddleocr-doc-parsing', true)
     })
-    expect(await screen.findByText('Bundled PaddleOCR skill auto-enabled for this saved OCR provider.')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Bundled PaddleOCR skill auto-enabled for this saved OCR provider.')).toBeInTheDocument()
+    })
+  })
+
+  it('preserves existing PaddleOCR skill entry settings when saving OCR config', async () => {
+    // Use mockResolvedValue (not Once) so refetch() after save still returns the same
+    // config with skills.entries intact. Also mark the skill as installed so the
+    // auto-sync effect short-circuits (skillReady=true) and does not call refetch()
+    // before the save button is clicked.
+    mockGetConfigResult.mockResolvedValue({
+      success: true,
+      data: {
+        skills: {
+          entries: {
+            'paddleocr-doc-parsing': {
+              enabled: false,
+              customPrompt: 'keep-me',
+            },
+          },
+        },
+        models: {
+          providers: {},
+        },
+        ocr: {
+          providers: {
+            paddleocr: {
+              endpoint: 'https://example.com/layout-parsing',
+              accessToken: 'saved-token',
+            },
+          },
+        },
+      },
+      error: null,
+    })
+    mockGetSkillsResult.mockResolvedValue({
+      success: true,
+      data: [{ slug: 'paddleocr-doc-parsing', skillKey: '', name: '' }],
+      error: null,
+    })
+
+    renderPage()
+
+    const saveButton = await screen.findByRole('button', { name: 'Save & Enable OCR' })
+    fireEvent.click(saveButton)
+
+    await waitFor(() => {
+      expect(mockSaveFullConfigResult).toHaveBeenCalledWith(expect.objectContaining({
+        skills: {
+          entries: expect.objectContaining({
+            'paddleocr-doc-parsing': expect.objectContaining({
+              enabled: true,
+              customPrompt: 'keep-me',
+            }),
+          }),
+        },
+      }))
+    })
+  })
+
+  it('does not install the bundled skill when saving OCR config fails', async () => {
+    // Provide endpoint + accessToken so canSubmit=true and the save button is
+    // enabled (fireEvent.click does not fire React's handler on disabled buttons).
+    // Mark the skill as enabled in config so skillReady=true and auto-sync never
+    // fires, keeping installSkillResult at 0 calls even after the failed save.
+    mockGetConfigResult.mockResolvedValue({
+      success: true,
+      data: {
+        models: { providers: {} },
+        skills: {
+          entries: { 'paddleocr-doc-parsing': { enabled: true } },
+        },
+        ocr: {
+          providers: {
+            paddleocr: {
+              endpoint: 'https://example.com/layout-parsing',
+              accessToken: 'saved-token',
+            },
+          },
+        },
+      },
+      error: null,
+    })
+    mockSaveFullConfigResult.mockResolvedValueOnce({
+      success: false,
+      data: undefined,
+      error: 'save failed',
+    })
+
+    renderPage()
+
+    const saveButton = await screen.findByRole('button', { name: 'Save & Enable OCR' })
+    await waitFor(() => { expect(saveButton).toBeEnabled() })
+    fireEvent.click(saveButton)
+
+    await waitFor(() => {
+      expect(mockSaveFullConfigResult).toHaveBeenCalledTimes(1)
+    })
+    expect(mockInstallSkillResult).toHaveBeenCalledTimes(0)
   })
 
   it('saves PaddleOCR config and installs the bundled skill', async () => {
+    // skillReady is computed as:
+    //   config?.skills?.entries?.['paddleocr-doc-parsing']?.enabled === true
+    //   || isSkillInstalled(installedSkills)
+    // Setting enabled:true in the persistent config makes skillReady=true
+    // synchronously on the first config load, before skills even resolve.
+    // This prevents the auto-sync effect from firing at all, leaving
+    // installSkillResult at 0 calls until the save button is clicked.
+    // Using mockResolvedValue (not Once) ensures refetch() after save returns
+    // the same config so skillReady stays true and auto-sync stays suppressed.
+    mockGetConfigResult.mockResolvedValue({
+      success: true,
+      data: {
+        models: { providers: {} },
+        skills: {
+          entries: { 'paddleocr-doc-parsing': { enabled: true } },
+        },
+        ocr: {
+          providers: {
+            paddleocr: {
+              endpoint: 'https://example.com/layout-parsing',
+              accessToken: 'saved-token',
+              defaultFileType: 1,
+            },
+          },
+        },
+      },
+      error: null,
+    })
+
     renderPage()
 
     expect(await screen.findByDisplayValue('https://example.com/layout-parsing')).toBeInTheDocument()
@@ -173,10 +300,59 @@ describe('OcrPage', () => {
     await waitFor(() => {
       expect(mockSaveFullConfigResult).toHaveBeenCalled()
     })
-    expect(await screen.findByText('PaddleOCR saved and ready to use.')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(mockSaveFullConfigResult).toHaveBeenCalledTimes(1)
+      expect(mockInstallSkillResult).toHaveBeenCalledTimes(1)
+    })
+    expect(mockSaveFullConfigResult.mock.invocationCallOrder[0]).toBeLessThan(mockInstallSkillResult.mock.invocationCallOrder[0])
+  })
+
+  it('parses an uploaded PDF source and sends the base64 payload with the detected file type', async () => {
+    renderPage()
+
+    expect(await screen.findByDisplayValue('https://example.com/layout-parsing')).toBeInTheDocument()
+    const uploadToggle = screen.getByRole('button', { name: 'Upload file' })
+    fireEvent.click(uploadToggle)
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement | null
+    expect(fileInput).not.toBeNull()
+
+    const file = new File(['pdf-binary'], 'statement.pdf', { type: 'application/pdf' })
+    await fireEvent.change(fileInput!, { target: { files: [file] } })
+
+    expect(await screen.findByText('statement.pdf')).toBeInTheDocument()
+    expect(screen.getByText('Detected type: PDF')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Parse Document' }))
+
+    await waitFor(() => {
+      expect(mockParsePaddleOcrResult).toHaveBeenCalledWith(expect.objectContaining({
+        endpoint: 'https://example.com/layout-parsing',
+        accessToken: 'saved-token',
+        fileType: 0,
+        file: expect.any(String),
+      }))
+    })
   })
 
   it('runs a sample parse and renders markdown output', async () => {
+    mockGetConfigResult.mockResolvedValueOnce({
+      success: true,
+      data: {
+        models: { providers: {} },
+        ocr: {
+          providers: {
+            paddleocr: {
+              endpoint: 'https://example.com/layout-parsing',
+              accessToken: 'saved-token',
+              defaultFileType: 1,
+            },
+          },
+        },
+      },
+      error: null,
+    })
+
     renderPage()
 
     expect(await screen.findByDisplayValue('https://example.com/layout-parsing')).toBeInTheDocument()
