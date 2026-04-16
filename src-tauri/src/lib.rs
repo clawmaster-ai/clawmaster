@@ -6141,25 +6141,21 @@ request = POST
             &serde_json::to_string(&header)
                 .map_err(|e| cmd_err_d("SYSTEM_CMD_CONFIG_ENCODE_FAILED", e))?,
         );
-        curl_config.push('
-');
+        curl_config.push('\n');
     }
     curl_config.push_str("data-binary = ");
     curl_config.push_str(
         &serde_json::to_string(&format!("@{}", body_path.display()))
             .map_err(|e| cmd_err_d("SYSTEM_CMD_CONFIG_ENCODE_FAILED", e))?,
     );
-    curl_config.push('
-');
-    curl_config.push_str("write-out = "\n__CLAWMASTER_STATUS__:%{http_code}"
-");
+    curl_config.push('\n');
+    curl_config.push_str("write-out = \"\\n__CLAWMASTER_STATUS__:%{http_code}\"\n");
     curl_config.push_str("url = ");
     curl_config.push_str(
         &serde_json::to_string(&endpoint)
             .map_err(|e| cmd_err_d("SYSTEM_CMD_CONFIG_ENCODE_FAILED", e))?,
     );
-    curl_config.push('
-');
+    curl_config.push('\n');
 
     let raw = run_curl_config(&curl_config);
     let _ = fs::remove_file(&body_path);
