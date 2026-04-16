@@ -1,3 +1,7 @@
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+
 const DEFAULT_TEST_FILE =
   'https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/release/3.3/docs/datasets/images/ch_doc1.jpg'
 
@@ -40,17 +44,41 @@ export interface PaddleOcrTestResult {
   pageCount: number
 }
 
+function validationError(message: string): Error {
+  const error = new Error(message)
+  error.name = 'PaddleOcrValidationError'
+  return error
+}
+
+function isRemoteHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value)
+}
+
+function normalizeDataUrlFile(value: string): string {
+  const match = value.match(/^data:[^;]+;base64,(.+)$/i)
+  return match ? match[1].trim() : value
+}
+
+async function fetchRemoteFileAsBase64(value: string): Promise<string> {
+  const response = await fetch(value)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch remote OCR file (${response.status})`)
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  return Buffer.from(bytes).toString('base64')
+}
+
 function normalizeEndpoint(input: string): URL {
   const trimmed = input.trim()
   if (!trimmed) {
-    throw new Error('Missing PaddleOCR endpoint')
+    throw validationError('Missing PaddleOCR endpoint')
   }
   const url = new URL(trimmed)
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error(`Unsupported PaddleOCR endpoint protocol: ${url.protocol}`)
+    throw validationError(`Unsupported PaddleOCR endpoint protocol: ${url.protocol}`)
   }
   if (url.username || url.password) {
-    throw new Error('PaddleOCR endpoint must not include credentials')
+    throw validationError('PaddleOCR endpoint must not include credentials')
   }
   return url
 }
@@ -58,7 +86,7 @@ function normalizeEndpoint(input: string): URL {
 function normalizeAccessToken(input: string): string {
   const trimmed = input.trim()
   if (!trimmed) {
-    throw new Error('Missing PaddleOCR access token')
+    throw validationError('Missing PaddleOCR access token')
   }
   return trimmed
 }
@@ -103,6 +131,12 @@ function buildPayload(
   return payload
 }
 
+async function writePayloadTempFile(payload: Record<string, unknown>): Promise<string> {
+  const filePath = path.join(os.tmpdir(), `clawmaster-paddleocr-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.json`)
+  await fs.writeFile(filePath, JSON.stringify(payload), 'utf8')
+  return filePath
+}
+
 async function postPaddleOcr(
   input: PaddleOcrParseRequest | PaddleOcrTestRequest,
   fallbackFile: string,
@@ -113,45 +147,55 @@ async function postPaddleOcr(
   const timer = setTimeout(() => controller.abort(), 60000)
 
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `token ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(buildPayload(input, fallbackFile)),
-      signal: controller.signal,
-    })
+    const rawFile = ((typeof input.file === 'string' && input.file.trim()) || fallbackFile)
+    const normalizedFile = isRemoteHttpUrl(rawFile)
+      ? await fetchRemoteFileAsBase64(rawFile)
+      : normalizeDataUrlFile(rawFile)
 
-    const body = await response.text()
-    let parsed: unknown = null
+    const payloadFile = await writePayloadTempFile(buildPayload({ ...input, file: normalizedFile }, normalizedFile))
     try {
-      parsed = body ? JSON.parse(body) : null
-    } catch {
-      parsed = null
-    }
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `token ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: await fs.readFile(payloadFile, 'utf8'),
+        signal: controller.signal,
+      })
 
-    if (!response.ok) {
-      const errorMsg =
-        parsed && typeof parsed === 'object' && parsed !== null && typeof (parsed as { errorMsg?: unknown }).errorMsg === 'string'
-          ? (parsed as { errorMsg: string }).errorMsg
-          : body.slice(0, 240)
-      throw new Error(`PaddleOCR request failed (${response.status}): ${errorMsg || 'Unknown error'}`)
-    }
+      const body = await response.text()
+      let parsed: unknown = null
+      try {
+        parsed = body ? JSON.parse(body) : null
+      } catch {
+        parsed = null
+      }
 
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('PaddleOCR response was not valid JSON')
-    }
+      if (!response.ok) {
+        const errorMsg =
+          parsed && typeof parsed === 'object' && parsed !== null && typeof (parsed as { errorMsg?: unknown }).errorMsg === 'string'
+            ? (parsed as { errorMsg: string }).errorMsg
+            : body.slice(0, 240)
+        throw new Error(`PaddleOCR request failed (${response.status}): ${errorMsg || 'Unknown error'}`)
+      }
 
-    const errorCode = (parsed as { errorCode?: unknown }).errorCode
-    const errorMsg = typeof (parsed as { errorMsg?: unknown }).errorMsg === 'string'
-      ? (parsed as { errorMsg: string }).errorMsg
-      : 'Unknown error'
-    if (typeof errorCode === 'number' && errorCode !== 0) {
-      throw new Error(`PaddleOCR error ${errorCode}: ${errorMsg}`)
-    }
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('PaddleOCR response was not valid JSON')
+      }
 
-    return parsed as { result?: unknown }
+      const errorCode = (parsed as { errorCode?: unknown }).errorCode
+      const errorMsg = typeof (parsed as { errorMsg?: unknown }).errorMsg === 'string'
+        ? (parsed as { errorMsg: string }).errorMsg
+        : 'Unknown error'
+      if (typeof errorCode === 'number' && errorCode !== 0) {
+        throw new Error(`PaddleOCR error ${errorCode}: ${errorMsg}`)
+      }
+
+      return parsed as { result?: unknown }
+    } finally {
+      await fs.rm(payloadFile, { force: true })
+    }
   } finally {
     clearTimeout(timer)
   }

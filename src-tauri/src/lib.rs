@@ -3414,6 +3414,8 @@ fn reindex_openclaw_memory() -> Result<OpenclawMemoryReindexPayload, String> {
 #[cfg(test)]
 mod tests {
     use super::{
+        build_paddleocr_request_json,
+        parse_http_status_output,
         get_config_path_candidates_for, get_openclaw_profile_args, get_openclaw_profile_data_dir,
         install_bundled_skill,
         local_data_profile_key, managed_memory_windows_wsl_data_root,
@@ -3448,6 +3450,39 @@ mod tests {
             "clawmaster-config-path-{label}-{}-{nanos}",
             std::process::id()
         ))
+    }
+
+
+
+    #[test]
+    fn paddleocr_request_json_keeps_large_base64_payload_in_json_body() {
+        let payload = super::PaddleOcrPayload {
+            endpoint: "https://example.com/layout-parsing".to_string(),
+            access_token: "token".to_string(),
+            file: Some("a".repeat(2 * 1024 * 1024)),
+            file_type: Some(0),
+            use_doc_orientation_classify: Some(true),
+            use_doc_unwarping: None,
+            use_layout_detection: None,
+            use_chart_recognition: None,
+            restructure_pages: None,
+            merge_tables: None,
+            relevel_titles: None,
+            prettify_markdown: None,
+            visualize: Some(false),
+        };
+
+        let json = build_paddleocr_request_json(&payload, "fallback", false)
+            .expect("json body should build");
+        assert!(json.len() > 2 * 1024 * 1024);
+        assert!(json.contains("\"fileType\":0"));
+    }
+
+    #[test]
+    fn parse_http_status_output_extracts_body_and_status() {
+        let (body, status) = parse_http_status_output("{\"ok\":true}\n__CLAWMASTER_STATUS__:200");
+        assert_eq!(body, "{\"ok\":true}");
+        assert_eq!(status, 200);
     }
 
     #[test]
@@ -6080,7 +6115,23 @@ fn paddleocr_request(payload: &PaddleOcrPayload, fallback_file: &str) -> Result<
     let access_token = paddleocr_required_text(&payload.access_token, "PADDLEOCR_TOKEN_REQUIRED")?;
     let body_json = build_paddleocr_request_json(payload, fallback_file, false)?;
 
-    let mut curl_config = String::from("silent\nshow-error\nlocation\nmax-time = 60\nrequest = POST\n");
+    let body_path = std::env::temp_dir().join(format!(
+        "clawmaster-paddleocr-body-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0)
+    ));
+    fs::write(&body_path, body_json.as_bytes())
+        .map_err(|e| cmd_err_d("SYSTEM_CMD_TEMPFILE_WRITE_FAILED", e))?;
+
+    let mut curl_config = String::from("silent
+show-error
+location
+max-time = 60
+request = POST
+");
     for header in [
         format!("Authorization: token {}", access_token),
         "Content-Type: application/json".to_string(),
@@ -6090,23 +6141,29 @@ fn paddleocr_request(payload: &PaddleOcrPayload, fallback_file: &str) -> Result<
             &serde_json::to_string(&header)
                 .map_err(|e| cmd_err_d("SYSTEM_CMD_CONFIG_ENCODE_FAILED", e))?,
         );
-        curl_config.push('\n');
+        curl_config.push('
+');
     }
-    curl_config.push_str("data = ");
+    curl_config.push_str("data-binary = ");
     curl_config.push_str(
-        &serde_json::to_string(&body_json)
+        &serde_json::to_string(&format!("@{}", body_path.display()))
             .map_err(|e| cmd_err_d("SYSTEM_CMD_CONFIG_ENCODE_FAILED", e))?,
     );
-    curl_config.push('\n');
-    curl_config.push_str("write-out = \"\\n__CLAWMASTER_STATUS__:%{http_code}\"\n");
+    curl_config.push('
+');
+    curl_config.push_str("write-out = "\n__CLAWMASTER_STATUS__:%{http_code}"
+");
     curl_config.push_str("url = ");
     curl_config.push_str(
         &serde_json::to_string(&endpoint)
             .map_err(|e| cmd_err_d("SYSTEM_CMD_CONFIG_ENCODE_FAILED", e))?,
     );
-    curl_config.push('\n');
+    curl_config.push('
+');
 
-    let raw = run_curl_config(&curl_config)?;
+    let raw = run_curl_config(&curl_config);
+    let _ = fs::remove_file(&body_path);
+    let raw = raw?;
     let (body, status) = parse_http_status_output(&raw);
     if !(200..300).contains(&status) {
         let message = serde_json::from_str::<serde_json::Value>(&body)

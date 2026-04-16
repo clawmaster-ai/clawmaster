@@ -41,6 +41,31 @@ describe('ocr adapter', () => {
     }))
   })
 
+  it('wraps uploaded base64 payloads as data URLs before invoking tauri OCR parsing', async () => {
+    const { getIsTauri } = await import('../platform')
+    const { tauriInvoke } = await import('../invoke')
+    vi.mocked(getIsTauri).mockReturnValue(true)
+    vi.mocked(tauriInvoke).mockResolvedValue({ layoutParsingResults: [] })
+
+    const { parsePaddleOcrResult } = await import('../ocr')
+    const result = await parsePaddleOcrResult({
+      endpoint: 'https://example.com/layout-parsing',
+      accessToken: 'token',
+      file: 'raw-base64-payload',
+      fileType: 0,
+    })
+
+    expect(result.success).toBe(true)
+    expect(tauriInvoke).toHaveBeenCalledWith('paddleocr_parse_document', {
+      payload: {
+        endpoint: 'https://example.com/layout-parsing',
+        accessToken: 'token',
+        file: 'data:application/pdf;base64,raw-base64-payload',
+        fileType: 0,
+      },
+    })
+  })
+
   it('routes desktop OCR parsing through the dedicated tauri command', async () => {
     const { getIsTauri } = await import('../platform')
     const { tauriInvoke } = await import('../invoke')

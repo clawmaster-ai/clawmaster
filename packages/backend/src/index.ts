@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
-import { registerDomainRoutes, attachLogsStreamServer } from './routes/index.js'
+import { registerDomainRoutes, registerDomainJsonRoutes, attachLogsStreamServer } from './routes/index.js'
 import { requireServiceAuth } from './serviceAuth.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -39,9 +39,10 @@ export function resolveFrontendDistDir(): string | null {
 
 export function createApp() {
   const app = express()
-  app.use(express.json({ limit: '25mb' }))
-  app.use('/api', requireServiceAuth)
 
+  registerDomainJsonRoutes(app)
+  app.use(express.json())
+  app.use('/api', requireServiceAuth)
   registerDomainRoutes(app)
 
   const frontendDist = resolveFrontendDistDir()

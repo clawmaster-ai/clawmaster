@@ -10,6 +10,15 @@ import { fromPromise } from '@/shared/adapters/resultHelpers'
 import type { AdapterResult } from '@/shared/adapters/types'
 import { webFetchJson } from '@/shared/adapters/webHttp'
 
+function normalizeTauriOcrFile(file: string, fileType?: 0 | 1): string {
+  const trimmed = file.trim()
+  if (!trimmed || /^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:')) {
+    return trimmed
+  }
+  const mimeType = fileType === 0 ? 'application/pdf' : 'image/*'
+  return `data:${mimeType};base64,${trimmed}`
+}
+
 export async function testPaddleOcrResult(
   input: PaddleOcrTestRequest,
 ): Promise<AdapterResult<PaddleOcrTestResult>> {
@@ -31,7 +40,9 @@ export async function parsePaddleOcrResult(
 ): Promise<AdapterResult<PaddleOcrParseResult>> {
   if (getIsTauri()) {
     return fromPromise(async () =>
-      tauriInvoke<PaddleOcrParseResult>('paddleocr_parse_document', { payload: input }),
+      tauriInvoke<PaddleOcrParseResult>('paddleocr_parse_document', {
+        payload: { ...input, file: normalizeTauriOcrFile(input.file, input.fileType) },
+      }),
     )
   }
 
