@@ -1,5 +1,6 @@
 import type { PaddleOcrModuleId, PaddleOcrStatusPayload } from '@/lib/types'
-import type { CapabilityId } from '@/modules/setup/types'
+
+export type PaddleOcrCapabilityId = 'ocr_text' | 'ocr_doc'
 
 export const PADDLEOCR_TEXT_SKILL_ID = 'paddleocr-text-recognition' as const
 export const PADDLEOCR_DOC_SKILL_ID = 'paddleocr-doc-parsing' as const
@@ -7,7 +8,7 @@ export const PADDLEOCR_TEXT_SKILL_NAME = 'PaddleOCR Text Recognition' as const
 export const PADDLEOCR_DOC_SKILL_NAME = 'PaddleOCR Document Parsing' as const
 
 export function capabilityToPaddleOcrModuleId(
-  capabilityId: Extract<CapabilityId, 'ocr_text' | 'ocr_doc'>,
+  capabilityId: PaddleOcrCapabilityId,
 ): PaddleOcrModuleId {
   return capabilityId === 'ocr_text'
     ? PADDLEOCR_TEXT_SKILL_ID
