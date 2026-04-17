@@ -46,7 +46,7 @@
     "tauri"
   ],
   "author": "OpenClaw Team",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.1",
     "js-yaml": "^4.1.1",

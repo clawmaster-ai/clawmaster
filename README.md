@@ -1,15 +1,21 @@
-<!-- Hero image / demo GIF: replace comment with actual asset when available
 <p align="center">
-  <img src="docs/hero.gif" width="800" alt="ClawMaster demo" />
+  <img src="https://raw.githubusercontent.com/openmaster-ai/brand/main/logos/clawmaster/animated/v3-animated.svg" width="84" alt="ClawMaster animated icon" />
 </p>
--->
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/openmaster-ai/brand/main/marketing/readme/en.png" width="100%" alt="ClawMaster brand banner" />
+</p>
 
 <h1 align="center">
-  <code>clawmaster</code> · OpenClaw Control Plane
+  <code>ClawMaster</code>
 </h1>
 
 <p align="center">
-  <strong>Desktop app · Web console · Service CLI — three ways to run OpenClaw without editing config files.</strong>
+  <strong>Master the Claw, Command the Core.</strong>
+</p>
+
+<p align="center">
+  <em>OpenClaw companion for real life.</em>
 </p>
 
 <p align="center">
@@ -20,34 +26,51 @@
 </p>
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/openmaster-ai/brand/main/logos/clawmaster/static/amber.svg" width="28" alt="ClawMaster amber mark" />
+  &nbsp;
+  <img src="https://img.shields.io/badge/Brand-OpenMaster_Universe-F5A623?style=flat" alt="OpenMaster Universe Brand" />
+  <img src="https://img.shields.io/badge/Product-ClawMaster-111111?style=flat" alt="ClawMaster" />
+</p>
+
+<p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-006DFF?style=for-the-badge" alt="Quick Start" /></a>
   <a href="#roadmap"><img src="https://img.shields.io/badge/Roadmap-6_capabilities-ff69b4?style=for-the-badge" alt="Roadmap" /></a>
   <a href="./CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributing-welcome-21bb42?style=for-the-badge" alt="Contributing" /></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License" /></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/openmaster-ai/clawmaster/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/openmaster-ai/clawmaster/build.yml?branch=main" alt="Build" /></a>
-  <img src="https://img.shields.io/badge/version-0.3.0-blue" alt="Version" />
   <a href="https://github.com/openmaster-ai/clawmaster/stargazers"><img src="https://img.shields.io/github/stars/openmaster-ai/clawmaster?style=social" alt="Stars" /></a>
-  <img src="https://img.shields.io/badge/tests-74_passing-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="Apache 2.0" />
 </p>
-
-<!-- Recognition badges — uncomment once listed:
-<p align="center">
-  <a href="https://hellogithub.com/repository/FILL_IN"><img src="https://img.shields.io/badge/HelloGitHub-%E6%94%B6%E5%BD%95-red.svg" alt="HelloGitHub" /></a>
-  <a href="https://www.producthunt.com/posts/FILL_IN"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=FILL_IN&theme=light" alt="Product Hunt" height="28" /></a>
-</p>
--->
 
 <p align="center">
   <a href="https://github.com/openmaster-ai/clawmaster/releases"><strong>📦 Releases</strong></a> &nbsp;·&nbsp;
   <a href="https://github.com/openmaster-ai/clawmaster/discussions"><strong>💬 Discussions</strong></a> &nbsp;·&nbsp;
   <a href="https://github.com/openmaster-ai/clawmaster/issues"><strong>🐛 Issues</strong></a> &nbsp;·&nbsp;
+  <a href="https://deepwiki.com/openmaster-ai/clawmaster"><strong>📘 Ask DeepWiki</strong></a> &nbsp;·&nbsp;
   <a href="https://discord.gg/openclaw"><strong>Discord</strong></a>
   &nbsp;&nbsp;|&nbsp;&nbsp;
   English &nbsp;·&nbsp; <a href="./README_CN.md">中文</a> &nbsp;·&nbsp; <a href="./README_JP.md">日本語</a>
 </p>
+
+## Why ClawMaster
+
+Most OpenClaw tooling stops at configuration.
+
+ClawMaster goes one step further: it aims to help **normal, non-technical users actually make practical use of OpenClaw as a digital personal assistant**.
+
+That means ClawMaster is not only for:
+- editing config safely,
+- connecting models and channels,
+- monitoring runtime health,
+
+but also for:
+- making setup approachable,
+- turning advanced agent capability into guided workflows,
+- and gradually adding more guided learning and workflow support for real daily work and life goals.
+
+**Positioning:** ClawMaster is the bridge between OpenClaw's power and everyday usability.
 
 ## ClawMaster vs. CLI Only
 
@@ -56,30 +79,40 @@
 | Initial setup | Hand-edit `~/.openclaw/openclaw.json` | Guided wizard |
 | Provider & model config | Edit JSON, restart | Form UI with live validation |
 | Channel setup | Read docs, edit config | Step-by-step guides per platform |
-| Observability | None built-in | ClawProbe dashboard (cost, tokens, health) |
+| Observability | Mostly CLI and logs | ClawProbe-backed dashboard and runtime views |
 | Memory management | `powermem` CLI | Management UI |
+| Daily-use enablement | Mostly DIY | Product UX that is moving toward more guided use |
 | Multiple profiles | Manual file juggling | Profile switcher |
 | Desktop app | No | Yes — ships as `.dmg` / `.msi` / `.AppImage` |
 | Self-hosted web console | No | Yes — Express, runs anywhere Node.js runs |
 
 ## Who It Is For
 
-**"I manage OpenClaw for my team."**
-One place to configure channels, rotate API keys, and monitor token spend — no SSH, no JSON editing.
+**"I want OpenClaw to be useful in my real life, not just correctly configured."**  
+ClawMaster is designed to reduce the gap between installation and actual outcomes.
 
-**"I'm building agents with LangChain."**
-Quick observability into context usage, memory snapshots, and cost-per-session without writing monitoring code.
+**"I'm non-technical, but I still want a powerful AI personal assistant."**  
+The product is moving toward guided setup, guided usage, and outcome-oriented learning instead of assuming comfort with JSON, terminals, or infra concepts.
 
-**"I'm setting up OpenClaw for the first time."**
-The setup wizard walks you through provider, model, gateway, and channel in one flow. No docs required to reach a working state.
+**"I manage OpenClaw for my team or family."**  
+One place to configure channels, inspect runtime state, and make the stack easier for others to adopt.
 
-## What You Can Do
+**"I'm building advanced agent workflows."**  
+You still get provider management, observability, memory tooling, sessions, plugins, skills, and MCP in one place.
+
+## What You Can Do Today
 
 - **Setup and profiles** — Detect OpenClaw, install missing pieces, create or switch profiles, bootstrap a local environment.
 - **Models and providers** — Configure OpenAI-compatible and provider-specific endpoints, validate API keys, set runtime defaults.
 - **Gateway and channels** — Bring up the gateway, follow guided setup for Feishu, WeChat, Discord, Slack, Telegram, and WhatsApp.
 - **Plugins, skills, and MCP** — Enable or disable capabilities, install curated items, add MCP servers, import MCP definitions.
 - **Sessions, memory, and observability** — Inspect sessions, manage memory backends, track token usage and estimated spend.
+
+## What We Are Building Next
+
+- **More guided onboarding and usage** — clearer paths for people who do not want to learn OpenClaw from raw config first.
+- **Outcome-oriented workflows** — more guided routes for common scenarios instead of configuration surfaces alone.
+- **Learning layers around the product** — including future class- or playbook-style guidance for practical use cases.
 
 ## Quick Start
 
@@ -145,6 +178,7 @@ clawmaster doctor
 3. Connect at least one model provider and set a default model.
 4. Enable gateway or observability if you need runtime inspection.
 5. Add channels, plugins, skills, or MCP servers as needed.
+6. Use ClawMaster as the home base for turning OpenClaw into a real digital assistant workflow.
 
 ## Roadmap
 
@@ -152,20 +186,19 @@ Six capabilities — tracked as labeled issues:
 
 | Capability | Status | What it covers |
 |---|---|---|
-| Setup | Released | Wizard, 16 providers, 6 channel types, profile management |
-| Observe | Released | ClawProbe integration, cost / token / health dashboard |
-| Save | In progress | PowerMem UI, seekdb integration, token-reduction workflows |
-| Apply | Planned | Photo OCR, invoice processing, flashcard tools |
-| Build | Planned | Conversational agent builder (LangChain DeepAgents) |
-| Guard | Planned | Key encryption, spend limits, RBAC |
+| Setup | Available | Wizard, provider setup, channel setup, profile management |
+| Observe | Available | ClawProbe integration and runtime inspection views |
+| Save | In progress | PowerMem UI, seekdb-related flows, token-efficiency work |
+| Apply | Planned | OCR and more guided applied workflows |
+| Build | Planned | More builder-oriented workflows and composition tools |
+| Guard | Planned | Safer operations, limits, and access controls |
 
-Browse [`label:roadmap`](https://github.com/openmaster-ai/clawmaster/issues?q=label%3Aroadmap) to pick up an item. Leave a comment before starting — core contributors who land roadmap features can claim model credits from the OpenClaw team.
+Browse [`label:roadmap`](https://github.com/openmaster-ai/clawmaster/issues?q=label%3Aroadmap) to pick up an item. Leave a comment before starting so work does not overlap.
 
 ## 📰 News
 
 - **2026-04-13** 🏗️ Contribution workflow tightened with issue forms, a stronger PR template, PR description validation, and architecture boundary tests.
-
-<!-- Add entries here as notable user-facing changes ship. -->
+- **2026-04-17** ✨ Positioning refined: ClawMaster is not just an OpenClaw control plane, but a product to help everyday users fully benefit from OpenClaw as a digital personal assistant.
 
 ## Development
 
@@ -189,7 +222,7 @@ npm run test:desktop  # desktop smoke (macOS: real Tauri build; Linux/Win: WebDr
 > [!TIP]
 > Run `npm test && npm run build` before opening a PR — the same steps run in CI.
 
-CI covers: TypeScript check, unit tests, backend integration smoke, web smoke, desktop smoke, and multi-platform Tauri builds.
+CI covers core checks including TypeScript, unit tests, and desktop/web build validation.
 
 - [Test Suite](https://github.com/openmaster-ai/clawmaster/actions/workflows/test.yml)
 - [Desktop Bundles](https://github.com/openmaster-ai/clawmaster/actions/workflows/build.yml)
@@ -208,30 +241,29 @@ clawmaster/
 └── bin/clawmaster.mjs     CLI entry point
 ```
 
-Runtime model: Desktop — React calls Tauri commands via `invoke()`; Web — React proxies `/api` to Express.
+Runtime model: Desktop uses Tauri commands; Web mode talks to an Express backend over `/api`.
 
 </details>
 
 ## Contributing
 
-**Using an AI coding agent?** Point it at [AGENTS.md](./AGENTS.md) first — it covers the full contribution workflow, module patterns, and hard rules in agent-readable form.
+We warmly welcome more contributions from builders, designers, technical writers, testers, and OpenClaw power users.
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, testing requirements, dependency policy, commit convention, and PR checklist.
+If you want to help ClawMaster become more useful for everyday users, please jump in — bug fixes, UX polish, docs improvements, onboarding flows, and future Master Class ideas are all valuable.
+
+Start here:
+- [AGENTS.md](./AGENTS.md) — agent-friendly contributor rules
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — setup, testing, commit, and PR guidance
+- [Ask DeepWiki](https://deepwiki.com/openmaster-ai/clawmaster) — explore the repo before changing code
 
 > [!IMPORTANT]
-> PRs must pass `npm test` locally before opening. No screenshots, test logs, or generated files in commits. Node.js is the only permitted runtime — no new language dependencies.
+> Run `npm test` locally before opening a PR. Please do not commit generated files or test logs.
 
 Community: [GitHub Discussions](https://github.com/openmaster-ai/clawmaster/discussions) · [Discord](https://discord.gg/openclaw) · [Feishu](https://openclaw.feishu.cn/community)
 
 ## Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=openmaster-ai/clawmaster)](https://github.com/openmaster-ai/clawmaster/graphs/contributors)
-
----
-
-<!-- Repobeats activity widget — configure at repobeats.axiom.co then uncomment:
-[![Repobeats analytics image](https://repobeats.axiom.co/api/embed/HASH.svg "Repobeats analytics image")](https://repobeats.axiom.co)
--->
 
 <details>
 <summary>Acknowledgments</summary>
@@ -240,15 +272,11 @@ Community: [GitHub Discussions](https://github.com/openmaster-ai/clawmaster/disc
 |---|---|
 | [OpenClaw](https://github.com/openclaw/openclaw) | Core runtime and configuration model |
 | [ClawProbe](https://github.com/openclaw/clawprobe) | Observability daemon |
-| [ClawHub](https://clawhub.ai) | Skill registry |
 | [PowerMem](https://github.com/openclaw/powermem) | Memory backend |
+| [seekdb](https://github.com/openclaw/seekdb) | Retrieval and search workflows |
 | [Tauri](https://tauri.app) | Desktop app framework |
 | [React](https://react.dev) | Frontend UI |
 | [Vite](https://vitejs.dev) | Frontend toolchain |
 | [Playwright](https://playwright.dev) | Browser automation and smoke testing |
 
 </details>
-
-## License
-
-MIT. See [LICENSE](./LICENSE).
