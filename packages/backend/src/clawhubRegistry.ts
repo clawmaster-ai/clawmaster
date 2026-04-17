@@ -1,5 +1,6 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { resolveExecFileCommand, needsShellOnWindows } from './execOpenclaw.js'
 
 const execFileAsync = promisify(execFile)
 const CLAWHUB_BASE_URL = (process.env.OPENCLAW_CLAWHUB_URL ?? process.env.CLAWHUB_URL ?? 'https://clawhub.ai').replace(/\/+$/, '')
@@ -49,5 +50,7 @@ export async function searchClawhubSkills(query: string) {
 export async function installSkillWithClawhub(slug: string): Promise<void> {
   const normalized = slug.trim()
   if (!normalized) throw new Error('Missing slug')
-  await execFileAsync('clawhub', ['install', normalized], { shell: false })
+  await execFileAsync(resolveExecFileCommand('clawhub'), ['install', normalized], {
+    shell: needsShellOnWindows('clawhub'),
+  })
 }

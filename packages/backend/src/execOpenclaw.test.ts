@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { execNpmInstallGlobalFile, resolveNpmExecFileCommand } from './execOpenclaw.js'
+import {
+  execNpmInstallGlobalFile,
+  needsShellOnWindows,
+  resolveExecFileCommand,
+  resolveNpmExecFileCommand,
+} from './execOpenclaw.js'
 
 function withPlatform<T>(platform: NodeJS.Platform, fn: () => Promise<T> | T): Promise<T> {
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
@@ -12,6 +17,67 @@ function withPlatform<T>(platform: NodeJS.Platform, fn: () => Promise<T> | T): P
       if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform)
     })
 }
+
+// --- resolveExecFileCommand ---
+
+test('resolveExecFileCommand resolves npm to npm.cmd on Windows', async () => {
+  await withPlatform('win32', () => {
+    assert.equal(resolveExecFileCommand('npm'), 'npm.cmd')
+  })
+})
+
+test('resolveExecFileCommand resolves clawhub to clawhub.cmd on Windows', async () => {
+  await withPlatform('win32', () => {
+    assert.equal(resolveExecFileCommand('clawhub'), 'clawhub.cmd')
+  })
+})
+
+test('resolveExecFileCommand keeps ollama bare on Windows (native binary)', async () => {
+  await withPlatform('win32', () => {
+    assert.equal(resolveExecFileCommand('ollama'), 'ollama')
+  })
+})
+
+test('resolveExecFileCommand keeps openclaw bare on Windows', async () => {
+  await withPlatform('win32', () => {
+    assert.equal(resolveExecFileCommand('openclaw'), 'openclaw')
+  })
+})
+
+test('resolveExecFileCommand returns bare command on non-Windows for all commands', async () => {
+  await withPlatform('linux', () => {
+    assert.equal(resolveExecFileCommand('npm'), 'npm')
+    assert.equal(resolveExecFileCommand('clawhub'), 'clawhub')
+    assert.equal(resolveExecFileCommand('ollama'), 'ollama')
+    assert.equal(resolveExecFileCommand('openclaw'), 'openclaw')
+  })
+})
+
+// --- needsShellOnWindows ---
+
+test('needsShellOnWindows returns true for npm-installed commands on Windows', async () => {
+  await withPlatform('win32', () => {
+    assert.equal(needsShellOnWindows('npm'), true)
+    assert.equal(needsShellOnWindows('clawhub'), true)
+  })
+})
+
+test('needsShellOnWindows returns false for native binaries on Windows', async () => {
+  await withPlatform('win32', () => {
+    assert.equal(needsShellOnWindows('ollama'), false)
+    assert.equal(needsShellOnWindows('openclaw'), false)
+  })
+})
+
+test('needsShellOnWindows returns false for everything on non-Windows', async () => {
+  await withPlatform('linux', () => {
+    assert.equal(needsShellOnWindows('npm'), false)
+    assert.equal(needsShellOnWindows('clawhub'), false)
+    assert.equal(needsShellOnWindows('ollama'), false)
+  })
+})
+
+// --- resolveNpmExecFileCommand (backward compat) ---
 
 test('resolveNpmExecFileCommand returns npm.cmd on Windows', async () => {
   await withPlatform('win32', () => {
@@ -24,6 +90,8 @@ test('resolveNpmExecFileCommand returns npm on non-Windows', async () => {
     assert.equal(resolveNpmExecFileCommand(), 'npm')
   })
 })
+
+// --- execNpmInstallGlobalFile ---
 
 test('execNpmInstallGlobalFile switches to Windows npm.cmd resolution path', async () => {
   await withPlatform('win32', async () => {
