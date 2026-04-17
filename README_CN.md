@@ -177,8 +177,7 @@ ClawMaster 采用 [Pride Versioning](https://pridever.org/)（自豪版本号）
 
 ## 📰 动态
 
-- **2026-04-13** 🏗️ 贡献流程升级：issue 表单、更严格的 PR 模板、PR 描述自动校验，以及架构边界测试。
-- **2026-04-17** ✨ 产品定位更新：ClawMaster 不只是 OpenClaw 控制台，更是帮助普通用户真正用好 OpenClaw、把它变成数字私人助理的产品。
+- **2026-04-17** ✨ 品牌与定位正式发布 —— ClawMaster 定位为真正走进日常生活的 OpenClaw 伙伴，而非单纯的控制台。全新 Wordmark、Apache 2.0 许可、Pride Versioning。
 
 ## 开发
 

@@ -177,8 +177,7 @@ Pre-release tags (`-rc.N`) are used for release candidates.
 
 ## 📰 News
 
-- **2026-04-13** 🏗️ Contribution workflow tightened with issue forms, a stronger PR template, PR description validation, and architecture boundary tests.
-- **2026-04-17** ✨ Positioning refined: ClawMaster is not just an OpenClaw control plane, but a product to help everyday users fully benefit from OpenClaw as a digital personal assistant.
+- **2026-04-17** ✨ Brand and positioning launch — ClawMaster is now an OpenClaw companion for real life, not just a control plane. New wordmark, Apache 2.0 license, Pride Versioning.
 
 ## Development
 
