@@ -1,8 +1,16 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/openmaster-ai/brand/main/marketing/readme/en.png" />
-    <img src="https://raw.githubusercontent.com/openmaster-ai/brand/main/marketing/readme/en-light.png" width="100%" alt="ClawMaster" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/openmaster-ai/brand/main/logos/clawmaster/wordmarks/dark/horizontal.png" />
+    <img src="https://raw.githubusercontent.com/openmaster-ai/brand/main/logos/clawmaster/wordmarks/white/horizontal.png" width="100%" alt="ClawMaster" />
   </picture>
+</p>
+
+<p align="center">
+  <strong>Master the Claw, Command the Core.</strong>
+</p>
+
+<p align="center">
+  <em>OpenClaw companion for real life.</em>
 </p>
 
 <p align="center">
