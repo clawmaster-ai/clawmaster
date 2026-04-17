@@ -2,9 +2,9 @@
 name = "app"
 version = "0.1.0"
 description = "A Tauri App"
-authors = ["you"]
+authors = ["openmaster-ai"]
 license = "Apache-2.0"
-repository = ""
+repository = "https://github.com/openmaster-ai/clawmaster"
 edition = "2021"
 rust-version = "1.77.2"
 

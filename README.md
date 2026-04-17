@@ -257,7 +257,7 @@ Start here:
 - [Ask DeepWiki](https://deepwiki.com/openmaster-ai/clawmaster) — explore the repo before changing code
 
 > [!IMPORTANT]
-> Run `npm test` locally before opening a PR. Please do not commit generated files or test logs.
+> Run `npm test` locally before opening a PR. Please do not commit generated files or test logs. Node.js is the only permitted runtime — no new language dependencies.
 
 Community: [GitHub Discussions](https://github.com/openmaster-ai/clawmaster/discussions) · [Discord](https://discord.gg/openclaw) · [Feishu](https://openclaw.feishu.cn/community)
 

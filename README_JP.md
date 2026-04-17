@@ -210,6 +210,38 @@ npm run dev:backend   # バックエンドのみ（ポート 3001）
 npm run tauri:dev     # デスクトップアプリ
 ```
 
+<details>
+<summary>テストと CI</summary>
+
+```bash
+npm test              # 単体テスト（Vitest）
+npm run build         # 型チェック + 本番ビルド
+npm run test:desktop  # デスクトップスモーク（macOS: 実 Tauri ビルド; Linux/Win: WebDriver）
+```
+
+> [!TIP]
+> PR を開く前に `npm test && npm run build` を実行してください — CI と同じステップです。
+
+CI のカバー範囲: TypeScript チェック、単体テスト、デスクトップ / Web ビルド検証。
+
+</details>
+
+<details>
+<summary>プロジェクト構成</summary>
+
+```text
+clawmaster/
+├── packages/web/          React + Vite フロントエンド
+├── packages/backend/      Web モード用 Express バックエンド
+├── src-tauri/             Tauri デスクトップホスト
+├── tests/ui/              YAML ベースの手動 UI フロー仕様
+└── bin/clawmaster.mjs     CLI エントリーポイント
+```
+
+実行モデル: Desktop — React が Tauri コマンドを呼び出す。Web — React が `/api` 経由で Express にプロキシする。
+
+</details>
+
 ## コントリビューション
 
 開発者、デザイナー、テクニカルライター、テスター、そして実際に OpenClaw を使っているパワーユーザーからの貢献を広く歓迎しています。
@@ -222,7 +254,7 @@ ClawMaster を一般ユーザーにとってもっと役立つものにしたい
 - [Ask DeepWiki](https://deepwiki.com/openmaster-ai/clawmaster) — 変更前にリポジトリを素早く理解
 
 > [!IMPORTANT]
-> PR を開く前にローカルで `npm test` を実行してください。生成ファイルやテストログはコミットしないでください。
+> PR を開く前にローカルで `npm test` を実行してください。生成ファイルやテストログはコミットしないでください。Node.js が唯一許可されているランタイムです — 新しい言語依存関係を追加しないでください。
 
 コミュニティ: [GitHub Discussions](https://github.com/openmaster-ai/clawmaster/discussions) · [Discord](https://discord.gg/openclaw) · [Feishu](https://openclaw.feishu.cn/community)
 

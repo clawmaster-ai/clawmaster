@@ -210,6 +210,38 @@ npm run dev:backend   # 仅后端（端口 3001）
 npm run tauri:dev     # 桌面应用
 ```
 
+<details>
+<summary>测试与 CI</summary>
+
+```bash
+npm test              # 单元测试（Vitest）
+npm run build         # 类型检查 + 生产构建
+npm run test:desktop  # 桌面冒烟（macOS：真实 Tauri 构建；Linux/Win：WebDriver）
+```
+
+> [!TIP]
+> 提 PR 前请先跑 `npm test && npm run build`，与 CI 流程保持一致。
+
+CI 覆盖核心检查，包括 TypeScript 检查、单元测试以及桌面 / Web 构建验证。
+
+</details>
+
+<details>
+<summary>项目结构</summary>
+
+```text
+clawmaster/
+├── packages/web/          React + Vite 前端
+├── packages/backend/      Web 模式 Express 后端
+├── src-tauri/             Tauri 桌面宿主
+├── tests/ui/              YAML 手动 UI 流程规约
+└── bin/clawmaster.mjs     CLI 入口
+```
+
+运行模型：Desktop — React 通过 Tauri 命令调用；Web — React 通过 `/api` 代理到 Express。
+
+</details>
+
 ## 贡献
 
 我们非常欢迎更多贡献者加入，包括开发者、设计师、技术写作者、测试人员，以及真正使用 OpenClaw 的深度用户。
@@ -222,7 +254,7 @@ npm run tauri:dev     # 桌面应用
 - [Ask DeepWiki](https://deepwiki.com/openmaster-ai/clawmaster) —— 改代码前先快速了解仓库
 
 > [!IMPORTANT]
-> 提 PR 前请先在本地运行 `npm test`。请不要提交生成文件或测试日志。
+> 提 PR 前请先在本地运行 `npm test`。请不要提交生成文件或测试日志。Node.js 是唯一允许的运行时，禁止引入新的语言依赖。
 
 社区：[GitHub Discussions](https://github.com/openmaster-ai/clawmaster/discussions) · [Discord](https://discord.gg/openclaw) · [飞书社区](https://openclaw.feishu.cn/community)
 
