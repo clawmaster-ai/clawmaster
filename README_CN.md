@@ -181,7 +181,7 @@ ClawMaster 的核心目标，是缩短“安装完成”到“真实产出”之
 
 ## 版本策略
 
-ClawMaster 采用 [Pride Versioning](https://news.ycombinator.com/item?id=44754717)（自豪版本号）—— `PROUD.DEFAULT.SHAME`：
+ClawMaster 采用 [Pride Versioning](https://pridever.org/)（自豪版本号）—— `PROUD.DEFAULT.SHAME`：
 
 | 位 | 何时递增 |
 |---|---|

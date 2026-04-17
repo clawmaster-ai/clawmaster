@@ -181,7 +181,7 @@ Browse [`label:roadmap`](https://github.com/openmaster-ai/clawmaster/issues?q=la
 
 ## Versioning
 
-ClawMaster follows [Pride Versioning](https://news.ycombinator.com/item?id=44754717) — `PROUD.DEFAULT.SHAME`:
+ClawMaster follows [Pride Versioning](https://pridever.org/) — `PROUD.DEFAULT.SHAME`:
 
 | Segment | When to bump |
 |---|---|
