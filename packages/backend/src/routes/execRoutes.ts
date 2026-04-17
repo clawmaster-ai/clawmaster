@@ -58,9 +58,9 @@ export function normalizeExecRequest(
  * Generic exec endpoint — used as a fallback for CLI commands that don't yet
  * have dedicated backend routes.
  *
- * NOTE: On Windows without WSL2, `npm` is resolved to `npm.cmd` and executed
- * with `shell: true` to avoid ENOENT errors (`.cmd` shims require the CMD
- * interpreter). Other commands use `shell: false` as before.
+ * NOTE: On Windows without WSL2, npm-installed CLI tools (`npm`, `clawhub`)
+ * are resolved to their `.cmd` shims and executed with `shell: true` to avoid
+ * ENOENT errors. Native binaries (`ollama`) use `shell: false` as before.
  */
 export function registerExecRoutes(app: Express): void {
   app.post('/api/exec', async (req, res) => {
