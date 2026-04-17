@@ -500,8 +500,21 @@ export function execShellCommand(command: string): Promise<{
   })
 }
 
-function resolveNpmExecFileCommand(): string {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm'
+const NPM_INSTALLED_COMMANDS = new Set(['npm', 'clawhub'])
+
+export function resolveExecFileCommand(cmd: string): string {
+  if (process.platform === 'win32' && NPM_INSTALLED_COMMANDS.has(cmd)) {
+    return cmd + '.cmd'
+  }
+  return cmd
+}
+
+export function needsShellOnWindows(cmd: string): boolean {
+  return process.platform === 'win32' && NPM_INSTALLED_COMMANDS.has(cmd)
+}
+
+export function resolveNpmExecFileCommand(): string {
+  return resolveExecFileCommand('npm')
 }
 
 /** `npm install -g <absolute path>` via execFile (no shell) to avoid special chars in path */
