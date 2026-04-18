@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Play, RefreshCw, SquarePen, TimerReset, Trash2 } from 'lucide-react'
 import { ActionBanner } from '@/shared/components/ActionBanner'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { LoadingState } from '@/shared/components/LoadingState'
+import { buildCostDigestDraft, isCostDigestPeriod } from '@/shared/cronCostDigests'
 import { getGatewayStatusResult } from '@/shared/adapters/gateway'
 import {
   createCronJobResult,
@@ -202,9 +203,11 @@ function getSchedulePresets(scheduleType: CronJobDraft['scheduleType'], t: TFunc
 
 export default function CronPage() {
   const { t } = useTranslation()
+  const [searchParams] = useSearchParams()
   const jobsState = useAdapterCall(getCronJobsResult, { pollInterval: 30_000 })
   const statusState = useAdapterCall(getCronStatusResult, { pollInterval: 30_000 })
   const gatewayState = useAdapterCall(getGatewayStatusResult, { pollInterval: 30_000 })
+  const templateApplied = useRef(false)
 
   const [filter, setFilter] = useState<FilterMode>('all')
   const [feedback, setFeedback] = useState<{ tone: 'info' | 'success' | 'error'; message: string } | null>(null)
@@ -239,6 +242,39 @@ export default function CronPage() {
       gatewayState.data?.running === false)
   const schedulePreview = buildSchedulePreview(draft, t)
   const schedulePresets = getSchedulePresets(draft.scheduleType, t)
+
+  useEffect(() => {
+    if (templateApplied.current) {
+      return
+    }
+
+    if (!gatewayResolved) {
+      return
+    }
+
+    const template = searchParams.get('template')
+    const period = searchParams.get('period')
+    if (template !== 'cost-digest' || !isCostDigestPeriod(period)) {
+      return
+    }
+
+    if (!gatewayReady) {
+      templateApplied.current = true
+      return
+    }
+
+    templateApplied.current = true
+    setEditorMode('create')
+    setEditingJobId(null)
+    setDraft(buildCostDigestDraft(period, t))
+    setEditorError(null)
+    setFeedback({
+      tone: 'info',
+      message: t('cron.templateLoadedCostDigest', {
+        period: t(`observe.period${period[0].toUpperCase()}${period.slice(1)}`),
+      }),
+    })
+  }, [gatewayReady, gatewayResolved, searchParams, t])
 
   async function refreshAll() {
     await Promise.all([jobsState.refetch(), statusState.refetch(), gatewayState.refetch()])

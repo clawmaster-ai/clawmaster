@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link, useNavigate } from 'react-router-dom'
 import { platformResults } from '@/adapters'
 import { getSetupAdapter } from '@/modules/setup/adapters'
 import { allSuccess2 } from '@/shared/adapters/resultHelpers'
@@ -9,6 +10,7 @@ import { InstallTask } from '@/shared/components/InstallTask'
 import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 import { useInstallTask } from '@/shared/hooks/useInstallTask'
 import { LoadingState } from '@/shared/components/LoadingState'
+import { getCostDigestTemplates } from '@/shared/cronCostDigests'
 import type { ClawprobeConfigJson, ClawprobeCostJson, ClawprobeStatusJson } from '@/types/clawprobe'
 import { cn } from '@/lib/utils'
 
@@ -26,11 +28,15 @@ function severityClass(sev: string): string {
 
 export default function ObservePage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [costPeriod, setCostPeriod] = useState<'day' | 'week' | 'month' | 'all'>('week')
   const [bootstrapBusy, setBootstrapBusy] = useState(false)
   const [bootstrapHint, setBootstrapHint] = useState<string | null>(null)
   const [installHint, setInstallHint] = useState<string | null>(null)
+  const [digestInstallPeriod, setDigestInstallPeriod] = useState<string | null>(null)
+  const [digestInstallError, setDigestInstallError] = useState<string | null>(null)
   const installTask = useInstallTask()
+  const digestTemplates = useMemo(() => getCostDigestTemplates(t), [t])
 
   const costPeriods = useMemo(
     () =>
@@ -94,6 +100,20 @@ export default function ObservePage() {
       await refetch()
     })
   }, [installTask, refetch, t])
+
+  const handleOpenDigestTemplate = useCallback(async (href: string, period: string) => {
+    setDigestInstallError(null)
+    setDigestInstallPeriod(period)
+    const result = await platformResults.installSkill('clawprobe-cost-digest')
+    if (!result.success) {
+      setDigestInstallError(
+        t('skills.installFailed', { message: result.error ?? t('common.unknownError') })
+      )
+      setDigestInstallPeriod(null)
+      return
+    }
+    navigate(href)
+  }, [navigate, t])
 
   if (error || !data) {
     if (loading && !data && !error) {
@@ -367,6 +387,59 @@ export default function ObservePage() {
               {t('observe.unpricedWarning', { models: cost.unpricedModels.join(', ') })}
             </p>
           )}
+        </div>
+      </section>
+
+      <section id="observe-digests" className="space-y-3">
+        <div className="surface-card space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">{t('observe.scheduledDigestsTitle')}</h2>
+            <p className="text-sm text-muted-foreground">{t('observe.scheduledDigestsDesc')}</p>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <div className="grid gap-3 md:grid-cols-3">
+              {digestTemplates.map((template) => (
+                <button
+                  key={template.period}
+                  type="button"
+                  onClick={() => void handleOpenDigestTemplate(template.href, template.period)}
+                  disabled={digestInstallPeriod !== null}
+                  className="surface-card block space-y-2 border border-border/70 bg-background/70 text-left transition hover:border-primary/35 hover:bg-background disabled:cursor-wait disabled:opacity-70"
+                >
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">{template.label}</p>
+                    <p className="text-xs text-muted-foreground">{template.schedule}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{template.description}</p>
+                  <span className="inline-flex text-xs font-medium text-primary">
+                    {digestInstallPeriod === template.period
+                      ? t('skills.installing')
+                      : t('observe.digestCreateAction')}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                {t('observe.digestIncludesTitle')}
+              </p>
+              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                <li>{t('observe.digestIncludesTotal')}</li>
+                <li>{t('observe.digestIncludesBreakdown')}</li>
+                <li>{t('observe.digestIncludesTop')}</li>
+                <li>{t('observe.digestIncludesTrend')}</li>
+              </ul>
+              <p className="mt-4 text-xs text-muted-foreground">{t('observe.digestDeliveryNote')}</p>
+              <Link to="/cron" className="mt-3 inline-flex text-sm font-medium text-primary">
+                {t('observe.openCron')}
+              </Link>
+            </div>
+          </div>
+          {digestInstallError ? (
+            <p className="text-sm text-destructive">{digestInstallError}</p>
+          ) : null}
         </div>
       </section>
 

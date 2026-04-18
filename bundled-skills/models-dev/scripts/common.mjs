@@ -1,14 +1,101 @@
 import fs from 'node:fs'
 import os from 'node:os'
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
 export const DEFAULT_MODELS_DEV_URL = 'https://models.dev/api.json'
-export const DEFAULT_CACHE_PATH = path.join(os.homedir(), '.openclaw', 'cache', 'models-dev.json')
 export const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 function ensureParentDir(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
 }
+
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getPathModule(platformName = process.platform) {
+  return platformName === 'win32' ? path.win32 : path.posix
+}
+
+export function getClawmasterSettingsPath({
+  homeDir = os.homedir(),
+  platform = process.platform,
+} = {}) {
+  return getPathModule(platform).join(homeDir, '.clawmaster', 'settings.json')
+}
+
+function normalizeClawmasterRuntimeSelection(selection) {
+  const mode = selection?.mode === 'wsl2' ? 'wsl2' : 'native'
+  const normalized = { mode }
+  const distro = String(selection?.wslDistro ?? '').trim()
+  if (mode === 'wsl2' && distro) {
+    normalized.wslDistro = distro
+  }
+  return normalized
+}
+
+export function readClawmasterRuntimeSelection({
+  settingsPath = getClawmasterSettingsPath(),
+} = {}) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+    return normalizeClawmasterRuntimeSelection(isRecord(parsed) ? parsed.runtime : null)
+  } catch {
+    return { mode: 'native' }
+  }
+}
+
+function shouldUseWslRuntime(selection, platform = process.platform) {
+  return platform === 'win32' && selection.mode === 'wsl2'
+}
+
+function joinOpenclawCachePath(homeDir, { platform = process.platform, usePosix = false } = {}) {
+  return (usePosix ? path.posix : getPathModule(platform)).join(
+    homeDir,
+    '.openclaw',
+    'cache',
+    'models-dev.json'
+  )
+}
+
+export function getWslHomeDirSync(distro = '', { execFileSyncImpl = execFileSync } = {}) {
+  const args = distro
+    ? ['-d', distro, '--', 'bash', '-lc', 'printf %s "$HOME"']
+    : ['--', 'bash', '-lc', 'printf %s "$HOME"']
+  const stdout = execFileSyncImpl('wsl.exe', args, {
+    encoding: 'utf8',
+    env: process.env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  })
+  const homeDir = String(stdout ?? '').trim()
+  if (!homeDir) {
+    throw new Error('Unable to resolve WSL home directory')
+  }
+  return homeDir
+}
+
+export function resolveDefaultCachePath({
+  homeDir = os.homedir(),
+  platform = process.platform,
+  settingsPath = getClawmasterSettingsPath({ homeDir, platform }),
+  getWslHomeDir = (distro) => getWslHomeDirSync(distro),
+} = {}) {
+  const runtimeSelection = readClawmasterRuntimeSelection({ settingsPath })
+  if (shouldUseWslRuntime(runtimeSelection, platform)) {
+    try {
+      return joinOpenclawCachePath(getWslHomeDir(runtimeSelection.wslDistro ?? ''), {
+        usePosix: true,
+      })
+    } catch {
+      // Fall back to the host cache path if WSL resolution fails.
+    }
+  }
+  return joinOpenclawCachePath(homeDir, { platform })
+}
+
+export const DEFAULT_CACHE_PATH = resolveDefaultCachePath()
 
 function normalizeBoolean(value) {
   const normalized = String(value ?? '').trim().toLowerCase()

@@ -3,6 +3,10 @@ import path from 'node:path'
 import { getOpenclawDataDir } from '../paths.js'
 
 const BUNDLED_SKILLS = {
+  'clawprobe-cost-digest': {
+    dirName: 'clawprobe-cost-digest',
+    envKey: 'CLAWMASTER_BUNDLED_CLAWPROBE_COST_DIGEST_SKILL_ROOT',
+  },
   'ernie-image': {
     dirName: 'ernie-image',
     envKey: 'CLAWMASTER_BUNDLED_ERNIE_IMAGE_SKILL_ROOT',

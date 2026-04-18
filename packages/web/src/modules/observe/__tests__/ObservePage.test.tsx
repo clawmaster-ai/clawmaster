@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { changeLanguage } from '@/i18n'
 import ObservePage from '../ObservePage'
 
@@ -7,6 +8,7 @@ const mockClawprobeStatus = vi.fn()
 const mockClawprobeCost = vi.fn()
 const mockClawprobeConfig = vi.fn()
 const mockClawprobeBootstrap = vi.fn()
+const mockInstallSkill = vi.fn()
 const mockInstallCapabilities = vi.fn()
 
 vi.mock('@/adapters', () => ({
@@ -15,6 +17,7 @@ vi.mock('@/adapters', () => ({
     clawprobeCost: (...args: any[]) => mockClawprobeCost(...args),
     clawprobeConfig: (...args: any[]) => mockClawprobeConfig(...args),
     clawprobeBootstrap: (...args: any[]) => mockClawprobeBootstrap(...args),
+    installSkill: (...args: any[]) => mockInstallSkill(...args),
   },
 }))
 
@@ -84,11 +87,16 @@ describe('ObservePage', () => {
         message: 'ClawProbe started',
       },
     })
+    mockInstallSkill.mockResolvedValue({ success: true, data: undefined })
     mockInstallCapabilities.mockResolvedValue(undefined)
   })
 
   it('renders the missing-clawprobe zero state instead of an error screen', async () => {
-    render(<ObservePage />)
+    render(
+      <MemoryRouter>
+        <ObservePage />
+      </MemoryRouter>,
+    )
 
     expect(await screen.findByText('ClawProbe is not installed')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1, name: 'Observe' })).toBeInTheDocument()
@@ -96,10 +104,15 @@ describe('ObservePage', () => {
     expect(screen.getByText('No active session')).toBeInTheDocument()
     expect(screen.getByText('No cost data for this period')).toBeInTheDocument()
     expect(screen.getByText('/tmp/.openclaw/clawprobe')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Scheduled Cost Digests' })).toBeInTheDocument()
   })
 
   it('installs clawprobe from the observe flow and bootstraps it', async () => {
-    render(<ObservePage />)
+    render(
+      <MemoryRouter>
+        <ObservePage />
+      </MemoryRouter>,
+    )
 
     fireEvent.click(await screen.findByRole('button', { name: 'Install and start ClawProbe' }))
 
@@ -112,5 +125,36 @@ describe('ObservePage', () => {
       expect(mockClawprobeBootstrap).toHaveBeenCalledTimes(1)
     })
     expect(await screen.findByText('ClawProbe started')).toBeInTheDocument()
+  })
+
+  it('installs the bundled digest skill before opening a digest cron template', async () => {
+    render(
+      <MemoryRouter>
+        <ObservePage />
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: 'Observe' })
+
+    fireEvent.click(screen.getByRole('button', { name: /Weekly Digest/i }))
+
+    await waitFor(() => {
+      expect(mockInstallSkill).toHaveBeenCalledWith('clawprobe-cost-digest')
+    })
+  })
+
+  it('shows an install error instead of opening a broken digest flow when skill install fails', async () => {
+    mockInstallSkill.mockResolvedValueOnce({ success: false, error: 'bundled skill missing' })
+
+    render(
+      <MemoryRouter>
+        <ObservePage />
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: 'Observe' })
+    fireEvent.click(screen.getByRole('button', { name: /Daily Digest/i }))
+
+    expect(await screen.findByText('Install failed: bundled skill missing')).toBeInTheDocument()
   })
 })

@@ -62,6 +62,12 @@ describe('Skills catalog', () => {
       category: 'productivity',
       installSource: 'bundled',
     })
+    expect(SKILL_CATALOG.find((skill) => skill.slug === 'clawprobe-cost-digest')).toMatchObject({
+      slug: 'clawprobe-cost-digest',
+      name: 'ClawProbe Cost Digest',
+      category: 'productivity',
+      installSource: 'bundled',
+    })
   })
 
   it('CATEGORY_ORDER covers all used categories', () => {

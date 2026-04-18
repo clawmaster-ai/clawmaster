@@ -29,9 +29,9 @@ vi.mock('@/shared/adapters/gateway', () => ({
   getGatewayStatusResult: (...args: any[]) => mockGetGatewayStatus(...args),
 }))
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ['/cron']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <CronPage />
     </MemoryRouter>,
   )
@@ -158,6 +158,20 @@ describe('CronPage', () => {
     })
   })
 
+  it('opens the create dialog with a prefilled cost digest template from the observe flow', async () => {
+    renderPage(['/cron?template=cost-digest&period=week'])
+
+    expect(await screen.findByRole('dialog', { name: 'Create Cron Job' })).toBeInTheDocument()
+    expect(screen.getByText('Loaded the Week cost digest template. Review the prompt, choose delivery, and save the job.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Name')).toHaveValue('Weekly Cost Digest')
+    expect(screen.getByLabelText('Cron expression')).toHaveValue('0 8 * * 1')
+    expect(screen.getByLabelText('Session')).toHaveValue('isolated')
+    expect(screen.getByLabelText('Agent')).toHaveValue('main')
+    expect(screen.getByLabelText('Message')).toHaveValue(
+      'Use the installed clawprobe-cost-digest skill to generate the weekly OpenClaw cost digest for the last 7 days. Read the skill, run `node ${SKILL_DIR}/scripts/generate-digest.mjs --period week --summary`, and return only the generated markdown summary. Do not invent numbers or add extra commentary.',
+    )
+  })
+
   it('shows gateway-required state and disables create when the gateway is down', async () => {
     mockGetGatewayStatus.mockResolvedValueOnce({
       success: true,
@@ -172,6 +186,21 @@ describe('CronPage', () => {
     expect(await screen.findByText('OpenClaw cron commands depend on the gateway. Start the gateway before managing cron jobs.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create Job' })).toBeDisabled()
     expect(screen.getByRole('link', { name: 'Open Gateway' })).toBeInTheDocument()
+  })
+
+  it('does not auto-open a cost digest template when the gateway is down', async () => {
+    mockGetGatewayStatus.mockResolvedValueOnce({
+      success: true,
+      data: {
+        running: false,
+        port: 18789,
+      },
+    })
+
+    renderPage(['/cron?template=cost-digest&period=week'])
+
+    expect(await screen.findByText('OpenClaw cron commands depend on the gateway. Start the gateway before managing cron jobs.')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Create Cron Job' })).not.toBeInTheDocument()
   })
 
   it('runs enable and delete actions through the cron adapter', async () => {

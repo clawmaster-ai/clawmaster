@@ -130,6 +130,52 @@ describe('cron adapter', () => {
     ])
   })
 
+  it('builds create args and disables delivery when announce is off', async () => {
+    await mockExec('')
+
+    const result = await createCronJobResult({
+      name: 'Weekly digest',
+      description: 'Digest without announce delivery',
+      scheduleType: 'cron',
+      cron: '0 8 * * 1',
+      every: '',
+      at: '',
+      tz: '',
+      session: 'isolated',
+      sessionKey: '',
+      model: '',
+      agent: 'main',
+      announce: false,
+      channel: '',
+      to: '',
+      message: 'Generate the weekly digest',
+      systemEvent: '',
+      enabled: true,
+    })
+
+    expect(result.success).toBe(true)
+    expect(await latestCall()).toEqual([
+      'openclaw',
+      [
+        'cron',
+        'add',
+        '--name',
+        'Weekly digest',
+        '--description',
+        'Digest without announce delivery',
+        '--message',
+        'Generate the weekly digest',
+        '--agent',
+        'main',
+        '--session',
+        'isolated',
+        '--no-deliver',
+        '--cron',
+        '0 8 * * 1',
+      ],
+    ])
+  })
+
   it('builds edit args and clears announce delivery when disabled in the form', async () => {
     await mockExec('')
 

@@ -6,11 +6,15 @@ import { registerDomainRoutes, registerDomainJsonRoutes, attachLogsStreamServer 
 import { requireServiceAuth } from './serviceAuth.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const CLAWPROBE_COST_DIGEST_SKILL_ROOT = path.resolve(__dirname, '../../../bundled-skills/clawprobe-cost-digest')
 const ERNIE_IMAGE_PLUGIN_ROOT = path.resolve(__dirname, '../../../plugins/openclaw-ernie-image')
 const ERNIE_IMAGE_SKILL_ROOT = path.resolve(__dirname, '../../../bundled-skills/ernie-image')
 const MODELS_DEV_SKILL_ROOT = path.resolve(__dirname, '../../../bundled-skills/models-dev')
 const PADDLEOCR_SKILL_ROOT = path.resolve(__dirname, '../../../bundled-skills/paddleocr-doc-parsing')
 
+if (fs.existsSync(path.join(CLAWPROBE_COST_DIGEST_SKILL_ROOT, 'SKILL.md'))) {
+  process.env.CLAWMASTER_BUNDLED_CLAWPROBE_COST_DIGEST_SKILL_ROOT = CLAWPROBE_COST_DIGEST_SKILL_ROOT
+}
 if (fs.existsSync(path.join(ERNIE_IMAGE_PLUGIN_ROOT, 'openclaw.plugin.json'))) {
   process.env.CLAWMASTER_PACKAGED_ERNIE_IMAGE_PLUGIN_ROOT = ERNIE_IMAGE_PLUGIN_ROOT
 }

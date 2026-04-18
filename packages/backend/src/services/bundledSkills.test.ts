@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 import { installBundledSkill, isBundledSkillSlug } from './bundledSkills.js'
 
 test('isBundledSkillSlug recognizes bundled skill ids case-insensitively', () => {
+  assert.equal(isBundledSkillSlug('clawprobe-cost-digest'), true)
+  assert.equal(isBundledSkillSlug('CLAWPROBE-COST-DIGEST'), true)
   assert.equal(isBundledSkillSlug('ernie-image'), true)
   assert.equal(isBundledSkillSlug('ERNIE-IMAGE'), true)
   assert.equal(isBundledSkillSlug('models-dev'), true)
@@ -80,6 +82,35 @@ test('installBundledSkill copies the bundled PaddleOCR skill into the active wor
   )
 })
 
+test('installBundledSkill copies the bundled clawprobe cost digest skill into the active workspace', () => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-src-'))
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-data-'))
+  fs.mkdirSync(path.join(sourceRoot, 'scripts'), { recursive: true })
+  fs.writeFileSync(path.join(sourceRoot, 'SKILL.md'), '# ClawProbe Cost Digest\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, '_meta.json'), '{"slug":"clawprobe-cost-digest","version":"1.0.0"}\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, 'scripts', 'generate-digest.mjs'), 'console.log("digest")\n', 'utf8')
+
+  const result = installBundledSkill('clawprobe-cost-digest', {
+    dataDir,
+    env: {
+      ...process.env,
+      CLAWMASTER_BUNDLED_CLAWPROBE_COST_DIGEST_SKILL_ROOT: sourceRoot,
+    },
+  })
+
+  const installDir = path.join(dataDir, 'workspace', 'skills', 'clawprobe-cost-digest')
+  assert.equal(result.installDir, installDir)
+  assert.equal(fs.readFileSync(path.join(installDir, 'SKILL.md'), 'utf8'), '# ClawProbe Cost Digest\n')
+  assert.equal(
+    fs.readFileSync(path.join(installDir, '_meta.json'), 'utf8'),
+    '{"slug":"clawprobe-cost-digest","version":"1.0.0"}\n',
+  )
+  assert.equal(
+    fs.readFileSync(path.join(installDir, 'scripts', 'generate-digest.mjs'), 'utf8'),
+    'console.log("digest")\n',
+  )
+})
+
 test('installBundledSkill copies the bundled models.dev skill into the active workspace', () => {
   const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-src-'))
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-data-'))
@@ -107,6 +138,18 @@ test('installBundledSkill copies the bundled models.dev skill into the active wo
     fs.readFileSync(path.join(installDir, 'scripts', 'query-models.mjs'), 'utf8'),
     'console.log("query")\n',
   )
+})
+
+test('bundled clawprobe cost digest skill explicitly instructs agents to read the skill and exec the script', () => {
+  const skillPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../../bundled-skills/clawprobe-cost-digest/SKILL.md',
+  )
+  const skillBody = fs.readFileSync(skillPath, 'utf8')
+
+  assert.match(skillBody, /Do not call `clawprobe-cost-digest` as if it were a built-in tool\./)
+  assert.match(skillBody, /First use `read` to load this `SKILL\.md`\./)
+  assert.match(skillBody, /Then use `exec` to run the bundled Node script with `node`\./)
 })
 
 test('bundled models.dev skill explicitly instructs agents to read the skill and exec the script', () => {

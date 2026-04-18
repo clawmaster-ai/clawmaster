@@ -69,7 +69,12 @@ async function execViaTauri(cmd: string, args: string[]): Promise<string> {
     case 'openclaw':
       return inv('run_openclaw_command', { args })
     case 'clawprobe':
-      return inv('run_clawprobe_command', { args })
+      return inv('run_clawprobe_command', {
+        args,
+        useModelsDevPricing: ['status', 'cost', 'suggest'].includes(
+          args[0]?.trim().toLowerCase() ?? ''
+        ),
+      })
     default:
       return inv('run_system_command', { cmd, args })
   }

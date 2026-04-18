@@ -116,6 +116,15 @@ export const SKILL_CATALOG: CatalogSkill[] = [
     sourceUrl: 'https://models.dev',
   },
   {
+    slug: 'clawprobe-cost-digest',
+    name: 'ClawProbe Cost Digest',
+    descriptionKey: 'skills.catalog.clawprobeCostDigest.desc',
+    category: 'productivity',
+    skillKey: 'clawprobe-cost-digest',
+    installSource: 'bundled',
+    sourceUrl: 'https://github.com/openmaster-ai/clawmaster',
+  },
+  {
     slug: 'image-generate',
     name: 'Image Generate',
     descriptionKey: 'skills.catalog.imageGenerate.desc',
