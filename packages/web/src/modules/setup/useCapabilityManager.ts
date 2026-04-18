@@ -20,6 +20,9 @@ export interface UseCapabilityManagerResult {
 }
 
 export function useCapabilityManager(adapter?: SetupAdapter): UseCapabilityManagerResult {
+  // Adapter is read through a ref so detect/install keep stable identities
+  // (deps: []). Callers may pass a fresh adapter each render without triggering
+  // re-subscription loops; the latest value is always used on the next call.
   const adapterRef = useRef<SetupAdapter>(adapter ?? getSetupAdapter())
   if (adapter) adapterRef.current = adapter
 

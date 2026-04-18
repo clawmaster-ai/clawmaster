@@ -144,6 +144,7 @@ export default {
   "command.jump.configEditorDesc": "低レベル設定の最終調整用 JSON エディタへ直接移動します。",
   "dashboard.title": "概要",
   "dashboard.capabilitiesBanner.text": "{{count}} 個のコアモジュールが未インストールです",
+  "dashboard.capabilitiesBanner.errorText": "コアモジュールの検出に失敗しました。ランタイム設定を確認してください。",
   "dashboard.capabilitiesBanner.action": "コアモジュールを管理",
   "dashboard.gatewayStatus": "ゲートウェイ状態",
   "dashboard.running": "稼働中",

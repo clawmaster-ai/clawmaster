@@ -144,6 +144,7 @@ export default {
   "command.jump.configEditorDesc": "Go directly to the JSON editor for final low-level configuration changes.",
   "dashboard.title": "Overview",
   "dashboard.capabilitiesBanner.text": "{{count}} capabilities not installed yet",
+  "dashboard.capabilitiesBanner.errorText": "Unable to probe capabilities. The runtime may be misconfigured.",
   "dashboard.capabilitiesBanner.action": "Manage capabilities",
   "dashboard.gatewayStatus": "Gateway Status",
   "dashboard.running": "Running",

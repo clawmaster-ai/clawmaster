@@ -7,7 +7,7 @@ import { CAPABILITIES } from '@/modules/setup/types'
 
 export function CapabilitiesBanner() {
   const { t } = useTranslation()
-  const { capabilities, detecting, detect } = useCapabilityManager()
+  const { capabilities, detecting, error, detect } = useCapabilityManager()
 
   useEffect(() => {
     void detect().catch(() => {})
@@ -23,6 +23,29 @@ export function CapabilitiesBanner() {
   }, [capabilities])
 
   if (detecting && capabilities.length === 0) return null
+
+  if (error && capabilities.length === 0) {
+    return (
+      <div className="surface-card border-red-500/30 bg-red-500/5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {t('dashboard.capabilitiesBanner.errorText')}
+              </p>
+              <p className="text-xs text-muted-foreground">{error}</p>
+            </div>
+          </div>
+          <Link to="/settings#settings-capabilities" className="button-secondary">
+            {t('dashboard.capabilitiesBanner.action')}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   if (installableMissing.length === 0) return null
 
   return (

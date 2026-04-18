@@ -144,6 +144,7 @@ export default {
   "command.jump.configEditorDesc": "直接进入 JSON 编辑器，处理最后的底层配置修改。",
   "dashboard.title": "概览",
   "dashboard.capabilitiesBanner.text": "{{count}} 个核心模块尚未安装",
+  "dashboard.capabilitiesBanner.errorText": "无法探测核心模块状态，可能存在运行时配置问题。",
   "dashboard.capabilitiesBanner.action": "管理核心模块",
   "dashboard.gatewayStatus": "网关状态",
   "dashboard.running": "运行中",
