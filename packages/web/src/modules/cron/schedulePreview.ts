@@ -23,6 +23,42 @@ function hasExplicitOffset(value: string) {
   return /(?:[zZ]|[+-]\d{2}:\d{2})$/.test(value)
 }
 
+function validateTimezone(timeZone: string) {
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function parseNaiveDateTime(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/)
+  if (!match) return null
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const day = Number(dayText)
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+  const second = Number(secondText ?? '00')
+
+  const parsed = new Date(Date.UTC(year, month - 1, day, hour, minute, second))
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day ||
+    parsed.getUTCHours() !== hour ||
+    parsed.getUTCMinutes() !== minute ||
+    parsed.getUTCSeconds() !== second
+  ) {
+    return null
+  }
+
+  return `${yearText}-${monthText}-${dayText} ${hourText}:${minuteText}:${padTime(String(second))}`
+}
+
 function formatDateInTimezone(value: Date, timeZone: string) {
   try {
     const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -143,7 +179,10 @@ export function buildSchedulePreview(draft: CronJobDraft, t: TFunction): Schedul
   }
 
   const parsed = new Date(runAt)
-  if (Number.isNaN(parsed.getTime())) {
+  const timezone = draft.tz.trim()
+  const naiveDateTime = !hasExplicitOffset(runAt) ? parseNaiveDateTime(runAt) : null
+
+  if (!naiveDateTime && Number.isNaN(parsed.getTime())) {
     return {
       summary: t('cron.schedulePreviewAt', { value: runAt }),
       detail: t('cron.schedulePreviewInvalidAt'),
@@ -151,9 +190,34 @@ export function buildSchedulePreview(draft: CronJobDraft, t: TFunction): Schedul
     }
   }
 
-  const timezone = draft.tz.trim()
-  const formatted = timezone ? formatDateInTimezone(parsed, timezone) : null
-  const displayValue = formatted ?? (timezone || hasExplicitOffset(runAt) ? runAt : parsed.toLocaleString())
+  if (timezone && !validateTimezone(timezone)) {
+    return {
+      summary: t('cron.schedulePreviewAt', { value: naiveDateTime ?? runAt }),
+      detail: t('cron.schedulePreviewInvalidTimezone', { value: timezone }),
+      tone: 'warning',
+    }
+  }
+
+  let displayValue: string
+  if (timezone && naiveDateTime) {
+    displayValue = naiveDateTime
+  } else if (timezone) {
+    const formatted = formatDateInTimezone(parsed, timezone)
+    if (!formatted) {
+      return {
+        summary: t('cron.schedulePreviewAt', { value: runAt }),
+        detail: t('cron.schedulePreviewInvalidTimezone', { value: timezone }),
+        tone: 'warning',
+      }
+    }
+    displayValue = formatted
+  } else if (hasExplicitOffset(runAt)) {
+    displayValue = runAt
+  } else if (naiveDateTime) {
+    displayValue = parsed.toLocaleString()
+  } else {
+    displayValue = parsed.toLocaleString()
+  }
 
   return {
     summary: t('cron.schedulePreviewAt', { value: displayValue }),

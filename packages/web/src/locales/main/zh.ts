@@ -1787,6 +1787,7 @@ export default {
   "cron.schedulePreviewFieldCount": "Cron 表达式需要 5 个以空格分隔的字段。",
   "cron.schedulePreviewInvalidInterval": "请输入类似 15m、1h、1d 这样的间隔。",
   "cron.schedulePreviewInvalidAt": "请输入有效的 ISO 日期时间。",
+  "cron.schedulePreviewInvalidTimezone": "时区 {{value}} 无效。请输入有效的 IANA 时区名称。",
   "cron.presetWeekdayMorning": "工作日 08:00",
   "cron.presetDailyMorning": "每天 09:00",
   "cron.presetHourly": "每小时",

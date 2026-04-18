@@ -1787,6 +1787,7 @@ export default {
   "cron.schedulePreviewFieldCount": "Cron 式は空白区切りの 5 項目です。",
   "cron.schedulePreviewInvalidInterval": "15m、1h、1d のような期間を指定してください。",
   "cron.schedulePreviewInvalidAt": "有効な ISO 日時を指定してください。",
+  "cron.schedulePreviewInvalidTimezone": "タイムゾーン {{value}} は無効です。有効な IANA タイムゾーン名を指定してください。",
   "cron.presetWeekdayMorning": "平日 08:00",
   "cron.presetDailyMorning": "毎日 09:00",
   "cron.presetHourly": "毎時",

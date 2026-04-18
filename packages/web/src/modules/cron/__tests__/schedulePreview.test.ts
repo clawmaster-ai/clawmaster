@@ -94,7 +94,7 @@ describe('schedulePreview', () => {
       {
         ...baseDraft(),
         scheduleType: 'at',
-        at: '2026-05-01T01:00:00Z',
+        at: '2026-05-01T09:00:00',
         tz: 'Asia/Shanghai',
       },
       t,
@@ -104,6 +104,24 @@ describe('schedulePreview', () => {
       summary: 'Runs once at 2026-05-01 09:00:00',
       detail: 'Timezone: Asia/Shanghai',
       tone: 'default',
+    })
+  })
+
+  it('warns when the selected timezone is invalid', () => {
+    const preview = buildSchedulePreview(
+      {
+        ...baseDraft(),
+        scheduleType: 'at',
+        at: '2026-05-01T09:00:00',
+        tz: 'Asia/Shanghaii',
+      },
+      t,
+    )
+
+    expect(preview).toEqual({
+      summary: 'Runs once at 2026-05-01 09:00:00',
+      detail: 'Timezone Asia/Shanghaii is invalid. Use a valid IANA timezone name.',
+      tone: 'warning',
     })
   })
 

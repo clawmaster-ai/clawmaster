@@ -321,7 +321,7 @@ describe('CronPage', () => {
 
     fireEvent.change(screen.getByLabelText('Schedule type'), { target: { value: 'at' } })
     fireEvent.change(screen.getByLabelText('Run at'), {
-      target: { value: '2026-05-01T01:00:00Z' },
+      target: { value: '2026-05-01T09:00:00' },
     })
     fireEvent.change(screen.getByLabelText('Timezone'), {
       target: { value: 'Asia/Shanghai' },
@@ -329,6 +329,24 @@ describe('CronPage', () => {
 
     expect(screen.getByText('Runs once at 2026-05-01 09:00:00')).toBeInTheDocument()
     expect(screen.getByText('Timezone: Asia/Shanghai')).toBeInTheDocument()
+  })
+
+  it('warns when the selected timezone is invalid for one-shot previews', async () => {
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Cron Jobs' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Create Job' }))
+
+    fireEvent.change(screen.getByLabelText('Schedule type'), { target: { value: 'at' } })
+    fireEvent.change(screen.getByLabelText('Run at'), {
+      target: { value: '2026-05-01T09:00:00' },
+    })
+    fireEvent.change(screen.getByLabelText('Timezone'), {
+      target: { value: 'Asia/Shanghaii' },
+    })
+
+    expect(screen.getByText('Runs once at 2026-05-01 09:00:00')).toBeInTheDocument()
+    expect(screen.getByText('Timezone Asia/Shanghaii is invalid. Use a valid IANA timezone name.')).toBeInTheDocument()
   })
 
   it('truncates multi-line run-now output in the success banner', async () => {

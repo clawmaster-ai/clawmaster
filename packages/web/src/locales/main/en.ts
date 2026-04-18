@@ -1787,6 +1787,7 @@ export default {
   "cron.schedulePreviewFieldCount": "Cron expressions use five space-separated fields.",
   "cron.schedulePreviewInvalidInterval": "Use a duration like 15m, 1h, or 1d.",
   "cron.schedulePreviewInvalidAt": "Use a valid ISO date and time.",
+  "cron.schedulePreviewInvalidTimezone": "Timezone {{value}} is invalid. Use a valid IANA timezone name.",
   "cron.presetWeekdayMorning": "Weekdays 08:00",
   "cron.presetDailyMorning": "Daily 09:00",
   "cron.presetHourly": "Hourly",
