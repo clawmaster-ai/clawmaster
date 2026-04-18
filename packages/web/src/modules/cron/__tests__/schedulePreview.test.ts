@@ -48,6 +48,22 @@ describe('schedulePreview', () => {
     })
   })
 
+  it('uses runtime-default wording when a cron preview has no explicit timezone', () => {
+    const preview = buildSchedulePreview(
+      {
+        ...baseDraft(),
+        cron: '0 8 * * 1-5',
+      },
+      t,
+    )
+
+    expect(preview).toEqual({
+      summary: 'Runs every weekday at 08:00',
+      detail: 'Timezone: runtime default',
+      tone: 'default',
+    })
+  })
+
   it('warns when a cron expression is incomplete', () => {
     const preview = buildSchedulePreview(
       {
@@ -74,6 +90,23 @@ describe('schedulePreview', () => {
     expect(preview).toEqual({
       summary: 'Runs using cron expression 60 24 * * *',
       detail: 'Minute and hour fields must stay within standard cron ranges.',
+      tone: 'warning',
+    })
+  })
+
+  it('warns when a cron timezone is invalid', () => {
+    const preview = buildSchedulePreview(
+      {
+        ...baseDraft(),
+        cron: '0 8 * * *',
+        tz: 'Asia/Shanghaii',
+      },
+      t,
+    )
+
+    expect(preview).toEqual({
+      summary: 'Runs using cron expression 0 8 * * *',
+      detail: 'Timezone Asia/Shanghaii is invalid. Use a valid IANA timezone name.',
       tone: 'warning',
     })
   })
@@ -170,6 +203,23 @@ describe('schedulePreview', () => {
 
     expect(preview).toEqual({
       summary: 'Runs once at 2026-05-01T09:00:00+08:00',
+      detail: 'Use an ISO timestamp with an offset, or pair a local time with a timezone.',
+      tone: 'default',
+    })
+  })
+
+  it('keeps timezone-less one-shot previews neutral instead of using browser local time', () => {
+    const preview = buildSchedulePreview(
+      {
+        ...baseDraft(),
+        scheduleType: 'at',
+        at: '2026-05-01T09:00:00',
+      },
+      t,
+    )
+
+    expect(preview).toEqual({
+      summary: 'Runs once at 2026-05-01 09:00:00',
       detail: 'Use an ISO timestamp with an offset, or pair a local time with a timezone.',
       tone: 'default',
     })

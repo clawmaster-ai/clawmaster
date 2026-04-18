@@ -1776,7 +1776,7 @@ export default {
   "cron.scheduleHelperHintEvery": "Use OpenClaw interval syntax like 15m, 1h, or 1d.",
   "cron.scheduleHelperHintAt": "Use an ISO timestamp with an offset, or pair a local time with a timezone.",
   "cron.schedulePreviewTimezoneValue": "Timezone: {{value}}",
-  "cron.schedulePreviewTimezoneLocal": "Timezone: browser local time",
+  "cron.schedulePreviewTimezoneRuntime": "Timezone: runtime default",
   "cron.schedulePreviewDailyAt": "Runs every day at {{time}}",
   "cron.schedulePreviewWeekdaysAt": "Runs every weekday at {{time}}",
   "cron.schedulePreviewHourlyAt": "Runs every hour at minute {{minute}}",

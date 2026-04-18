@@ -104,14 +104,23 @@ export function buildSchedulePreview(draft: CronJobDraft, t: TFunction): Schedul
     }
 
     const parts = expression.split(/\s+/)
-    const timezone = draft.tz.trim()
-      ? t('cron.schedulePreviewTimezoneValue', { value: draft.tz.trim() })
-      : t('cron.schedulePreviewTimezoneLocal')
+    const timezoneName = draft.tz.trim()
+    const timezone = timezoneName
+      ? t('cron.schedulePreviewTimezoneValue', { value: timezoneName })
+      : t('cron.schedulePreviewTimezoneRuntime')
 
     if (parts.length !== 5) {
       return {
         summary: t('cron.schedulePreviewCronFallback', { value: expression }),
         detail: t('cron.schedulePreviewFieldCount'),
+        tone: 'warning',
+      }
+    }
+
+    if (timezoneName && !validateTimezone(timezoneName)) {
+      return {
+        summary: t('cron.schedulePreviewCronFallback', { value: expression }),
+        detail: t('cron.schedulePreviewInvalidTimezone', { value: timezoneName }),
         tone: 'warning',
       }
     }
@@ -235,9 +244,9 @@ export function buildSchedulePreview(draft: CronJobDraft, t: TFunction): Schedul
   } else if (hasExplicitOffset(runAt)) {
     displayValue = runAt
   } else if (naiveDateTime) {
-    displayValue = parsed.toLocaleString()
+    displayValue = naiveDateTime
   } else {
-    displayValue = parsed.toLocaleString()
+    displayValue = runAt
   }
 
   return {

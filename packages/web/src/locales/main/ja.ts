@@ -1776,7 +1776,7 @@ export default {
   "cron.scheduleHelperHintEvery": "OpenClaw の間隔形式を使います。例: 15m, 1h, 1d。",
   "cron.scheduleHelperHintAt": "オフセット付き ISO 時刻を使うか、ローカル時刻にタイムゾーンを組み合わせてください。",
   "cron.schedulePreviewTimezoneValue": "タイムゾーン: {{value}}",
-  "cron.schedulePreviewTimezoneLocal": "タイムゾーン: ブラウザのローカル設定",
+  "cron.schedulePreviewTimezoneRuntime": "タイムゾーン: 実行環境のデフォルト",
   "cron.schedulePreviewDailyAt": "毎日 {{time}} に実行",
   "cron.schedulePreviewWeekdaysAt": "平日 {{time}} に実行",
   "cron.schedulePreviewHourlyAt": "毎時 {{minute}} 分に実行",

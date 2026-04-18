@@ -1776,7 +1776,7 @@ export default {
   "cron.scheduleHelperHintEvery": "使用 OpenClaw 的间隔格式，例如 15m、1h、1d。",
   "cron.scheduleHelperHintAt": "请输入带时区偏移的 ISO 时间，或填写本地时间并配合时区使用。",
   "cron.schedulePreviewTimezoneValue": "时区: {{value}}",
-  "cron.schedulePreviewTimezoneLocal": "时区: 浏览器本地时区",
+  "cron.schedulePreviewTimezoneRuntime": "时区: 运行环境默认时区",
   "cron.schedulePreviewDailyAt": "每天 {{time}} 运行",
   "cron.schedulePreviewWeekdaysAt": "每个工作日 {{time}} 运行",
   "cron.schedulePreviewHourlyAt": "每小时第 {{minute}} 分运行",
