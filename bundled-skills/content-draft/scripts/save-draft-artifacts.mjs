@@ -90,6 +90,14 @@ function defaultOutputRoot() {
   if (workspaceDir) {
     return path.join(workspaceDir, 'content-drafts')
   }
+  const dataDir = process.env['OPENCLAW_DATA_DIR']?.trim()
+  if (dataDir) {
+    return path.join(dataDir, 'workspace', 'content-drafts')
+  }
+  const configPath = process.env['OPENCLAW_CONFIG_PATH']?.trim()
+  if (configPath) {
+    return path.join(path.dirname(configPath), 'workspace', 'content-drafts')
+  }
   return path.join(os.homedir(), '.openclaw', 'workspace', 'content-drafts')
 }
 

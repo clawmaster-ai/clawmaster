@@ -1567,6 +1567,32 @@ fn read_active_openclaw_text_file(path: &Path) -> Result<Option<String>, String>
     }
 }
 
+fn read_active_openclaw_binary_file(path: &Path) -> Result<Option<Vec<u8>>, String> {
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        if !wsl_file_exists(&distro, &path.to_string_lossy()) {
+            return Ok(None);
+        }
+        let output = Command::new("wsl.exe")
+            .args(["-d", &distro, "--", "cat", &path.to_string_lossy()])
+            .output()
+            .map_err(|e| cmd_err_d("WSL_BINARY_READ_FAILED", e))?;
+        if !output.status.success() {
+            return Err(cmd_err_d(
+                "WSL_BINARY_READ_FAILED",
+                String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            ));
+        }
+        return Ok(Some(output.stdout));
+    }
+
+    match fs::read(path) {
+        Ok(content) => Ok(Some(content)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(cmd_err_d("IO_ERROR", error)),
+    }
+}
+
 fn write_active_openclaw_text_file(path: &Path, content: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     if let Some(distro) = active_wsl_distro() {
@@ -1648,6 +1674,30 @@ struct RequiredRuntimeTextFileDto {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct RuntimeBinaryFileDto {
+    path: String,
+    mime_type: String,
+    bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContentDraftVariantSummaryDto {
+    id: String,
+    run_id: String,
+    platform: String,
+    title: Option<String>,
+    slug: Option<String>,
+    source_url: Option<String>,
+    saved_at: Option<String>,
+    draft_path: String,
+    manifest_path: String,
+    images_dir: String,
+    image_files: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct McpImportCandidateDto {
     id: String,
     format: String,
@@ -1665,6 +1715,295 @@ struct OpenclawMemoryFileEntry {
     modified_at_ms: u64,
     extension: String,
     kind: String,
+}
+
+fn default_content_drafts_root() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        return PathBuf::from(join_posix(
+            &get_wsl_home_dir(&distro),
+            ".openclaw/workspace/content-drafts",
+        ));
+    }
+
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".openclaw")
+        .join("workspace")
+        .join("content-drafts")
+}
+
+fn active_content_drafts_root() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if active_wsl_distro().is_some() {
+        return PathBuf::from(join_posix(
+            &get_config_resolution().data_dir.to_string_lossy(),
+            "workspace/content-drafts",
+        ));
+    }
+
+    get_config_resolution()
+        .data_dir
+        .join("workspace")
+        .join("content-drafts")
+}
+
+fn content_drafts_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for root in [active_content_drafts_root(), default_content_drafts_root()] {
+        if !roots.iter().any(|existing| existing == &root) {
+            roots.push(root);
+        }
+    }
+    roots
+}
+
+fn content_draft_mime_type(path: &Path) -> String {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png".to_string(),
+        Some("jpg") | Some("jpeg") => "image/jpeg".to_string(),
+        Some("webp") => "image/webp".to_string(),
+        Some("gif") => "image/gif".to_string(),
+        Some("svg") => "image/svg+xml".to_string(),
+        _ => "application/octet-stream".to_string(),
+    }
+}
+
+fn content_draft_path_allowed(path: &Path) -> bool {
+    #[cfg(target_os = "windows")]
+    if active_wsl_distro().is_some() {
+        let candidate = path.to_string_lossy();
+        return content_drafts_roots().iter().any(|root| {
+            let normalized_root = root.to_string_lossy();
+            let trimmed = normalized_root.trim_end_matches('/');
+            candidate == trimmed || candidate.starts_with(&format!("{trimmed}/"))
+        });
+    }
+
+    content_drafts_roots()
+        .iter()
+        .any(|root| path.starts_with(root))
+}
+
+fn resolve_allowed_content_draft_path(input: &str) -> Result<PathBuf, String> {
+    let resolved = resolve_runtime_input_path(input)?;
+    if !content_draft_path_allowed(&resolved) {
+        return Err(cmd_err_p(
+            "CONTENT_DRAFT_PATH_NOT_ALLOWED",
+            serde_json::json!({ "path": resolved.to_string_lossy() }),
+        ));
+    }
+    Ok(resolved)
+}
+
+fn normalize_content_draft_variant(
+    manifest_path: &Path,
+    raw: &serde_json::Value,
+) -> Option<ContentDraftVariantSummaryDto> {
+    let platform_dir = manifest_path.parent()?;
+    let run_dir = platform_dir.parent()?;
+    let platform = raw
+        .get("platform")
+        .and_then(|value| value.as_str())
+        .unwrap_or_else(|| {
+            platform_dir
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+        })
+        .trim()
+        .to_ascii_lowercase();
+    let run_id = raw
+        .get("runId")
+        .and_then(|value| value.as_str())
+        .unwrap_or_else(|| {
+            run_dir
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+        })
+        .trim()
+        .to_string();
+    if platform.is_empty() || run_id.is_empty() {
+        return None;
+    }
+
+    let draft_path = raw
+        .get("draftPath")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| platform_dir.join("draft.md"));
+    let images_dir = raw
+        .get("imagesDir")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| platform_dir.join("images"));
+    let image_files = raw
+        .get("imageFiles")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str())
+                .map(|item| item.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Some(ContentDraftVariantSummaryDto {
+        id: format!("{run_id}:{platform}"),
+        run_id,
+        platform,
+        title: raw
+            .get("title")
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        slug: raw
+            .get("slug")
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        source_url: raw
+            .get("sourceUrl")
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        saved_at: raw
+            .get("savedAt")
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        draft_path: draft_path.to_string_lossy().to_string(),
+        manifest_path: manifest_path.to_string_lossy().to_string(),
+        images_dir: images_dir.to_string_lossy().to_string(),
+        image_files,
+    })
+}
+
+fn collect_content_draft_manifests_host(root: &Path) -> Vec<PathBuf> {
+    let mut manifests = Vec::new();
+    if !root.is_dir() {
+        return manifests;
+    }
+    let Ok(run_entries) = fs::read_dir(root) else {
+        return manifests;
+    };
+    for run_entry in run_entries.flatten() {
+        let run_path = run_entry.path();
+        if !run_path.is_dir() {
+            continue;
+        }
+        let Ok(platform_entries) = fs::read_dir(&run_path) else {
+            continue;
+        };
+        for platform_entry in platform_entries.flatten() {
+            let platform_path = platform_entry.path();
+            if !platform_path.is_dir() {
+                continue;
+            }
+            let manifest_path = platform_path.join("manifest.json");
+            if manifest_path.is_file() {
+                manifests.push(manifest_path);
+            }
+        }
+    }
+    manifests
+}
+
+#[cfg(target_os = "windows")]
+fn collect_content_draft_manifests_wsl(distro: &str, root: &str) -> Result<Vec<PathBuf>, String> {
+    if !wsl_is_dir(distro, root) {
+        return Ok(vec![]);
+    }
+    let script = format!(
+        "find {} -mindepth 2 -maxdepth 2 -type f -name manifest.json -print",
+        shell_escape_posix_arg(root)
+    );
+    let output = run_wsl_shell(distro, &script, None)?;
+    if output.code != 0 {
+        return Err(cmd_err_d(
+            "CONTENT_DRAFT_MANIFEST_LIST_FAILED",
+            output.stderr.trim(),
+        ));
+    }
+    Ok(output
+        .stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(PathBuf::from)
+        .collect())
+}
+
+fn list_content_draft_variants_state() -> Result<Vec<ContentDraftVariantSummaryDto>, String> {
+    let mut manifest_paths = Vec::<PathBuf>::new();
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        for root in content_drafts_roots() {
+            for manifest_path in
+                collect_content_draft_manifests_wsl(&distro, &root.to_string_lossy())?
+            {
+                if !manifest_paths
+                    .iter()
+                    .any(|existing| existing == &manifest_path)
+                {
+                    manifest_paths.push(manifest_path);
+                }
+            }
+        }
+    } else {
+        for root in content_drafts_roots() {
+            for manifest_path in collect_content_draft_manifests_host(&root) {
+                if !manifest_paths
+                    .iter()
+                    .any(|existing| existing == &manifest_path)
+                {
+                    manifest_paths.push(manifest_path);
+                }
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    for root in content_drafts_roots() {
+        for manifest_path in collect_content_draft_manifests_host(&root) {
+            if !manifest_paths
+                .iter()
+                .any(|existing| existing == &manifest_path)
+            {
+                manifest_paths.push(manifest_path);
+            }
+        }
+    }
+
+    let mut variants = Vec::new();
+    for manifest_path in manifest_paths {
+        let Some(content) = read_active_openclaw_text_file(&manifest_path)? else {
+            continue;
+        };
+        let Ok(raw) = serde_json::from_str::<serde_json::Value>(&content) else {
+            continue;
+        };
+        if let Some(variant) = normalize_content_draft_variant(&manifest_path, &raw) {
+            variants.push(variant);
+        }
+    }
+
+    variants.sort_by(|left, right| {
+        let left_saved = left.saved_at.as_deref().unwrap_or("");
+        let right_saved = right.saved_at.as_deref().unwrap_or("");
+        right_saved
+            .cmp(left_saved)
+            .then_with(|| right.id.cmp(&left.id))
+    });
+    Ok(variants)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5437,6 +5776,42 @@ fn read_runtime_text_file(path_input: String) -> Result<RuntimeTextFileDto, Stri
 }
 
 #[tauri::command]
+fn list_content_draft_variants() -> Result<Vec<ContentDraftVariantSummaryDto>, String> {
+    list_content_draft_variants_state()
+}
+
+#[tauri::command]
+fn read_content_draft_text_file(path_input: String) -> Result<RequiredRuntimeTextFileDto, String> {
+    let path = resolve_allowed_content_draft_path(&path_input)?;
+    let content = read_active_openclaw_text_file(&path)?.ok_or_else(|| {
+        cmd_err_p(
+            "CONTENT_DRAFT_FILE_NOT_FOUND",
+            serde_json::json!({ "path": path.to_string_lossy() }),
+        )
+    })?;
+    Ok(RequiredRuntimeTextFileDto {
+        path: path.to_string_lossy().to_string(),
+        content,
+    })
+}
+
+#[tauri::command]
+fn read_content_draft_image_file(path_input: String) -> Result<RuntimeBinaryFileDto, String> {
+    let path = resolve_allowed_content_draft_path(&path_input)?;
+    let bytes = read_active_openclaw_binary_file(&path)?.ok_or_else(|| {
+        cmd_err_p(
+            "CONTENT_DRAFT_FILE_NOT_FOUND",
+            serde_json::json!({ "path": path.to_string_lossy() }),
+        )
+    })?;
+    Ok(RuntimeBinaryFileDto {
+        path: path.to_string_lossy().to_string(),
+        mime_type: content_draft_mime_type(&path),
+        bytes,
+    })
+}
+
+#[tauri::command]
 fn read_required_runtime_text_file(
     path_input: String,
 ) -> Result<RequiredRuntimeTextFileDto, String> {
@@ -6398,6 +6773,9 @@ pub fn run() {
             list_openclaw_backups,
             restore_openclaw_backup,
             remove_openclaw_data,
+            list_content_draft_variants,
+            read_content_draft_text_file,
+            read_content_draft_image_file,
             read_runtime_text_file,
             read_required_runtime_text_file,
             write_runtime_text_file,

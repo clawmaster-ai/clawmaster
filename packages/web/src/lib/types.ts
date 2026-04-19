@@ -259,6 +259,31 @@ export interface PaddleOcrTestResult {
   pageCount: number
 }
 
+export interface ContentDraftVariantSummary {
+  id: string
+  runId: string
+  platform: string
+  title: string | null
+  slug: string | null
+  sourceUrl: string | null
+  savedAt: string | null
+  draftPath: string
+  manifestPath: string
+  imagesDir: string
+  imageFiles: string[]
+}
+
+export interface ContentDraftTextFile {
+  path: string
+  content: string
+}
+
+export interface ContentDraftImageFile {
+  path: string
+  mimeType: string
+  bytes: number[]
+}
+
 /** `openclaw memory status --json` (backend may still set exitCode !== 0) */
 export interface OpenclawMemoryStatusPayload {
   exitCode: number
