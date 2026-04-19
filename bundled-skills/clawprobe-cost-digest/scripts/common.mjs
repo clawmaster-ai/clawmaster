@@ -287,6 +287,62 @@ function buildModelLookupKeys(providerAliases, modelId, modelKey) {
   return [...keys]
 }
 
+function hasExplicitCustomPriceForModel(model, provider, customPrices) {
+  if (!model || !customPrices || typeof customPrices !== 'object') {
+    return false
+  }
+
+  const candidates = new Set([String(model).trim()])
+  const providerId = String(provider ?? '').trim()
+  if (providerId) {
+    candidates.add(`${providerId}/${model}`)
+    for (const prefixParts of ROUTED_MODEL_PREFIXES) {
+      candidates.add([...prefixParts, providerId, model].join('/'))
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (candidate && Object.prototype.hasOwnProperty.call(customPrices, candidate)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function resolveModelForCost(model, fallbackModel, provider, customPrices) {
+  const directCandidates = [
+    String(model ?? '').trim(),
+    String(fallbackModel ?? '').trim(),
+  ].filter(Boolean)
+
+  for (const candidate of directCandidates) {
+    if (Object.prototype.hasOwnProperty.call(customPrices, candidate)) {
+      return candidate
+    }
+  }
+
+  const providerId = String(provider ?? '').trim()
+  if (providerId) {
+    for (const candidate of directCandidates) {
+      const qualifiedCandidates = new Set([`${providerId}/${candidate}`])
+      for (const prefixParts of ROUTED_MODEL_PREFIXES) {
+        qualifiedCandidates.add([...prefixParts, providerId, candidate].join('/'))
+      }
+
+      for (const qualifiedCandidate of qualifiedCandidates) {
+        if (Object.prototype.hasOwnProperty.call(customPrices, qualifiedCandidate)) {
+          return qualifiedCandidate
+        }
+      }
+    }
+  }
+
+  return directCandidates[0] ?? null
+}
+
+export const resolveModelForCostForTest = resolveModelForCost
+
 function normalizeMultiplier(value, input) {
   return Number((value / input).toFixed(6))
 }
@@ -414,13 +470,25 @@ function getClawprobePackageRootFromNodeExec() {
   ])
 }
 
+export function listNvmClawprobePackageRootsForTest(home = os.homedir()) {
+  const versionsRoot = path.join(home, '.nvm', 'versions', 'node')
+  try {
+    return fs.readdirSync(versionsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((entry) => path.join(versionsRoot, entry.name, 'lib', 'node_modules', 'clawprobe'))
+  } catch {
+    return []
+  }
+}
+
 function getClawprobePackageRootFromHomeScan() {
   const home = os.homedir()
   return firstExistingPackageRoot([
     path.join(home, '.npm-global', 'lib', 'node_modules', 'clawprobe'),
     path.join(home, '.local', 'share', 'pnpm', 'global', '5', 'node_modules', 'clawprobe'),
     path.join(home, '.config', 'yarn', 'global', 'node_modules', 'clawprobe'),
-    ...fs.globSync(path.join(home, '.nvm', 'versions', 'node', '*', 'lib', 'node_modules', 'clawprobe')),
+    ...listNvmClawprobePackageRootsForTest(home),
   ])
 }
 
@@ -482,6 +550,7 @@ async function loadClawprobeModules() {
 function buildTurnRecord(turn, fallbackModel, fallbackProvider, estimateCost, customPrices) {
   const model = turn.model ?? fallbackModel ?? null
   const provider = turn.provider ?? fallbackProvider ?? null
+  const costModel = resolveModelForCost(model, fallbackModel, provider, customPrices)
   const usage = turn.usage ?? {}
   const inputTokens = toFiniteNumber(usage.input)
   const outputTokens = toFiniteNumber(usage.output)
@@ -494,7 +563,7 @@ function buildTurnRecord(turn, fallbackModel, fallbackProvider, estimateCost, cu
       cacheRead: cacheReadTokens,
       cacheWrite: cacheWriteTokens,
     },
-    model,
+    costModel,
     customPrices,
   )
 
@@ -508,6 +577,7 @@ function buildTurnRecord(turn, fallbackModel, fallbackProvider, estimateCost, cu
     cacheReadTokens,
     cacheWriteTokens,
     usd,
+    hasExplicitPrice: hasExplicitCustomPriceForModel(costModel, provider, customPrices),
     tools: Array.isArray(turn.tools) ? turn.tools : [],
   }
 }
@@ -560,6 +630,7 @@ export async function discoverClawprobeSessions({ customPrices = {} } = {}) {
           cacheReadTokens: 0,
           cacheWriteTokens: 0,
           usd: toFiniteNumber(fallback.estimatedUsd),
+          hasExplicitPrice: hasExplicitCustomPriceForModel(fallback.model ?? null, fallback.provider ?? null, customPrices),
           tools: [],
         },
       ],
@@ -682,7 +753,7 @@ function aggregateTurns(turns, top) {
       turn.outputTokens > 0 ||
       turn.cacheReadTokens > 0 ||
       turn.cacheWriteTokens > 0
-    if (hasUsage && turn.usd === 0 && turn.model) {
+    if (hasUsage && turn.usd === 0 && turn.model && turn.hasExplicitPrice !== true) {
       unpricedModels.add(turn.model)
     }
   }
@@ -760,9 +831,38 @@ function formatComparisonText(comparison) {
   return `${direction} ${Math.abs(comparison.deltaPct ?? 0).toFixed(1)}% vs previous period`
 }
 
+function startOfLocalDay(dateLike) {
+  const date = new Date(dateLike)
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
 function buildWindow(period, now) {
   const config = PERIOD_CONFIG[period]
   const endMs = now
+  if (period === 'week' || period === 'month') {
+    const dayCount = period === 'week' ? 7 : 30
+    const startDate = startOfLocalDay(now)
+    startDate.setDate(startDate.getDate() - (dayCount - 1))
+    const previousStartDate = new Date(startDate)
+    previousStartDate.setDate(previousStartDate.getDate() - dayCount)
+
+    const startMs = startDate.getTime()
+    const previousStartMs = previousStartDate.getTime()
+
+    return {
+      ...config,
+      startMs,
+      endMs,
+      previousStartMs,
+      previousEndMs: startMs,
+      startDate: formatLocalDate(new Date(startMs)),
+      endDate: formatLocalDate(new Date(endMs)),
+      startLabel: formatLocalDateTime(new Date(startMs)),
+      endLabel: formatLocalDateTime(new Date(endMs)),
+    }
+  }
+
   const startMs = now - config.durationMs
   const previousStartMs = startMs - config.durationMs
 

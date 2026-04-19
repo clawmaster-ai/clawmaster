@@ -259,7 +259,6 @@ export default function CronPage() {
     }
 
     if (!gatewayReady) {
-      templateApplied.current = true
       return
     }
 
@@ -696,246 +695,280 @@ export default function CronPage() {
         busy={saving}
         onCancel={closeEditor}
         onConfirm={() => void handleSaveJob()}
+        panelClassName="max-h-[calc(100vh-2.5rem)] max-w-[min(96vw,96rem)] flex flex-col bg-background/95"
+        headerClassName="shrink-0 border-b border-border/70 bg-card/80 pb-5"
+        bodyClassName="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-5 sm:px-6 sm:pb-6 sm:pt-6"
+        actionsClassName="shrink-0 border-t border-border/70 bg-background/95"
       >
-        <div className="grid gap-4">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(24rem,30rem)]">
           {editorError ? <div className="surface-card-danger text-sm">{editorError}</div> : null}
 
-          <label className="grid gap-2">
-            <span className="text-sm font-medium">{t('cron.name')}</span>
-            <input
-              value={draft.name}
-              onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-              className="control-input"
-              placeholder={t('cron.namePlaceholder')}
-            />
-          </label>
+          <div className="space-y-5">
+            <section className="rounded-[1.7rem] border border-border/80 bg-card/90 p-5 backdrop-blur-sm">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">{t('cron.name')}</span>
+                  <input
+                    value={draft.name}
+                    onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                    className="control-input"
+                    placeholder={t('cron.namePlaceholder')}
+                  />
+                </label>
 
-          <label className="grid gap-2">
-            <span className="text-sm font-medium">{t('cron.description')}</span>
-            <input
-              value={draft.description}
-              onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
-              className="control-input"
-              placeholder={t('cron.descriptionPlaceholder')}
-            />
-          </label>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2">
-              <span className="text-sm font-medium">{t('cron.scheduleType')}</span>
-              <select
-                value={draft.scheduleType}
-                onChange={(event) => setDraft((current) => ({ ...current, scheduleType: event.target.value as CronJobDraft['scheduleType'] }))}
-                className="control-select"
-              >
-                <option value="cron">{t('cron.scheduleTypeCron')}</option>
-                <option value="every">{t('cron.scheduleTypeEvery')}</option>
-                <option value="at">{t('cron.scheduleTypeAt')}</option>
-              </select>
-            </label>
-
-            {draft.scheduleType === 'cron' ? (
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">{t('cron.cronExpression')}</span>
-                <input
-                  value={draft.cron}
-                  onChange={(event) => setDraft((current) => ({ ...current, cron: event.target.value }))}
-                  className="control-input"
-                  placeholder="0 8 * * 1-5"
-                />
-              </label>
-            ) : null}
-
-            {draft.scheduleType === 'every' ? (
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">{t('cron.interval')}</span>
-                <input
-                  value={draft.every}
-                  onChange={(event) => setDraft((current) => ({ ...current, every: event.target.value }))}
-                  className="control-input"
-                  placeholder="30m"
-                />
-              </label>
-            ) : null}
-
-            {draft.scheduleType === 'at' ? (
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">{t('cron.runAt')}</span>
-                <input
-                  value={draft.at}
-                  onChange={(event) => setDraft((current) => ({ ...current, at: event.target.value }))}
-                  className="control-input"
-                  placeholder="2026-04-18T09:00:00+08:00"
-                />
-              </label>
-            ) : null}
-
-            {(draft.scheduleType === 'cron' || draft.scheduleType === 'at') ? (
-              <label className="grid gap-2">
-                <span className="text-sm font-medium">{t('cron.timezone')}</span>
-                <input
-                  value={draft.tz}
-                  onChange={(event) => setDraft((current) => ({ ...current, tz: event.target.value }))}
-                  className="control-input"
-                  placeholder="Asia/Shanghai"
-                />
-              </label>
-            ) : null}
-          </div>
-
-          <div
-            className={`rounded-[1.6rem] border px-4 py-4 ${
-              schedulePreview.tone === 'warning'
-                ? 'border-amber-500/30 bg-amber-500/5'
-                : 'border-border/70 bg-gradient-to-br from-muted/40 via-background to-background'
-            }`}
-          >
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                  {t('cron.scheduleHelperTitle')}
-                </p>
-                <p className="text-sm text-muted-foreground">{t('cron.scheduleHelperDescription')}</p>
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">{t('cron.description')}</span>
+                  <input
+                    value={draft.description}
+                    onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+                    className="control-input"
+                    placeholder={t('cron.descriptionPlaceholder')}
+                  />
+                </label>
               </div>
+            </section>
 
-              <div
-                className="min-w-0 rounded-[1.25rem] border border-border/70 bg-background/80 px-4 py-3 lg:max-w-[18rem]"
-                aria-live="polite"
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                  {t('cron.schedulePreviewLabel')}
-                </p>
-                <p className="mt-1 text-sm font-semibold text-foreground">{schedulePreview.summary}</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{schedulePreview.detail}</p>
-              </div>
-            </div>
-
-            {schedulePresets.length > 0 ? (
-              <div className="mt-4 border-t border-border/70 pt-4">
+            <section className="rounded-[1.7rem] border border-border/80 bg-card/90 p-5 backdrop-blur-sm">
+              <div className="mb-4 space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                  {t('cron.schedulePresets')}
+                  {t('cron.message')}
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {schedulePresets.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => setDraft((current) => preset.apply(current))}
-                      className="rounded-full border border-border/70 bg-background/80 px-3 py-1.5 text-sm text-foreground transition hover:border-primary/40 hover:text-primary"
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
+                <p className="text-sm text-muted-foreground">{t('cron.messagePlaceholder')}</p>
               </div>
-            ) : null}
+
+              <div className="grid gap-4">
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">{t('cron.message')}</span>
+                  <textarea
+                    value={draft.message}
+                    onChange={(event) => setDraft((current) => ({ ...current, message: event.target.value }))}
+                    className="control-textarea min-h-36"
+                    placeholder={t('cron.messagePlaceholder')}
+                  />
+                </label>
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">{t('cron.systemEvent')}</span>
+                  <textarea
+                    value={draft.systemEvent}
+                    onChange={(event) => setDraft((current) => ({ ...current, systemEvent: event.target.value }))}
+                    className="control-textarea min-h-24"
+                    placeholder={t('cron.systemEventPlaceholder')}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-[1.7rem] border border-border/80 bg-card/90 p-5 backdrop-blur-sm">
+              <div className="mb-4 space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                  {t('cron.session')}
+                </p>
+                <p className="text-sm text-muted-foreground">{t('cron.editorDescription')}</p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">{t('cron.session')}</span>
+                  <select
+                    value={draft.session}
+                    onChange={(event) => setDraft((current) => ({ ...current, session: event.target.value }))}
+                    className="control-select"
+                  >
+                    <option value="main">main</option>
+                    <option value="isolated">isolated</option>
+                  </select>
+                </label>
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">{t('cron.sessionKey')}</span>
+                  <input
+                    value={draft.sessionKey}
+                    onChange={(event) => setDraft((current) => ({ ...current, sessionKey: event.target.value }))}
+                    className="control-input"
+                    placeholder="agent:main:daily"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">{t('cron.model')}</span>
+                  <input
+                    value={draft.model}
+                    onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
+                    className="control-input"
+                    placeholder="openai/gpt-4.1"
+                  />
+                </label>
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">{t('cron.agent')}</span>
+                  <input
+                    value={draft.agent}
+                    onChange={(event) => setDraft((current) => ({ ...current, agent: event.target.value }))}
+                    className="control-input"
+                    placeholder="main"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">{t('cron.channel')}</span>
+                  <input
+                    value={draft.channel}
+                    onChange={(event) => setDraft((current) => ({ ...current, channel: event.target.value }))}
+                    className="control-input"
+                    placeholder="telegram"
+                  />
+                </label>
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium">{t('cron.destination')}</span>
+                  <input
+                    value={draft.to}
+                    onChange={(event) => setDraft((current) => ({ ...current, to: event.target.value }))}
+                    className="control-input"
+                    placeholder="@ops-room"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-4">
+                <label className="flex items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={draft.announce}
+                    onChange={(event) => setDraft((current) => ({ ...current, announce: event.target.checked }))}
+                  />
+                  <span>{t('cron.announce')}</span>
+                </label>
+
+                <label className="flex items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={draft.enabled}
+                    onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
+                  />
+                  <span>{t('cron.enabledOnSave')}</span>
+                </label>
+              </div>
+            </section>
           </div>
 
-          <label className="grid gap-2">
-            <span className="text-sm font-medium">{t('cron.message')}</span>
-            <textarea
-              value={draft.message}
-              onChange={(event) => setDraft((current) => ({ ...current, message: event.target.value }))}
-              className="control-textarea min-h-28"
-              placeholder={t('cron.messagePlaceholder')}
-            />
-          </label>
+          <aside className="xl:sticky xl:top-0 xl:self-start">
+            <section
+              className={`rounded-[1.8rem] border p-5 backdrop-blur-sm ${
+                schedulePreview.tone === 'warning'
+                  ? 'border-amber-500/30 bg-amber-500/5'
+                  : 'border-border/80 bg-gradient-to-br from-card via-background to-background'
+              }`}
+            >
+              <div className="space-y-5">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                    {t('cron.scheduleHelperTitle')}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{t('cron.scheduleHelperDescription')}</p>
+                </div>
 
-          <label className="grid gap-2">
-            <span className="text-sm font-medium">{t('cron.systemEvent')}</span>
-            <textarea
-              value={draft.systemEvent}
-              onChange={(event) => setDraft((current) => ({ ...current, systemEvent: event.target.value }))}
-              className="control-textarea min-h-20"
-              placeholder={t('cron.systemEventPlaceholder')}
-            />
-          </label>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium">{t('cron.scheduleType')}</span>
+                    <select
+                      value={draft.scheduleType}
+                      onChange={(event) => setDraft((current) => ({ ...current, scheduleType: event.target.value as CronJobDraft['scheduleType'] }))}
+                      className="control-select"
+                    >
+                      <option value="cron">{t('cron.scheduleTypeCron')}</option>
+                      <option value="every">{t('cron.scheduleTypeEvery')}</option>
+                      <option value="at">{t('cron.scheduleTypeAt')}</option>
+                    </select>
+                  </label>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2">
-              <span className="text-sm font-medium">{t('cron.session')}</span>
-              <select
-                value={draft.session}
-                onChange={(event) => setDraft((current) => ({ ...current, session: event.target.value }))}
-                className="control-select"
-              >
-                <option value="main">main</option>
-                <option value="isolated">isolated</option>
-              </select>
-            </label>
+                  {draft.scheduleType === 'cron' ? (
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium">{t('cron.cronExpression')}</span>
+                      <input
+                        value={draft.cron}
+                        onChange={(event) => setDraft((current) => ({ ...current, cron: event.target.value }))}
+                        className="control-input"
+                        placeholder="0 8 * * 1-5"
+                      />
+                    </label>
+                  ) : null}
 
-            <label className="grid gap-2">
-              <span className="text-sm font-medium">{t('cron.sessionKey')}</span>
-              <input
-                value={draft.sessionKey}
-                onChange={(event) => setDraft((current) => ({ ...current, sessionKey: event.target.value }))}
-                className="control-input"
-                placeholder="agent:main:daily"
-              />
-            </label>
-          </div>
+                  {draft.scheduleType === 'every' ? (
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium">{t('cron.interval')}</span>
+                      <input
+                        value={draft.every}
+                        onChange={(event) => setDraft((current) => ({ ...current, every: event.target.value }))}
+                        className="control-input"
+                        placeholder="30m"
+                      />
+                    </label>
+                  ) : null}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2">
-              <span className="text-sm font-medium">{t('cron.model')}</span>
-              <input
-                value={draft.model}
-                onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
-                className="control-input"
-                placeholder="openai/gpt-4.1"
-              />
-            </label>
+                  {draft.scheduleType === 'at' ? (
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium">{t('cron.runAt')}</span>
+                      <input
+                        value={draft.at}
+                        onChange={(event) => setDraft((current) => ({ ...current, at: event.target.value }))}
+                        className="control-input"
+                        placeholder="2026-04-18T09:00:00+08:00"
+                      />
+                    </label>
+                  ) : null}
 
-            <label className="grid gap-2">
-              <span className="text-sm font-medium">{t('cron.agent')}</span>
-              <input
-                value={draft.agent}
-                onChange={(event) => setDraft((current) => ({ ...current, agent: event.target.value }))}
-                className="control-input"
-                placeholder="main"
-              />
-            </label>
-          </div>
+                  {(draft.scheduleType === 'cron' || draft.scheduleType === 'at') ? (
+                    <label className="grid gap-2">
+                      <span className="text-sm font-medium">{t('cron.timezone')}</span>
+                      <input
+                        value={draft.tz}
+                        onChange={(event) => setDraft((current) => ({ ...current, tz: event.target.value }))}
+                        className="control-input"
+                        placeholder="Asia/Shanghai"
+                      />
+                    </label>
+                  ) : null}
+                </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2">
-              <span className="text-sm font-medium">{t('cron.channel')}</span>
-              <input
-                value={draft.channel}
-                onChange={(event) => setDraft((current) => ({ ...current, channel: event.target.value }))}
-                className="control-input"
-                placeholder="telegram"
-              />
-            </label>
+                <div
+                  className="min-w-0 rounded-[1.4rem] border border-border/70 bg-background/80 px-4 py-4"
+                  aria-live="polite"
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                    {t('cron.schedulePreviewLabel')}
+                  </p>
+                  <p className="mt-1 text-base font-semibold text-foreground">{schedulePreview.summary}</p>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{schedulePreview.detail}</p>
+                </div>
 
-            <label className="grid gap-2">
-              <span className="text-sm font-medium">{t('cron.destination')}</span>
-              <input
-                value={draft.to}
-                onChange={(event) => setDraft((current) => ({ ...current, to: event.target.value }))}
-                className="control-input"
-                placeholder="@ops-room"
-              />
-            </label>
-          </div>
-
-          <label className="flex items-center gap-3 text-sm">
-            <input
-              type="checkbox"
-              checked={draft.announce}
-              onChange={(event) => setDraft((current) => ({ ...current, announce: event.target.checked }))}
-            />
-            <span>{t('cron.announce')}</span>
-          </label>
-
-          <label className="flex items-center gap-3 text-sm">
-            <input
-              type="checkbox"
-              checked={draft.enabled}
-              onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
-            />
-            <span>{t('cron.enabledOnSave')}</span>
-          </label>
+                {schedulePresets.length > 0 ? (
+                  <div className="rounded-[1.4rem] border border-border/70 bg-background/70 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                      {t('cron.schedulePresets')}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {schedulePresets.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setDraft((current) => preset.apply(current))}
+                          className="rounded-full border border-border/70 bg-background/85 px-3 py-1.5 text-sm text-foreground transition hover:border-primary/40 hover:text-primary"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          </aside>
         </div>
       </ConfirmDialog>
 

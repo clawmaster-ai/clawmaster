@@ -188,4 +188,34 @@ describe('clawhub adapter (web mode)', () => {
       method: 'POST',
     }))
   })
+
+  it('scanInstalledSkillResult uses the dedicated desktop command in Tauri mode', async () => {
+    const { getIsTauri } = await import('../platform')
+    const { tauriInvoke } = await import('../invoke')
+    vi.mocked(getIsTauri).mockReturnValue(true)
+    vi.mocked(tauriInvoke).mockResolvedValue({
+      auditMetadata: { toolVersion: '0.1.0', timestamp: '2026-04-05T00:00:00.000Z', target: '/home/tester/.openclaw/workspace/skills/find-skills' },
+      summary: { totalSkills: 1, byLevel: { A: 1 } },
+      report: null,
+      severityCounts: {},
+      totalFindings: 0,
+    })
+
+    const { scanInstalledSkillResult } = await import('../clawhub')
+    const result = await scanInstalledSkillResult({
+      slug: 'find-skills',
+      name: 'find-skills',
+      description: 'Find more skills',
+      version: '1.0.0',
+      installed: true,
+      skillKey: 'find-skills',
+    })
+
+    expect(result.success).toBe(true)
+    expect(tauriInvoke).toHaveBeenCalledWith('scan_installed_skill', {
+      skillKey: 'find-skills',
+      name: 'find-skills',
+      slug: 'find-skills',
+    })
+  })
 })

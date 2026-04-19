@@ -1314,6 +1314,7 @@ export default {
   "observe.digestIncludesTop": "最值得优先排查的高成本 session 或模型。",
   "observe.digestIncludesTrend": "有数据时，对比上一个同周期的变化。",
   "observe.digestDeliveryNote": "如果想自动投递到频道，请在 Cron 中打开“摘要广播”并填写 channel。",
+  "observe.digestRequiresClawprobe": "请先安装 ClawProbe，再创建定时成本摘要任务。",
   "observe.openCron": "打开 Cron 任务",
   "observe.digestPresetDayLabel": "日报摘要",
   "observe.digestPresetDayDesc": "每天早上 08:00，适合快速查看昨日成本。",

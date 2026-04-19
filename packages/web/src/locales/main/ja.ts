@@ -1314,6 +1314,7 @@ export default {
   "observe.digestIncludesTop": "優先的に確認すべき高コスト session / model。",
   "observe.digestIncludesTrend": "データがあれば前の同期間との比較。",
   "observe.digestDeliveryNote": "自動配信したい場合は、Cron 側で Announce を有効にして channel を設定してください。",
+  "observe.digestRequiresClawprobe": "定期ダイジェストジョブを作成する前に、まず ClawProbe をインストールしてください。",
   "observe.openCron": "Cron Jobs を開く",
   "observe.digestPresetDayLabel": "日次ダイジェスト",
   "observe.digestPresetDayDesc": "毎朝 08:00。手早いコスト確認向けです。",

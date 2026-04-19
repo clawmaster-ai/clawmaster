@@ -1,16 +1,25 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 
 const CMD_ERR_PREFIX: &str = "CLAWMASTER_ERR:";
 const MODELS_DEV_CACHE_MAX_AGE_MS: u64 = 24 * 60 * 60 * 1000;
+static RUNTIME_TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+const SKILLGUARD_SCAN_ROOTS: &[&str] = &[
+    ".openclaw/skills",
+    ".openclaw/workspace/skills",
+    ".agents/skills",
+    ".codex/skills",
+    ".config/openclaw/skills",
+];
 
 fn cmd_err(code: &'static str) -> String {
     format!("{}{}", CMD_ERR_PREFIX, serde_json::json!({ "code": code }))
@@ -2217,6 +2226,371 @@ fn parse_json_lenient(raw: &str) -> Option<serde_json::Value> {
         .or_else(|| extract_first_json_value(trimmed))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SkillGuardScanPayload {
+    skill_key: Option<String>,
+    name: Option<String>,
+    slug: Option<String>,
+}
+
+fn trailing_slug_token(value: Option<&str>) -> String {
+    value
+        .unwrap_or_default()
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .next_back()
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn push_unique_skill_token(tokens: &mut Vec<String>, seen: &mut HashSet<String>, value: Option<&str>) {
+    let token = value.unwrap_or_default().trim();
+    if token.is_empty() {
+        return;
+    }
+    let key = token.to_ascii_lowercase();
+    if seen.insert(key) {
+        tokens.push(token.to_string());
+    }
+}
+
+fn unique_skill_scan_tokens(payload: &SkillGuardScanPayload) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut seen = HashSet::new();
+    push_unique_skill_token(&mut tokens, &mut seen, payload.skill_key.as_deref());
+    push_unique_skill_token(&mut tokens, &mut seen, payload.name.as_deref());
+    push_unique_skill_token(&mut tokens, &mut seen, payload.slug.as_deref());
+    let trailing = trailing_slug_token(payload.slug.as_deref());
+    push_unique_skill_token(&mut tokens, &mut seen, Some(&trailing));
+    tokens
+}
+
+fn skill_scan_label(payload: &SkillGuardScanPayload) -> String {
+    payload
+        .skill_key
+        .as_deref()
+        .or(payload.name.as_deref())
+        .or(payload.slug.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+fn resolve_skill_dir_host(payload: &SkillGuardScanPayload) -> Option<PathBuf> {
+    let home_dir = dirs::home_dir()?;
+    let tokens = unique_skill_scan_tokens(payload);
+    if tokens.is_empty() {
+        return None;
+    }
+
+    for root_suffix in SKILLGUARD_SCAN_ROOTS {
+        let root = home_dir.join(root_suffix);
+        if !root.is_dir() {
+            continue;
+        }
+
+        let mut entries: Vec<(String, PathBuf)> = Vec::new();
+        if let Ok(read_dir) = fs::read_dir(&root) {
+            for entry in read_dir {
+                let Ok(entry) = entry else { continue };
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                if !file_type.is_dir() {
+                    continue;
+                }
+                let entry_path = entry.path();
+                if !entry_path.join("SKILL.md").is_file() {
+                    continue;
+                }
+                entries.push((entry.file_name().to_string_lossy().to_string(), entry_path));
+            }
+        }
+
+        for token in &tokens {
+            let direct = root.join(token);
+            if direct.join("SKILL.md").is_file() {
+                return Some(direct);
+            }
+
+            if let Some((_, matched_dir)) = entries
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(token))
+            {
+                return Some(matched_dir.clone());
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_skill_dir_wsl(distro: &str, payload: &SkillGuardScanPayload) -> Option<String> {
+    let tokens = unique_skill_scan_tokens(payload);
+    if tokens.is_empty() {
+        return None;
+    }
+
+    let candidate_array = tokens
+        .iter()
+        .map(|token| shell_escape_posix_arg(token))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let script = format!(
+        r#"
+set -eu
+candidates=({candidate_array})
+roots=(
+  "$HOME/.openclaw/skills"
+  "$HOME/.openclaw/workspace/skills"
+  "$HOME/.agents/skills"
+  "$HOME/.codex/skills"
+  "$HOME/.config/openclaw/skills"
+)
+lower() {{
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}}
+for root in "${{roots[@]}}"; do
+  [ -d "$root" ] || continue
+  for token in "${{candidates[@]}}"; do
+    [ -n "$token" ] || continue
+    if [ -f "$root/$token/SKILL.md" ]; then
+      printf '%s' "$root/$token"
+      exit 0
+    fi
+    for entry in "$root"/*; do
+      [ -d "$entry" ] || continue
+      name="$(basename "$entry")"
+      if [ "$(lower "$name")" = "$(lower "$token")" ] && [ -f "$entry/SKILL.md" ]; then
+        printf '%s' "$entry"
+        exit 0
+      fi
+    done
+  done
+done
+exit 1
+"#,
+    );
+    let output = run_wsl_shell(distro, script.trim(), None).ok()?;
+    if output.code != 0 {
+        return None;
+    }
+    let resolved = output.stdout.trim();
+    if resolved.is_empty() {
+        None
+    } else {
+        Some(resolved.to_string())
+    }
+}
+
+fn map_skillguard_finding(raw: &serde_json::Value) -> Option<serde_json::Value> {
+    let finding = raw.as_object()?;
+    let mut mapped = serde_json::Map::new();
+    mapped.insert(
+        "dimension".to_string(),
+        serde_json::Value::String(
+            finding
+                .get("dimension")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        ),
+    );
+    mapped.insert(
+        "severity".to_string(),
+        serde_json::Value::String(
+            finding
+                .get("severity")
+                .and_then(|value| value.as_str())
+                .unwrap_or("INFO")
+                .to_string(),
+        ),
+    );
+    mapped.insert(
+        "filePath".to_string(),
+        serde_json::Value::String(
+            finding
+                .get("file_path")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        ),
+    );
+    mapped.insert(
+        "lineNumber".to_string(),
+        finding
+            .get("line_number")
+            .cloned()
+            .filter(|value| value.is_number())
+            .unwrap_or(serde_json::Value::Null),
+    );
+    mapped.insert(
+        "description".to_string(),
+        serde_json::Value::String(
+            finding
+                .get("description")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        ),
+    );
+    for (source_key, target_key) in [
+        ("pattern", "pattern"),
+        ("reference", "reference"),
+        ("remediation_en", "remediationEn"),
+        ("remediation_zh", "remediationZh"),
+    ] {
+        if let Some(value) = finding.get(source_key).and_then(|value| value.as_str()) {
+            mapped.insert(
+                target_key.to_string(),
+                serde_json::Value::String(value.to_string()),
+            );
+        }
+    }
+    Some(serde_json::Value::Object(mapped))
+}
+
+fn map_skillguard_report(raw: &serde_json::Value) -> Option<serde_json::Value> {
+    let report = raw.as_object()?;
+    let findings = report
+        .get("findings")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(map_skillguard_finding)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let token_estimate = report
+        .get("token_estimate")
+        .and_then(|value| value.as_object());
+
+    Some(serde_json::json!({
+        "skillName": report.get("skill_name").and_then(|value| value.as_str()).unwrap_or(""),
+        "skillPath": report.get("skill_path").and_then(|value| value.as_str()).unwrap_or(""),
+        "riskScore": report.get("risk_score").and_then(|value| value.as_f64()).unwrap_or(0.0),
+        "riskLevel": report.get("risk_level").and_then(|value| value.as_str()).unwrap_or("A"),
+        "findings": findings,
+        "tokenEstimate": {
+            "l1SkillMd": token_estimate.and_then(|value| value.get("l1_skill_md")).and_then(|value| value.as_f64()).unwrap_or(0.0),
+            "l2Eager": token_estimate.and_then(|value| value.get("l2_eager")).and_then(|value| value.as_f64()).unwrap_or(0.0),
+            "l2Lazy": token_estimate.and_then(|value| value.get("l2_lazy")).and_then(|value| value.as_f64()).unwrap_or(0.0),
+            "l3Total": token_estimate.and_then(|value| value.get("l3_total")).and_then(|value| value.as_f64()).unwrap_or(0.0),
+        }
+    }))
+}
+
+fn normalize_skillguard_scan_output(
+    raw_output: &str,
+    fallback_target: &str,
+) -> Result<serde_json::Value, String> {
+    let parsed = parse_json_lenient(raw_output)
+        .ok_or_else(|| cmd_err_d("SKILLGUARD_INVALID_JSON", "Invalid SkillGuard JSON"))?;
+    let summary = parsed
+        .get("summary")
+        .and_then(|value| value.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let report = parsed
+        .get("reports")
+        .and_then(|value| value.as_array())
+        .and_then(|reports| reports.first())
+        .and_then(map_skillguard_report);
+    let findings = report
+        .as_ref()
+        .and_then(|value| value.get("findings"))
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut severity_counts = serde_json::Map::new();
+    for finding in &findings {
+        let level = finding
+            .get("severity")
+            .and_then(|value| value.as_str())
+            .unwrap_or("INFO")
+            .to_ascii_uppercase();
+        let current = severity_counts
+            .get(&level)
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0);
+        severity_counts.insert(
+            level,
+            serde_json::Value::Number(serde_json::Number::from(current + 1)),
+        );
+    }
+
+    Ok(serde_json::json!({
+        "auditMetadata": {
+            "toolVersion": parsed.get("audit_metadata").and_then(|value| value.get("tool_version")).and_then(|value| value.as_str()).unwrap_or(""),
+            "timestamp": parsed.get("audit_metadata").and_then(|value| value.get("timestamp")).and_then(|value| value.as_str()).unwrap_or(""),
+            "target": parsed.get("audit_metadata").and_then(|value| value.get("target")).and_then(|value| value.as_str()).unwrap_or(fallback_target),
+        },
+        "summary": {
+            "totalSkills": summary.get("total_skills").and_then(|value| value.as_u64()).unwrap_or(0),
+            "byLevel": summary.get("by_level").cloned().filter(|value| value.is_object()).unwrap_or_else(|| serde_json::json!({})),
+        },
+        "report": report.unwrap_or(serde_json::Value::Null),
+        "severityCounts": serde_json::Value::Object(severity_counts),
+        "totalFindings": findings.len(),
+    }))
+}
+
+fn run_skillguard_scan_host(skill_dir: &Path) -> Result<serde_json::Value, String> {
+    let skill_dir_string = skill_dir.to_string_lossy().to_string();
+    let output = Command::new(resolve_system_command_path("npm"))
+        .args([
+            "exec",
+            "--yes",
+            "@clawmaster/skillguard-cli",
+            "--",
+            &skill_dir_string,
+            "--json",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| cmd_err_d("SKILLGUARD_SCAN_FAILED", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !output.status.success() {
+        let message = if !stderr.trim().is_empty() {
+            stderr
+        } else if !stdout.trim().is_empty() {
+            stdout
+        } else {
+            format!("skillguard exited with code {:?}", output.status.code())
+        };
+        return Err(cmd_err_d("SKILLGUARD_SCAN_FAILED", message.trim()));
+    }
+    normalize_skillguard_scan_output(&format!("{stdout}\n{stderr}"), &skill_dir_string)
+}
+
+#[cfg(target_os = "windows")]
+fn run_skillguard_scan_wsl(distro: &str, skill_dir: &str) -> Result<serde_json::Value, String> {
+    let script = format!(
+        "npm exec --yes @clawmaster/skillguard-cli -- {} --json",
+        shell_escape_posix_arg(skill_dir),
+    );
+    let output = run_wsl_shell(distro, &script, None)?;
+    if output.code != 0 {
+        let message = if !output.stderr.trim().is_empty() {
+            output.stderr
+        } else if !output.stdout.trim().is_empty() {
+            output.stdout
+        } else {
+            format!("skillguard exited with code {}", output.code)
+        };
+        return Err(cmd_err_d("SKILLGUARD_SCAN_FAILED", message.trim()));
+    }
+    normalize_skillguard_scan_output(&format!("{}\n{}", output.stdout, output.stderr), skill_dir)
+}
+
 fn managed_memory_runtime_data_root(
     profile_selection: &OpenclawProfileSelection,
 ) -> (String, String, Option<String>, String, String, String, String) {
@@ -3419,6 +3793,7 @@ mod tests {
         build_clawprobe_config_override,
         build_clawprobe_custom_prices_from_models_dev_catalog,
         build_paddleocr_request_json,
+        create_runtime_temp_dir,
         parse_models_dev_fetched_at,
         parse_http_status_output,
         get_config_path_candidates_for, get_openclaw_profile_args, get_openclaw_profile_data_dir,
@@ -3431,6 +3806,8 @@ mod tests {
         resolve_selected_wsl_distro_from_list, supports_seekdb_embedded,
         OpenclawProfileSelection,
     };
+    #[cfg(target_os = "windows")]
+    use super::build_wsl_clawprobe_command_script;
     use std::fs;
     use std::path::Path;
     use std::path::PathBuf;
@@ -3481,6 +3858,19 @@ mod tests {
             .expect("json body should build");
         assert!(json.len() > 2 * 1024 * 1024);
         assert!(json.contains("\"fileType\":0"));
+    }
+
+    #[test]
+    fn runtime_temp_dirs_are_unique_across_back_to_back_calls() {
+        let first = create_runtime_temp_dir("test").expect("first temp dir should be created");
+        let second = create_runtime_temp_dir("test").expect("second temp dir should be created");
+
+        assert_ne!(first, second);
+        assert!(first.exists());
+        assert!(second.exists());
+
+        let _ = fs::remove_dir_all(first);
+        let _ = fs::remove_dir_all(second);
     }
 
     #[test]
@@ -4191,7 +4581,7 @@ mod tests {
     }
 
     #[test]
-    fn clawprobe_config_override_merges_existing_and_models_dev_custom_prices() {
+    fn clawprobe_config_override_preserves_existing_user_prices_over_models_dev_defaults() {
         let merged = build_clawprobe_config_override(
             &serde_json::json!({
                 "timezone": "Asia/Shanghai",
@@ -4219,7 +4609,7 @@ mod tests {
                 "timezone": "Asia/Shanghai",
                 "cost": {
                     "customPrices": {
-                        "openai/gpt-4o": { "input": 2.5, "output": 10.0 },
+                        "openai/gpt-4o": { "input": 1.0, "output": 2.0 },
                         "deepseek-ai/deepseek-r1": { "input": 0.55, "output": 2.19 }
                     }
                 }
@@ -4248,6 +4638,20 @@ mod tests {
 
         #[cfg(not(target_os = "windows"))]
         assert!(!overrides.iter().any(|(key, _)| *key == "USERPROFILE"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn wsl_clawprobe_command_script_preserves_openclaw_dir() {
+        let script = build_wsl_clawprobe_command_script(
+            "/tmp/clawprobe-home",
+            "/home/tester/.openclaw-dev",
+            &["status".to_string(), "--json".to_string()],
+        );
+
+        assert!(script.contains("HOME='/tmp/clawprobe-home'"));
+        assert!(script.contains("OPENCLAW_DIR='/home/tester/.openclaw-dev'"));
+        assert!(script.contains("clawprobe 'status' '--json'"));
     }
 }
 
@@ -4721,6 +5125,49 @@ fn repo_bundled_skill_root(skill_id: &str) -> Option<PathBuf> {
     Some(repo_root_path().join("bundled-skills").join(dir_name))
 }
 
+#[cfg(target_os = "windows")]
+fn copy_bundled_skill_into_wsl(
+    distro: &str,
+    source_path: &Path,
+    target_dir: &str,
+) -> Result<(), String> {
+    let source_wsl_path = windows_path_to_wsl_path(&source_path.to_string_lossy())
+        .or_else(|| {
+            let raw = source_path.to_string_lossy();
+            if raw.starts_with('/') {
+                Some(raw.to_string())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            cmd_err_d(
+                "SKILL_SOURCE_INVALID",
+                format!(
+                    "Bundled skill source is not reachable from WSL: {}",
+                    source_path.display()
+                ),
+            )
+        })?;
+    let target_parent = dirname_posix(target_dir);
+    let script = format!(
+        "mkdir -p {target_parent} && rm -rf {target_dir} && mkdir -p {target_dir} && cp -a {source_dot} {target_dot}",
+        target_parent = shell_escape_posix_arg(&target_parent),
+        target_dir = shell_escape_posix_arg(target_dir),
+        source_dot = shell_escape_posix_arg(&join_posix(&source_wsl_path, ".")),
+        target_dot = shell_escape_posix_arg(&join_posix(target_dir, "")),
+    );
+    let output = run_wsl_shell(distro, &script, None)?;
+    if output.code == 0 {
+        Ok(())
+    } else {
+        Err(cmd_err_d(
+            "WSL_SKILL_INSTALL_FAILED",
+            output.stderr.trim().to_string(),
+        ))
+    }
+}
+
 #[tauri::command]
 fn install_bundled_skill(skill_id: String) -> Result<(), String> {
     let normalized = skill_id.trim().to_ascii_lowercase();
@@ -4749,13 +5196,61 @@ fn install_bundled_skill(skill_id: String) -> Result<(), String> {
         ));
     }
 
-    let target_dir = get_config_resolution()
+    let config_resolution = get_config_resolution();
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        let target_dir = join_posix(
+            &join_posix(&config_resolution.data_dir.to_string_lossy(), "workspace"),
+            &join_posix("skills", dir_name),
+        );
+        return copy_bundled_skill_into_wsl(&distro, &source_path, &target_dir);
+    }
+
+    let target_dir = config_resolution
         .data_dir
         .join("workspace")
         .join("skills")
         .join(dir_name);
     copy_dir_all(&source_path, &target_dir)?;
     Ok(())
+}
+
+#[tauri::command]
+fn scan_installed_skill(
+    skill_key: Option<String>,
+    name: Option<String>,
+    slug: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let payload = SkillGuardScanPayload {
+        skill_key,
+        name,
+        slug,
+    };
+
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        let skill_dir = resolve_skill_dir_wsl(&distro, &payload).ok_or_else(|| {
+            cmd_err_d(
+                "SKILL_SCAN_TARGET_MISSING",
+                format!(
+                    "Installed skill directory not found for: {}",
+                    skill_scan_label(&payload)
+                ),
+            )
+        })?;
+        return run_skillguard_scan_wsl(&distro, &skill_dir);
+    }
+
+    let skill_dir = resolve_skill_dir_host(&payload).ok_or_else(|| {
+        cmd_err_d(
+            "SKILL_SCAN_TARGET_MISSING",
+            format!(
+                "Installed skill directory not found for: {}",
+                skill_scan_label(&payload)
+            ),
+        )
+    })?;
+    run_skillguard_scan_host(&skill_dir)
 }
 
 #[tauri::command]
@@ -6140,7 +6635,7 @@ fn build_clawprobe_config_override(
         .cloned()
         .unwrap_or_else(serde_json::Map::new);
     for (key, value) in custom_prices {
-        current_prices.insert(key.clone(), value.clone());
+        current_prices.entry(key.clone()).or_insert_with(|| value.clone());
     }
     cost.insert(
         "customPrices".to_string(),
@@ -6172,22 +6667,90 @@ fn mirror_clawprobe_files_for_override(
         }
         let file_type = entry.file_type().map_err(|e| cmd_err_d("IO_ERROR", e))?;
         if file_type.is_dir() {
-            copy_dir_all(&from, &to)?;
+            fs::create_dir_all(&to).map_err(|e| cmd_err_d("IO_ERROR", e))?;
+            mirror_clawprobe_files_for_override(&from, &to)?;
         } else {
-            fs::copy(&from, &to).map_err(|e| cmd_err_d("IO_ERROR", e))?;
+            if let Err(link_error) = fs::hard_link(&from, &to) {
+                if to.exists() {
+                    fs::remove_file(&to).map_err(|e| cmd_err_d("IO_ERROR", e))?;
+                }
+                fs::copy(&from, &to).map_err(|copy_error| {
+                    cmd_err_d(
+                        "IO_ERROR",
+                        format!(
+                            "hard link failed: {link_error}; copy failed: {copy_error}"
+                        ),
+                    )
+                })?;
+            }
         }
     }
     Ok(())
 }
 
+struct TempDirCleanupGuard {
+    path: PathBuf,
+}
+
+impl TempDirCleanupGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDirCleanupGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+#[cfg(target_os = "windows")]
+struct WslTempDirCleanupGuard {
+    distro: String,
+    path: String,
+}
+
+#[cfg(target_os = "windows")]
+impl WslTempDirCleanupGuard {
+    fn new(distro: String, path: String) -> Self {
+        Self { distro, path }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for WslTempDirCleanupGuard {
+    fn drop(&mut self) {
+        let _ = run_wsl_shell(
+            &self.distro,
+            &format!("rm -rf {}", shell_escape_posix_arg(&self.path)),
+            None,
+        );
+    }
+}
+
 fn create_runtime_temp_dir(prefix: &str) -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join(format!(
-        "clawmaster-{prefix}-{}-{}",
-        std::process::id(),
-        current_time_millis()
-    ));
-    fs::create_dir_all(&dir).map_err(|e| cmd_err_d("IO_ERROR", e))?;
-    Ok(dir)
+    let temp_root = std::env::temp_dir();
+    for _ in 0..64 {
+        let dir = temp_root.join(format!(
+            "clawmaster-{prefix}-{}-{}-{}",
+            std::process::id(),
+            current_time_millis(),
+            RUNTIME_TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        match fs::create_dir(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(cmd_err_d("IO_ERROR", error)),
+        }
+    }
+    Err(cmd_err_d(
+        "IO_ERROR",
+        format!("failed to allocate unique temp dir for {prefix}"),
+    ))
 }
 
 fn build_clawprobe_env_overrides(
@@ -6212,6 +6775,25 @@ fn build_clawprobe_env_overrides(
     }
 }
 
+#[cfg(target_os = "windows")]
+fn build_wsl_clawprobe_command_script(
+    temp_home: &str,
+    openclaw_dir: &str,
+    args: &[String],
+) -> String {
+    let escaped_args = args
+        .iter()
+        .map(|arg| shell_escape_posix_arg(arg))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "HOME={home} OPENCLAW_DIR={openclaw_dir} clawprobe {args}",
+        home = shell_escape_posix_arg(temp_home),
+        openclaw_dir = shell_escape_posix_arg(openclaw_dir),
+        args = escaped_args,
+    )
+}
+
 fn run_clawprobe_command_with_models_dev_pricing_local(
     args: &[String],
     custom_prices: &serde_json::Map<String, serde_json::Value>,
@@ -6219,8 +6801,8 @@ fn run_clawprobe_command_with_models_dev_pricing_local(
     let real_probe_dir = dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".clawprobe");
-    let temp_home = create_runtime_temp_dir("clawprobe-home")?;
-    let temp_probe_dir = temp_home.join(".clawprobe");
+    let temp_home = TempDirCleanupGuard::new(create_runtime_temp_dir("clawprobe-home")?);
+    let temp_probe_dir = temp_home.path().join(".clawprobe");
     fs::create_dir_all(&temp_probe_dir).map_err(|e| cmd_err_d("IO_ERROR", e))?;
     mirror_clawprobe_files_for_override(&real_probe_dir, &temp_probe_dir)?;
 
@@ -6237,7 +6819,7 @@ fn run_clawprobe_command_with_models_dev_pricing_local(
     let output = {
         let mut command = clawprobe_cmd();
         let config_resolution = get_config_resolution();
-        for (key, value) in build_clawprobe_env_overrides(&temp_home, &config_resolution.data_dir) {
+        for (key, value) in build_clawprobe_env_overrides(temp_home.path(), &config_resolution.data_dir) {
             command.env(key, value);
         }
         command
@@ -6245,8 +6827,6 @@ fn run_clawprobe_command_with_models_dev_pricing_local(
             .output()
             .map_err(|e| cmd_err_d("CLAWPROBE_CMD_SPAWN_FAILED", e))?
     };
-
-    let _ = fs::remove_dir_all(&temp_home);
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -6273,10 +6853,11 @@ fn run_clawprobe_command_with_models_dev_pricing_wsl(
         ));
     }
     let temp_home = temp_home_output.stdout.trim().to_string();
+    let _temp_home_guard = WslTempDirCleanupGuard::new(distro.to_string(), temp_home.clone());
     let temp_probe_dir = join_posix(&temp_home, ".clawprobe");
 
     let mirror_script = format!(
-        "mkdir -p {target} && if [ -d {source} ]; then cp -a {source_dot} {target_dot}; fi && rm -f {config}",
+        "mkdir -p {target} && if [ -d {source} ]; then cp -al {source_dot} {target_dot} 2>/dev/null || cp -a {source_dot} {target_dot}; fi && rm -f {config}",
         target = shell_escape_posix_arg(&temp_probe_dir),
         source = shell_escape_posix_arg(&real_probe_dir),
         source_dot = shell_escape_posix_arg(&join_posix(&real_probe_dir, ".")),
@@ -6285,11 +6866,6 @@ fn run_clawprobe_command_with_models_dev_pricing_wsl(
     );
     let mirror_output = run_wsl_shell(distro, &mirror_script, None)?;
     if mirror_output.code != 0 {
-        let _ = run_wsl_shell(
-            distro,
-            &format!("rm -rf {}", shell_escape_posix_arg(&temp_home)),
-            None,
-        );
         return Err(cmd_err_d(
             "WSL_CLAWPROBE_MIRROR_FAILED",
             mirror_output.stderr.trim().to_string(),
@@ -6310,23 +6886,12 @@ fn run_clawprobe_command_with_models_dev_pricing_wsl(
         &format!("{config_raw}\n"),
     )?;
 
-    let escaped_args = args
-        .iter()
-        .map(|arg| shell_escape_posix_arg(arg))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let command_script = format!(
-        "HOME={home} OPENCLAW_DIR={openclaw_dir} clawprobe {args}",
-        home = shell_escape_posix_arg(&temp_home),
-        openclaw_dir = shell_escape_posix_arg(&get_config_resolution().data_dir.to_string_lossy()),
-        args = escaped_args,
+    let command_script = build_wsl_clawprobe_command_script(
+        &temp_home,
+        &get_config_resolution().data_dir.to_string_lossy(),
+        args,
     );
     let output = run_wsl_shell(distro, &command_script, None)?;
-    let _ = run_wsl_shell(
-        distro,
-        &format!("rm -rf {}", shell_escape_posix_arg(&temp_home)),
-        None,
-    );
 
     if output.code == 0 || !output.stdout.trim().is_empty() {
         Ok(output.stdout)
@@ -7009,6 +7574,7 @@ pub fn run() {
             save_config,
             reset_openclaw_config,
             install_bundled_skill,
+            scan_installed_skill,
             save_openclaw_profile,
             clear_openclaw_profile,
             save_clawmaster_runtime,

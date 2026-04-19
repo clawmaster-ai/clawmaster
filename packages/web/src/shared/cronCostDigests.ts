@@ -35,6 +35,14 @@ const COST_DIGEST_TEMPLATES: CostDigestTemplateMeta[] = [
   },
 ]
 
+export function getPreferredCostDigestTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone?.trim() || 'UTC'
+  } catch {
+    return 'UTC'
+  }
+}
+
 export function isCostDigestPeriod(value: string | null | undefined): value is CostDigestPeriod {
   return value === 'day' || value === 'week' || value === 'month'
 }
@@ -59,7 +67,7 @@ export function buildCostDigestDraft(period: CostDigestPeriod, t: TFunction): Cr
     cron: template.cron,
     every: '',
     at: '',
-    tz: '',
+    tz: getPreferredCostDigestTimezone(),
     session: 'isolated',
     sessionKey: '',
     model: '',

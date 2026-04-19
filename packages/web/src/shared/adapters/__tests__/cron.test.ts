@@ -130,7 +130,7 @@ describe('cron adapter', () => {
     ])
   })
 
-  it('builds create args and disables delivery when announce is off', async () => {
+  it('builds create args without forcing no-deliver when announce is off', async () => {
     await mockExec('')
 
     const result = await createCronJobResult({
@@ -169,7 +169,6 @@ describe('cron adapter', () => {
         'main',
         '--session',
         'isolated',
-        '--no-deliver',
         '--cron',
         '0 8 * * 1',
       ],

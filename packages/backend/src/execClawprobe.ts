@@ -302,8 +302,8 @@ export function buildClawprobeConfigOverrideForTest(
     cost: {
       ...currentCost,
       customPrices: {
-        ...currentPrices,
         ...customPrices,
+        ...currentPrices,
       },
     },
   }
@@ -347,38 +347,63 @@ export function mirrorClawprobeFilesForOverrideForTest(
       }
       continue
     }
-    fs.cpSync(sourcePath, targetPath, { recursive: true })
+    fs.mkdirSync(targetPath, { recursive: true })
+    mirrorClawprobeFilesForOverrideForTest(sourcePath, targetPath)
+  }
+}
+
+export function withTempHomeDirForOverride<T>(callback: (tempHome: string) => T): T {
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-clawprobe-home-'))
+  try {
+    return callback(tempHome)
+  } catch (error) {
+    fs.rmSync(tempHome, { recursive: true, force: true })
+    throw error
   }
 }
 
 function prepareLocalClawprobeExecution(
   customPrices: Record<string, ClawprobeCustomPrice>
 ): PreparedClawprobeExecution {
-  const realProbeDir = path.join(os.homedir(), '.clawprobe')
-  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-clawprobe-home-'))
-  const tempProbeDir = path.join(tempHome, '.clawprobe')
-  fs.mkdirSync(tempProbeDir, { recursive: true })
-  mirrorClawprobeFilesForOverrideForTest(realProbeDir, tempProbeDir)
+  return withTempHomeDirForOverride((tempHome) => {
+    const realProbeDir = path.join(os.homedir(), '.clawprobe')
+    const tempProbeDir = path.join(tempHome, '.clawprobe')
+    fs.mkdirSync(tempProbeDir, { recursive: true })
+    mirrorClawprobeFilesForOverrideForTest(realProbeDir, tempProbeDir)
 
-  const baseConfig =
-    readJsonObject(
-      fs.existsSync(path.join(realProbeDir, 'config.json'))
-        ? fs.readFileSync(path.join(realProbeDir, 'config.json'), 'utf8')
-        : null
-    ) ?? {}
-  const mergedConfig = buildClawprobeConfigOverrideForTest(baseConfig, customPrices)
-  fs.writeFileSync(
-    path.join(tempProbeDir, 'config.json'),
-    `${JSON.stringify(mergedConfig, null, 2)}\n`,
-    'utf8'
-  )
+    const baseConfig =
+      readJsonObject(
+        fs.existsSync(path.join(realProbeDir, 'config.json'))
+          ? fs.readFileSync(path.join(realProbeDir, 'config.json'), 'utf8')
+          : null
+      ) ?? {}
+    const mergedConfig = buildClawprobeConfigOverrideForTest(baseConfig, customPrices)
+    fs.writeFileSync(
+      path.join(tempProbeDir, 'config.json'),
+      `${JSON.stringify(mergedConfig, null, 2)}\n`,
+      'utf8'
+    )
 
-  return {
-    env: buildClawprobeHomeOverrideEnvForTest(tempHome, getOpenclawDataDir()),
-    cleanup: () => {
-      fs.rmSync(tempHome, { recursive: true, force: true })
-    },
-  }
+    return {
+      env: buildClawprobeHomeOverrideEnvForTest(tempHome, getOpenclawDataDir()),
+      cleanup: () => {
+        fs.rmSync(tempHome, { recursive: true, force: true })
+      },
+    }
+  })
+}
+
+export function buildWslClawprobeCommandScriptForTest(
+  tempHome: string,
+  openclawDir: string,
+  clawprobePath: string,
+  args: string[],
+): string {
+  return [
+    `HOME=${shellEscapePosixArg(tempHome)}`,
+    `OPENCLAW_DIR=${shellEscapePosixArg(openclawDir)}`,
+    [clawprobePath, ...args].map((value) => shellEscapePosixArg(value)).join(' '),
+  ].join(' ')
 }
 
 async function prepareWslClawprobeExecution(
@@ -395,41 +420,46 @@ async function prepareWslClawprobeExecution(
   }
 
   const tempHome = tempHomeResult.stdout.trim()
-  const tempProbeDir = path.posix.join(tempHome, '.clawprobe')
-  const mirrorScript = [
-    `mkdir -p ${shellEscapePosixArg(tempProbeDir)}`,
-    `if [ -d ${shellEscapePosixArg(realProbeDir)} ]; then cp -al ${shellEscapePosixArg(`${realProbeDir}/.`)} ${shellEscapePosixArg(`${tempProbeDir}/`)} 2>/dev/null || cp -a ${shellEscapePosixArg(`${realProbeDir}/.`)} ${shellEscapePosixArg(`${tempProbeDir}/`)}; fi`,
-    `rm -f ${shellEscapePosixArg(path.posix.join(tempProbeDir, 'config.json'))}`,
-  ].join(' && ')
-  const mirrorResult = runWslShellSync(distro, mirrorScript)
-  if (mirrorResult.code !== 0) {
+  try {
+    const tempProbeDir = path.posix.join(tempHome, '.clawprobe')
+    const mirrorScript = [
+      `mkdir -p ${shellEscapePosixArg(tempProbeDir)}`,
+      `if [ -d ${shellEscapePosixArg(realProbeDir)} ]; then cp -al ${shellEscapePosixArg(`${realProbeDir}/.`)} ${shellEscapePosixArg(`${tempProbeDir}/`)} 2>/dev/null || cp -a ${shellEscapePosixArg(`${realProbeDir}/.`)} ${shellEscapePosixArg(`${tempProbeDir}/`)}; fi`,
+      `rm -f ${shellEscapePosixArg(path.posix.join(tempProbeDir, 'config.json'))}`,
+    ].join(' && ')
+    const mirrorResult = runWslShellSync(distro, mirrorScript)
+    if (mirrorResult.code !== 0) {
+      throw new Error(mirrorResult.stderr || 'Failed to mirror clawprobe files in WSL')
+    }
+
+    const baseConfig =
+      readJsonObject(readTextFileInWslSync(distro, path.posix.join(realProbeDir, 'config.json'))) ?? {}
+    const mergedConfig = buildClawprobeConfigOverrideForTest(baseConfig, customPrices)
+    writeTextFileInWslSync(
+      distro,
+      path.posix.join(tempProbeDir, 'config.json'),
+      `${JSON.stringify(mergedConfig, null, 2)}\n`
+    )
+
+    const clawprobePath = resolveCommandInWslSync(distro, 'clawprobe') ?? 'clawprobe'
+    const commandScript = buildWslClawprobeCommandScriptForTest(
+      tempHome,
+      getOpenclawDataDir(),
+      clawprobePath,
+      args,
+    )
+
+    return {
+      cmd: 'wsl.exe',
+      args: ['-d', distro, '--', 'bash', '-lc', commandScript],
+      env: process.env,
+      cleanup: async () => {
+        await runWslShell(distro, `rm -rf ${shellEscapePosixArg(tempHome)}`)
+      },
+    }
+  } catch (error) {
     await runWslShell(distro, `rm -rf ${shellEscapePosixArg(tempHome)}`)
-    throw new Error(mirrorResult.stderr || 'Failed to mirror clawprobe files in WSL')
-  }
-
-  const baseConfig =
-    readJsonObject(readTextFileInWslSync(distro, path.posix.join(realProbeDir, 'config.json'))) ?? {}
-  const mergedConfig = buildClawprobeConfigOverrideForTest(baseConfig, customPrices)
-  writeTextFileInWslSync(
-    distro,
-    path.posix.join(tempProbeDir, 'config.json'),
-    `${JSON.stringify(mergedConfig, null, 2)}\n`
-  )
-
-  const clawprobePath = resolveCommandInWslSync(distro, 'clawprobe') ?? 'clawprobe'
-  const commandScript = [
-    `HOME=${shellEscapePosixArg(tempHome)}`,
-    `OPENCLAW_DIR=${shellEscapePosixArg(getOpenclawDataDir())}`,
-    [clawprobePath, ...args].map((value) => shellEscapePosixArg(value)).join(' '),
-  ].join(' ')
-
-  return {
-    cmd: 'wsl.exe',
-    args: ['-d', distro, '--', 'bash', '-lc', commandScript],
-    env: process.env,
-    cleanup: async () => {
-      await runWslShell(distro, `rm -rf ${shellEscapePosixArg(tempHome)}`)
-    },
+    throw error
   }
 }
 

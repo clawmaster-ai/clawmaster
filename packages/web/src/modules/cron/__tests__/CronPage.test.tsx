@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { changeLanguage } from '@/i18n'
+import { getPreferredCostDigestTimezone } from '@/shared/cronCostDigests'
 import CronPage from '../CronPage'
 
 const mockGetCronJobs = vi.fn()
@@ -114,6 +115,10 @@ describe('CronPage', () => {
     mockSetCronJobEnabled.mockResolvedValue({ success: true, data: undefined })
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('renders cron jobs and loads run history for a selected job', async () => {
     renderPage()
 
@@ -165,6 +170,7 @@ describe('CronPage', () => {
     expect(screen.getByText('Loaded the Week cost digest template. Review the prompt, choose delivery, and save the job.')).toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toHaveValue('Weekly Cost Digest')
     expect(screen.getByLabelText('Cron expression')).toHaveValue('0 8 * * 1')
+    expect(screen.getByLabelText('Timezone')).toHaveValue(getPreferredCostDigestTimezone())
     expect(screen.getByLabelText('Session')).toHaveValue('isolated')
     expect(screen.getByLabelText('Agent')).toHaveValue('main')
     expect(screen.getByLabelText('Message')).toHaveValue(
@@ -201,6 +207,55 @@ describe('CronPage', () => {
 
     expect(await screen.findByText('OpenClaw cron commands depend on the gateway. Start the gateway before managing cron jobs.')).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Create Cron Job' })).not.toBeInTheDocument()
+  })
+
+  it('opens the pending cost digest template after the gateway becomes ready', async () => {
+    const intervalCallbacks: Array<() => void | Promise<void>> = []
+    const setIntervalSpy = vi
+      .spyOn(window, 'setInterval')
+      .mockImplementation(((callback: TimerHandler) => {
+        if (typeof callback === 'function') {
+          intervalCallbacks.push(callback as () => void | Promise<void>)
+        }
+        return 1 as unknown as number
+      }) as typeof window.setInterval)
+
+    mockGetGatewayStatus
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          running: false,
+          port: 18789,
+        },
+      })
+      .mockResolvedValue({
+        success: true,
+        data: {
+          running: true,
+          port: 18789,
+        },
+      })
+
+    renderPage(['/cron?template=cost-digest&period=week'])
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('OpenClaw cron commands depend on the gateway. Start the gateway before managing cron jobs.')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Create Cron Job' })).not.toBeInTheDocument()
+
+    await act(async () => {
+      await Promise.all(intervalCallbacks.map((callback) => callback()))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: 'Create Cron Job' })).toBeInTheDocument()
+    })
+    expect(screen.getByLabelText('Name')).toHaveValue('Weekly Cost Digest')
+
+    setIntervalSpy.mockRestore()
   })
 
   it('runs enable and delete actions through the cron adapter', async () => {

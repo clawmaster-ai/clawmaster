@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import { platformResults } from '@/adapters'
 import { getSetupAdapter } from '@/modules/setup/adapters'
+import { setSkillEnabledResult } from '@/shared/adapters/clawhub'
 import { allSuccess2 } from '@/shared/adapters/resultHelpers'
 import type { AdapterResult } from '@/shared/adapters/types'
 import { fail, ok } from '@/shared/adapters/types'
@@ -67,6 +68,7 @@ export default function ObservePage() {
   }, [costPeriod, t])
 
   const { data, loading, error, refetch } = useAdapterCall(fetcher, { pollInterval: 45_000 })
+  const installRequired = data?.status.installRequired === true
 
   const handleBootstrapClawprobe = useCallback(async () => {
     setBootstrapBusy(true)
@@ -102,6 +104,10 @@ export default function ObservePage() {
   }, [installTask, refetch, t])
 
   const handleOpenDigestTemplate = useCallback(async (href: string, period: string) => {
+    if (installRequired) {
+      setDigestInstallError(t('observe.digestRequiresClawprobe'))
+      return
+    }
     setDigestInstallError(null)
     setDigestInstallPeriod(period)
     const result = await platformResults.installSkill('clawprobe-cost-digest')
@@ -112,8 +118,16 @@ export default function ObservePage() {
       setDigestInstallPeriod(null)
       return
     }
+    const enableResult = await setSkillEnabledResult('clawprobe-cost-digest', true)
+    if (!enableResult.success) {
+      setDigestInstallError(
+        t('skills.installFailed', { message: enableResult.error ?? t('common.unknownError') })
+      )
+      setDigestInstallPeriod(null)
+      return
+    }
     navigate(href)
-  }, [navigate, t])
+  }, [installRequired, navigate, t])
 
   if (error || !data) {
     if (loading && !data && !error) {
@@ -180,7 +194,6 @@ export default function ObservePage() {
 
   const { status, cost, config } = data
   const maxDailyUsd = Math.max(...cost.daily.map((d) => d.usd), 0.01)
-  const installRequired = status.installRequired === true
 
   return (
     <div className="page-shell page-shell-medium gap-8 pb-10">
@@ -404,7 +417,7 @@ export default function ObservePage() {
                   key={template.period}
                   type="button"
                   onClick={() => void handleOpenDigestTemplate(template.href, template.period)}
-                  disabled={digestInstallPeriod !== null}
+                  disabled={digestInstallPeriod !== null || installRequired}
                   className="surface-card block space-y-2 border border-border/70 bg-background/70 text-left transition hover:border-primary/35 hover:bg-background disabled:cursor-wait disabled:opacity-70"
                 >
                   <div className="space-y-1">
@@ -437,6 +450,9 @@ export default function ObservePage() {
               </Link>
             </div>
           </div>
+          {installRequired ? (
+            <p className="text-sm text-muted-foreground">{t('observe.digestRequiresClawprobe')}</p>
+          ) : null}
           {digestInstallError ? (
             <p className="text-sm text-destructive">{digestInstallError}</p>
           ) : null}

@@ -9,6 +9,7 @@ const mockClawprobeCost = vi.fn()
 const mockClawprobeConfig = vi.fn()
 const mockClawprobeBootstrap = vi.fn()
 const mockInstallSkill = vi.fn()
+const mockSetSkillEnabled = vi.fn()
 const mockInstallCapabilities = vi.fn()
 
 vi.mock('@/adapters', () => ({
@@ -25,6 +26,10 @@ vi.mock('@/modules/setup/adapters', () => ({
   getSetupAdapter: () => ({
     installCapabilities: (...args: any[]) => mockInstallCapabilities(...args),
   }),
+}))
+
+vi.mock('@/shared/adapters/clawhub', () => ({
+  setSkillEnabledResult: (...args: any[]) => mockSetSkillEnabled(...args),
 }))
 
 const fallbackStatus = {
@@ -88,6 +93,7 @@ describe('ObservePage', () => {
       },
     })
     mockInstallSkill.mockResolvedValue({ success: true, data: undefined })
+    mockSetSkillEnabled.mockResolvedValue({ success: true, data: undefined })
     mockInstallCapabilities.mockResolvedValue(undefined)
   })
 
@@ -128,6 +134,14 @@ describe('ObservePage', () => {
   })
 
   it('installs the bundled digest skill before opening a digest cron template', async () => {
+    mockClawprobeStatus.mockResolvedValueOnce({
+      success: true,
+      data: {
+        ...fallbackStatus,
+        installRequired: false,
+      },
+    })
+
     render(
       <MemoryRouter>
         <ObservePage />
@@ -141,10 +155,35 @@ describe('ObservePage', () => {
     await waitFor(() => {
       expect(mockInstallSkill).toHaveBeenCalledWith('clawprobe-cost-digest')
     })
+    await waitFor(() => {
+      expect(mockSetSkillEnabled).toHaveBeenCalledWith('clawprobe-cost-digest', true)
+    })
+  })
+
+  it('blocks digest creation until clawprobe is installed', async () => {
+    render(
+      <MemoryRouter>
+        <ObservePage />
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: 'Observe' })
+
+    const button = screen.getByRole('button', { name: /Weekly Digest/i })
+    expect(button).toBeDisabled()
+    expect(screen.getByText('Install ClawProbe first before creating a scheduled digest job.')).toBeInTheDocument()
+    expect(mockInstallSkill).not.toHaveBeenCalled()
   })
 
   it('shows an install error instead of opening a broken digest flow when skill install fails', async () => {
     mockInstallSkill.mockResolvedValueOnce({ success: false, error: 'bundled skill missing' })
+    mockClawprobeStatus.mockResolvedValueOnce({
+      success: true,
+      data: {
+        ...fallbackStatus,
+        installRequired: false,
+      },
+    })
 
     render(
       <MemoryRouter>
@@ -156,5 +195,27 @@ describe('ObservePage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Daily Digest/i }))
 
     expect(await screen.findByText('Install failed: bundled skill missing')).toBeInTheDocument()
+  })
+
+  it('shows an install error instead of opening a broken digest flow when enabling the skill fails', async () => {
+    mockClawprobeStatus.mockResolvedValueOnce({
+      success: true,
+      data: {
+        ...fallbackStatus,
+        installRequired: false,
+      },
+    })
+    mockSetSkillEnabled.mockResolvedValueOnce({ success: false, error: 'write failed' })
+
+    render(
+      <MemoryRouter>
+        <ObservePage />
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: 'Observe' })
+    fireEvent.click(screen.getByRole('button', { name: /Daily Digest/i }))
+
+    expect(await screen.findByText('Install failed: write failed')).toBeInTheDocument()
   })
 })

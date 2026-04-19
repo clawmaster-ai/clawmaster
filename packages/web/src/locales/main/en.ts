@@ -1314,6 +1314,7 @@ export default {
   "observe.digestIncludesTop": "Top costly sessions or models to investigate first.",
   "observe.digestIncludesTrend": "Comparison with the previous matching period when data is available.",
   "observe.digestDeliveryNote": "Turn on Announce and set a channel in Cron if you want the digest delivered automatically.",
+  "observe.digestRequiresClawprobe": "Install ClawProbe first before creating a scheduled digest job.",
   "observe.openCron": "Open Cron Jobs",
   "observe.digestPresetDayLabel": "Daily Digest",
   "observe.digestPresetDayDesc": "Every morning at 08:00. Best for a concise cost check-in.",

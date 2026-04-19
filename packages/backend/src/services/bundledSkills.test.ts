@@ -140,6 +140,37 @@ test('installBundledSkill copies the bundled models.dev skill into the active wo
   )
 })
 
+test('installBundledSkill uses WSL copy commands for Linux runtime data dirs on Windows', () => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-src-'))
+  fs.mkdirSync(path.join(sourceRoot, 'scripts'), { recursive: true })
+  fs.writeFileSync(path.join(sourceRoot, 'SKILL.md'), '# models.dev\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, '_meta.json'), '{"slug":"models-dev","version":"1.0.0"}\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, 'scripts', 'query-models.mjs'), 'console.log("query")\n', 'utf8')
+
+  const wslScripts: Array<{ distro: string; script: string }> = []
+  const result = installBundledSkill('models-dev', {
+    dataDir: '/home/tester/.openclaw-dev',
+    env: {
+      ...process.env,
+      CLAWMASTER_BUNDLED_MODELS_DEV_SKILL_ROOT: sourceRoot,
+    },
+    platform: 'win32',
+    wslRuntime: true,
+    wslDistro: 'Ubuntu',
+    runWslScript: (distro, script) => {
+      wslScripts.push({ distro, script })
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  })
+
+  assert.equal(result.installDir, '/home/tester/.openclaw-dev/workspace/skills/models-dev')
+  assert.equal(wslScripts.length, 1)
+  assert.equal(wslScripts[0]?.distro, 'Ubuntu')
+  assert.match(wslScripts[0]?.script ?? '', /mkdir -p/)
+  assert.match(wslScripts[0]?.script ?? '', /cp -a/)
+  assert.match(wslScripts[0]?.script ?? '', /\/home\/tester\/\.openclaw-dev\/workspace\/skills\/models-dev/)
+})
+
 test('bundled clawprobe cost digest skill explicitly instructs agents to read the skill and exec the script', () => {
   const skillPath = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
