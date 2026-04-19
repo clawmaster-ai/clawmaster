@@ -1256,6 +1256,10 @@ async function verifyDesktopModelsProviderSwitch(driver) {
     placeholderBefore: erniePlaceholder,
     placeholderAfter: openAiPlaceholder,
   })
+
+  const closeButton = await addProviderPanel.findElement(By.css('button.button-secondary'))
+  await closeButton.click()
+  await driver.wait(until.stalenessOf(addProviderPanel), NAVIGATION_TIMEOUT_MS)
 }
 
 async function captureDriverArtifacts(driver, name, metadata = {}) {
