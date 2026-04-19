@@ -135,7 +135,7 @@ function buildInstallRequiredError(reason: ClawprobeUnavailableReason = 'not-ins
 
 export async function clawprobeStatus() {
   try {
-    return await runClawprobeJson(['status', '--json'])
+    return await runClawprobeJson(['status', '--json'], { useModelsDevPricing: true })
   } catch (error) {
     if (isClawprobeUnavailable(error)) {
       return buildFallbackStatus()
@@ -151,7 +151,7 @@ export async function clawprobeCost(period: string) {
   else if (period === 'all') args.push('--all')
   else if (period !== 'week') throw new Error('period must be day|week|month|all')
   try {
-    return await runClawprobeJson(args)
+    return await runClawprobeJson(args, { useModelsDevPricing: true })
   } catch (error) {
     if (isClawprobeUnavailable(error)) {
       return buildFallbackCost(period)
@@ -162,7 +162,7 @@ export async function clawprobeCost(period: string) {
 
 export async function clawprobeSuggest() {
   try {
-    return await runClawprobeJson(['suggest', '--json'])
+    return await runClawprobeJson(['suggest', '--json'], { useModelsDevPricing: true })
   } catch (error) {
     if (isClawprobeUnavailable(error)) {
       return buildFallbackStatus().suggestions

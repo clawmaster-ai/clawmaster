@@ -1,11 +1,25 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { getOpenclawDataDir } from '../paths.js'
+import {
+  requireSelectedWslDistroSync,
+  runWslShellSync,
+  shellEscapePosixArg,
+  shouldUseWslRuntime,
+} from '../wslRuntime.js'
 
 const BUNDLED_SKILLS = {
+  'clawprobe-cost-digest': {
+    dirName: 'clawprobe-cost-digest',
+    envKey: 'CLAWMASTER_BUNDLED_CLAWPROBE_COST_DIGEST_SKILL_ROOT',
+  },
   'ernie-image': {
     dirName: 'ernie-image',
     envKey: 'CLAWMASTER_BUNDLED_ERNIE_IMAGE_SKILL_ROOT',
+  },
+  'models-dev': {
+    dirName: 'models-dev',
+    envKey: 'CLAWMASTER_BUNDLED_MODELS_DEV_SKILL_ROOT',
   },
   'paddleocr-doc-parsing': {
     dirName: 'paddleocr-doc-parsing',
@@ -15,6 +29,15 @@ const BUNDLED_SKILLS = {
 
 export type BundledSkillSlug = keyof typeof BUNDLED_SKILLS
 
+type BundledSkillInstallOptions = {
+  dataDir?: string
+  env?: NodeJS.ProcessEnv
+  platform?: string
+  wslRuntime?: boolean
+  wslDistro?: string | null
+  runWslScript?: (distro: string, script: string) => { code: number; stdout: string; stderr: string }
+}
+
 function normalizeSkillSlug(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -23,12 +46,53 @@ export function isBundledSkillSlug(value: string): value is BundledSkillSlug {
   return normalizeSkillSlug(value) in BUNDLED_SKILLS
 }
 
+function windowsPathToWslPath(value: string): string | null {
+  const normalized = value.trim()
+  const match = /^([A-Za-z]):[\\/](.*)$/.exec(normalized)
+  if (!match) return null
+  const drive = match[1]!.toLowerCase()
+  const tail = match[2]!.replace(/\\/g, '/')
+  return `/mnt/${drive}/${tail}`
+}
+
+function shouldInstallBundledSkillThroughWsl(
+  dataDir: string,
+  options: BundledSkillInstallOptions,
+): boolean {
+  const platform = options.platform ?? process.platform
+  if (platform !== 'win32') return false
+  if (!(options.wslRuntime ?? shouldUseWslRuntime())) return false
+  return path.posix.isAbsolute(dataDir)
+}
+
+function copyBundledSkillIntoWsl(
+  sourceRoot: string,
+  installDir: string,
+  options: BundledSkillInstallOptions,
+): void {
+  const distro = options.wslDistro ?? requireSelectedWslDistroSync()
+  const sourceRootInWsl = windowsPathToWslPath(sourceRoot) ?? (path.posix.isAbsolute(sourceRoot) ? sourceRoot : null)
+  if (!sourceRootInWsl) {
+    throw new Error(`Bundled skill source is not reachable from WSL: ${sourceRoot}`)
+  }
+
+  const runWslScript = options.runWslScript ?? runWslShellSync
+  const targetParent = path.posix.dirname(installDir)
+  const script = [
+    `mkdir -p ${shellEscapePosixArg(targetParent)}`,
+    `rm -rf ${shellEscapePosixArg(installDir)}`,
+    `mkdir -p ${shellEscapePosixArg(installDir)}`,
+    `cp -a ${shellEscapePosixArg(`${sourceRootInWsl}/.`)} ${shellEscapePosixArg(`${installDir}/`)}`,
+  ].join(' && ')
+  const result = runWslScript(distro, script)
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || `Failed to install bundled skill ${path.posix.basename(installDir)} into WSL`)
+  }
+}
+
 export function installBundledSkill(
   slug: string,
-  options: {
-    dataDir?: string
-    env?: NodeJS.ProcessEnv
-  } = {},
+  options: BundledSkillInstallOptions = {},
 ): { slug: BundledSkillSlug; installDir: string } {
   const normalizedSlug = normalizeSkillSlug(slug)
   if (!isBundledSkillSlug(normalizedSlug)) {
@@ -45,13 +109,21 @@ export function installBundledSkill(
     throw new Error(`Bundled skill source is missing SKILL.md: ${sourceRoot}`)
   }
 
-  const workspaceSkillsRoot = path.join(options.dataDir ?? getOpenclawDataDir(), 'workspace', 'skills')
-  const installDir = path.join(workspaceSkillsRoot, spec.dirName)
-  fs.mkdirSync(workspaceSkillsRoot, { recursive: true })
-  fs.cpSync(sourceRoot, installDir, {
-    recursive: true,
-    force: true,
-  })
+  const dataDir = options.dataDir ?? getOpenclawDataDir()
+  const useWslInstall = shouldInstallBundledSkillThroughWsl(dataDir, options)
+  const pathModule = useWslInstall ? path.posix : path
+  const workspaceSkillsRoot = pathModule.join(dataDir, 'workspace', 'skills')
+  const installDir = pathModule.join(workspaceSkillsRoot, spec.dirName)
+
+  if (useWslInstall) {
+    copyBundledSkillIntoWsl(sourceRoot, installDir, options)
+  } else {
+    fs.mkdirSync(workspaceSkillsRoot, { recursive: true })
+    fs.cpSync(sourceRoot, installDir, {
+      recursive: true,
+      force: true,
+    })
+  }
 
   return {
     slug: normalizedSlug,

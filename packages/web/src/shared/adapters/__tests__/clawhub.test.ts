@@ -81,6 +81,32 @@ describe('clawhub adapter (web mode)', () => {
     expect(tauriInvoke).toHaveBeenCalledWith('install_bundled_skill', { skillId: 'paddleocr-doc-parsing' })
   })
 
+  it('installSkillResult routes bundled models.dev skills through the dedicated desktop command', async () => {
+    const { getIsTauri } = await import('../platform')
+    const { tauriInvoke } = await import('../invoke')
+    vi.mocked(getIsTauri).mockReturnValue(true)
+    vi.mocked(tauriInvoke).mockResolvedValue(undefined)
+
+    const { installSkillResult } = await import('../clawhub')
+    const result = await installSkillResult('models-dev')
+
+    expect(result.success).toBe(true)
+    expect(tauriInvoke).toHaveBeenCalledWith('install_bundled_skill', { skillId: 'models-dev' })
+  })
+
+  it('installSkillResult routes bundled clawprobe cost digest skills through the dedicated desktop command', async () => {
+    const { getIsTauri } = await import('../platform')
+    const { tauriInvoke } = await import('../invoke')
+    vi.mocked(getIsTauri).mockReturnValue(true)
+    vi.mocked(tauriInvoke).mockResolvedValue(undefined)
+
+    const { installSkillResult } = await import('../clawhub')
+    const result = await installSkillResult('clawprobe-cost-digest')
+
+    expect(result.success).toBe(true)
+    expect(tauriInvoke).toHaveBeenCalledWith('install_bundled_skill', { skillId: 'clawprobe-cost-digest' })
+  })
+
   it('installSkillResult fails on HTTP 404', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValue({
       ok: false, status: 404, text: vi.fn().mockResolvedValue('Not found'),
@@ -161,5 +187,35 @@ describe('clawhub adapter (web mode)', () => {
     expect(webFetchJson).toHaveBeenCalledWith('/api/skills/scan', expect.objectContaining({
       method: 'POST',
     }))
+  })
+
+  it('scanInstalledSkillResult uses the dedicated desktop command in Tauri mode', async () => {
+    const { getIsTauri } = await import('../platform')
+    const { tauriInvoke } = await import('../invoke')
+    vi.mocked(getIsTauri).mockReturnValue(true)
+    vi.mocked(tauriInvoke).mockResolvedValue({
+      auditMetadata: { toolVersion: '0.1.0', timestamp: '2026-04-05T00:00:00.000Z', target: '/home/tester/.openclaw/workspace/skills/find-skills' },
+      summary: { totalSkills: 1, byLevel: { A: 1 } },
+      report: null,
+      severityCounts: {},
+      totalFindings: 0,
+    })
+
+    const { scanInstalledSkillResult } = await import('../clawhub')
+    const result = await scanInstalledSkillResult({
+      slug: 'find-skills',
+      name: 'find-skills',
+      description: 'Find more skills',
+      version: '1.0.0',
+      installed: true,
+      skillKey: 'find-skills',
+    })
+
+    expect(result.success).toBe(true)
+    expect(tauriInvoke).toHaveBeenCalledWith('scan_installed_skill', {
+      skillKey: 'find-skills',
+      name: 'find-skills',
+      slug: 'find-skills',
+    })
   })
 })
