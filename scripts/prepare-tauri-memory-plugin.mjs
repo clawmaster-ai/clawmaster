@@ -27,9 +27,19 @@ const bundledSkills = [
     bundledRoot: path.join(resourcesRoot, 'bundled-skills', 'content-draft'),
   },
   {
+    id: 'clawprobe-cost-digest',
+    sourceRoot: path.join(repoRoot, 'bundled-skills', 'clawprobe-cost-digest'),
+    bundledRoot: path.join(resourcesRoot, 'bundled-skills', 'clawprobe-cost-digest'),
+  },
+  {
     id: 'ernie-image',
     sourceRoot: path.join(repoRoot, 'bundled-skills', 'ernie-image'),
     bundledRoot: path.join(resourcesRoot, 'bundled-skills', 'ernie-image'),
+  },
+  {
+    id: 'models-dev',
+    sourceRoot: path.join(repoRoot, 'bundled-skills', 'models-dev'),
+    bundledRoot: path.join(resourcesRoot, 'bundled-skills', 'models-dev'),
   },
   {
     id: 'paddleocr-doc-parsing',

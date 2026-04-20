@@ -32,9 +32,17 @@ function parseClawprobeStdout(raw: string): AdapterResult<unknown> {
   return ok(parsed)
 }
 
+function shouldUseModelsDevPricing(args: string[]): boolean {
+  const command = args[0]?.trim().toLowerCase()
+  return command === 'status' || command === 'cost' || command === 'suggest'
+}
+
 async function invokeClawprobeJson(args: string[]): Promise<AdapterResult<unknown>> {
   try {
-    const raw = await tauriInvoke<string>('run_clawprobe_command', { args })
+    const raw = await tauriInvoke<string>('run_clawprobe_command', {
+      args,
+      useModelsDevPricing: shouldUseModelsDevPricing(args),
+    })
     return parseClawprobeStdout(raw)
   } catch (e) {
     return fail(e instanceof Error ? e.message : String(e))

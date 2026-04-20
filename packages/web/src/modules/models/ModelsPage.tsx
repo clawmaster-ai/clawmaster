@@ -979,8 +979,10 @@ function ProviderSelectButton({
       type="button"
       data-provider-id={providerId}
       onClick={onSelect}
-      className={`px-3 py-1.5 rounded-lg text-sm border transition ${
-        selected ? 'bg-foreground text-background border-foreground' : 'border-border hover:bg-accent'
+      className={`w-full rounded-[1.15rem] border px-4 py-3 text-left text-sm transition ${
+        selected
+          ? 'border-foreground bg-foreground text-background shadow-sm'
+          : 'border-border/80 bg-card/70 hover:border-primary/25 hover:bg-background/85'
       }`}
     >
       <span className="inline-flex items-center gap-2">
@@ -1024,6 +1026,14 @@ function AddProviderPanel({
   const credentialLabel = getProviderCredentialLabel(provider, i18n.language)
   const providerLabel = getProviderLabel(provider, i18n.language)
   const willInstallBundledSkill = provider === 'baidu-aistudio-image'
+  const providerExamples = (cfg?.models ?? []).slice(0, 3).map((model) => model.name).join(' / ')
+
+  function selectProvider(nextProvider: string) {
+    setProvider(nextProvider)
+    setApiKey('')
+    setCustomBaseUrl('')
+    setError(null)
+  }
 
   useEffect(() => {
     setProvider(initialProvider)
@@ -1031,6 +1041,17 @@ function AddProviderPanel({
     setCustomBaseUrl('')
     setError(null)
   }, [initialProvider])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
 
   const handleAdd = async () => {
     if (!apiKey.trim()) return
@@ -1057,104 +1078,181 @@ function AddProviderPanel({
   }
 
   return (
-    <div
-      id="models-add-provider"
-      data-provider={provider}
-      className="surface-card-muted space-y-3"
-    >
-      <div className="flex items-center justify-between">
-        <h3 className="section-title text-lg">{t('models.addProviderTitle')}</h3>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">{t('common.cancel')}</button>
-      </div>
-      {textIds.length > 0 && (
-        <div className="space-y-2">
-          <p className="control-label">{t('models.textProviders')}</p>
-          <div className="flex gap-2 flex-wrap">
-            {textIds.map((p) => (
-              <ProviderSelectButton
-                key={p}
-                providerId={p}
-                selected={provider === p}
-                onSelect={() => { setProvider(p); setApiKey(''); setCustomBaseUrl(''); setError(null) }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      {imageIds.length > 0 && (
-        <div className="space-y-2">
-          <p className="control-label">{t('models.imageProviders')}</p>
-          <div className="flex gap-2 flex-wrap">
-            {imageIds.map((p) => (
-              <ProviderSelectButton
-                key={p}
-                providerId={p}
-                selected={provider === p}
-                onSelect={() => { setProvider(p); setApiKey(''); setCustomBaseUrl(''); setError(null) }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      {allIds.length > initialVisibleIds.length && (
-        <button onClick={() => setShowMore(!showMore)} className="text-xs text-muted-foreground hover:text-foreground">
-          {showMore ? t('setup.collapse') : t('models.showMore', { count: allIds.length - initialVisibleIds.length })}
-        </button>
-      )}
-      {cfg?.keyUrl && (
-        <a href={cfg.keyUrl} target="_blank" rel="noopener noreferrer" className="block text-xs text-primary hover:underline">
-          {t('models.getApiKey', { provider: providerLabel, credential: credentialLabel })} &rarr;
-        </a>
-      )}
-      {cfg?.noteKey && (
-        <p
-          id="models-provider-note"
-          className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100"
-        >
-          {t(cfg.noteKey)}
-        </p>
-      )}
-      {willInstallBundledSkill && (
-        <div
-          id="models-provider-skill-install-note"
-          className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-950 dark:text-emerald-100"
-        >
-          <p className="font-medium">{t('models.skillInstallNoticeTitle')}</p>
-          <p className="mt-1 text-xs text-emerald-900/90 dark:text-emerald-100/90">
-            {t('models.ernieImageSkillInstallNotice')}
-          </p>
-        </div>
-      )}
-      <ProviderGuidancePanel providerId={provider} toolModelExamples={toolModelExamples} />
-      {cfg?.needsBaseUrl && (
-        <input
-          id="models-provider-base-url"
-          type="url"
-          placeholder={t('models.baseUrlPlaceholder')}
-          value={customBaseUrl}
-          onChange={(e) => setCustomBaseUrl(e.target.value)}
-          className="control-input font-mono"
-        />
-      )}
-      <input
-        id="models-provider-api-key"
-        type="password"
-        placeholder={t('models.apiKeyPlaceholder', {
-          provider: providerLabel,
-          credential: credentialLabel,
-        })}
-        value={apiKey}
-        onChange={(e) => setApiKey(e.target.value)}
-        className="control-input font-mono"
-      />
-      {error && <p className="text-red-500 text-xs">{error}</p>}
-      <button
-        onClick={handleAdd}
-        disabled={!apiKey.trim() || busy}
-        className="button-primary w-full"
+    <div className="fixed inset-0 z-50 flex items-start justify-center px-3 py-4 sm:px-6 sm:py-8">
+      <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm" aria-hidden="true" onClick={onClose} />
+      <div
+        id="models-add-provider"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="models-add-provider-title"
+        data-provider={provider}
+        className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-[min(92rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-background/95 shadow-2xl sm:max-h-[calc(100vh-4rem)] sm:max-w-[min(96vw,96rem)]"
       >
-        {busy ? t('models.verifyAndAdding') : t('models.verifyAndAdd')}
-      </button>
+        <div className="shrink-0 border-b border-border/70 bg-card/80 px-5 py-5 sm:px-7">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 id="models-add-provider-title" className="section-title text-[1.35rem]">
+                  {t('models.addProviderTitle')}
+                </h3>
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+                  {providerLabel}
+                </span>
+              </div>
+              <p className="max-w-3xl text-sm text-muted-foreground">
+                {providerExamples || t('models.defaultModel', { model: providerLabel })}
+              </p>
+            </div>
+            <button type="button" onClick={onClose} className="button-secondary px-3">
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(22rem,26rem)_minmax(0,1fr)]">
+          <aside className="min-h-0 overflow-y-auto border-b border-border/70 bg-card/55 px-5 py-5 sm:px-6 xl:border-b-0 xl:border-r">
+            <div className="space-y-5">
+              {textIds.length > 0 && (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <p className="control-label">{t('models.textProviders')}</p>
+                    <p className="text-sm text-muted-foreground">{t('models.textProvidersDesc')}</p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                    {textIds.map((p) => (
+                      <ProviderSelectButton
+                        key={p}
+                        providerId={p}
+                        selected={provider === p}
+                        onSelect={() => selectProvider(p)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {imageIds.length > 0 && (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <p className="control-label">{t('models.imageProviders')}</p>
+                    <p className="text-sm text-muted-foreground">{t('models.imageProvidersDesc')}</p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                    {imageIds.map((p) => (
+                      <ProviderSelectButton
+                        key={p}
+                        providerId={p}
+                        selected={provider === p}
+                        onSelect={() => selectProvider(p)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {allIds.length > initialVisibleIds.length && (
+                <button
+                  type="button"
+                  onClick={() => setShowMore(!showMore)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {showMore ? t('setup.collapse') : t('models.showMore', { count: allIds.length - initialVisibleIds.length })}
+                </button>
+              )}
+            </div>
+          </aside>
+
+          <div className="min-h-0 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+            <div className="mx-auto grid max-w-6xl gap-5 2xl:grid-cols-[minmax(0,1.2fr)_minmax(19rem,24rem)]">
+              <div className="space-y-5">
+                <div className="rounded-[1.7rem] border border-border/80 bg-card/85 p-5 backdrop-blur-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-[1.15rem] font-semibold tracking-tight">{providerLabel}</p>
+                        <ProviderBadge providerId={provider} />
+                      </div>
+                      {providerExamples && (
+                        <p className="text-sm text-muted-foreground">{providerExamples}</p>
+                      )}
+                    </div>
+                    {cfg?.keyUrl && (
+                      <a href={cfg.keyUrl} target="_blank" rel="noopener noreferrer" className="button-secondary text-sm">
+                        {t('models.getApiKey', { provider: providerLabel, credential: credentialLabel })} &rarr;
+                      </a>
+                    )}
+                  </div>
+
+                  {cfg?.noteKey && (
+                    <p
+                      id="models-provider-note"
+                      className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100"
+                    >
+                      {t(cfg.noteKey)}
+                    </p>
+                  )}
+
+                  {willInstallBundledSkill && (
+                    <div
+                      id="models-provider-skill-install-note"
+                      className="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-950 dark:text-emerald-100"
+                    >
+                      <p className="font-medium">{t('models.skillInstallNoticeTitle')}</p>
+                      <p className="mt-1 text-xs text-emerald-900/90 dark:text-emerald-100/90">
+                        {t('models.ernieImageSkillInstallNotice')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <ProviderGuidancePanel providerId={provider} toolModelExamples={toolModelExamples} />
+              </div>
+
+              <div className="space-y-4 rounded-[1.7rem] border border-border/80 bg-card/90 p-5 backdrop-blur-sm 2xl:sticky 2xl:top-0 2xl:self-start">
+                <div className="space-y-1">
+                  <p className="control-label">{t('models.addProviderTitle')}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {providerLabel}
+                  </p>
+                </div>
+
+                {cfg?.needsBaseUrl && (
+                  <input
+                    id="models-provider-base-url"
+                    type="url"
+                    placeholder={t('models.baseUrlPlaceholder')}
+                    value={customBaseUrl}
+                    onChange={(e) => setCustomBaseUrl(e.target.value)}
+                    className="control-input font-mono"
+                  />
+                )}
+
+                <input
+                  id="models-provider-api-key"
+                  type="password"
+                  placeholder={t('models.apiKeyPlaceholder', {
+                    provider: providerLabel,
+                    credential: credentialLabel,
+                  })}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  className="control-input font-mono"
+                />
+
+                {error && <p className="text-xs text-red-500">{error}</p>}
+
+                <button
+                  onClick={handleAdd}
+                  disabled={!apiKey.trim() || busy}
+                  className="button-primary w-full"
+                >
+                  {busy ? t('models.verifyAndAdding') : t('models.verifyAndAdd')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

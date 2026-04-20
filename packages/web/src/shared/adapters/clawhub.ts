@@ -8,160 +8,13 @@ import { webFetch, webFetchJson } from '@/shared/adapters/webHttp'
 
 /** Same order as packages/backend/src/skillsCli.ts SKILL_CLI_ROOTS */
 const SKILL_CLI_ROOTS = ['skills', 'clawbot', 'clawhub'] as const
-const BUNDLED_SKILL_SLUGS = new Set(['content-draft', 'ernie-image', 'paddleocr-doc-parsing'])
-const SKILLGUARD_SCAN_SCRIPT = String.raw`
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { spawnSync } = require('child_process');
-
-function trailingSlugToken(value) {
-  const parts = String(value || '').split('/').filter(Boolean);
-  return parts[parts.length - 1] || '';
-}
-
-function uniqueTokens(values) {
-  const out = [];
-  const seen = new Set();
-  for (const value of values) {
-    const token = String(value || '').trim();
-    if (!token) continue;
-    const key = token.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(token);
-  }
-  return out;
-}
-
-function resolveSkillDir(payload) {
-  const roots = [
-    path.join(os.homedir(), '.openclaw', 'skills'),
-    path.join(os.homedir(), '.openclaw', 'workspace', 'skills'),
-    path.join(os.homedir(), '.agents', 'skills'),
-    path.join(os.homedir(), '.codex', 'skills'),
-    path.join(os.homedir(), '.config', 'openclaw', 'skills'),
-  ];
-  const candidates = uniqueTokens([
-    payload.skillKey,
-    payload.name,
-    payload.slug,
-    trailingSlugToken(payload.slug),
-  ]);
-
-  for (const root of roots) {
-    if (!fs.existsSync(root)) continue;
-
-    let entries = [];
-    try {
-      entries = fs.readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-    } catch {
-      continue;
-    }
-
-    for (const token of candidates) {
-      const direct = path.join(root, token);
-      if (fs.existsSync(path.join(direct, 'SKILL.md'))) {
-        return direct;
-      }
-
-      const matched = entries.find((entry) => entry.name.toLowerCase() === token.toLowerCase());
-      if (!matched) continue;
-      const matchedDir = path.join(root, matched.name);
-      if (fs.existsSync(path.join(matchedDir, 'SKILL.md'))) {
-        return matchedDir;
-      }
-    }
-  }
-
-  return null;
-}
-
-function mapFinding(finding) {
-  return {
-    dimension: String(finding?.dimension || ''),
-    severity: String(finding?.severity || 'INFO'),
-    filePath: String(finding?.file_path || ''),
-    lineNumber: typeof finding?.line_number === 'number' ? finding.line_number : null,
-    pattern: typeof finding?.pattern === 'string' ? finding.pattern : undefined,
-    description: String(finding?.description || ''),
-    reference: typeof finding?.reference === 'string' ? finding.reference : undefined,
-    remediationEn: typeof finding?.remediation_en === 'string' ? finding.remediation_en : undefined,
-    remediationZh: typeof finding?.remediation_zh === 'string' ? finding.remediation_zh : undefined,
-  };
-}
-
-function mapReport(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const findings = Array.isArray(raw.findings) ? raw.findings.map(mapFinding) : [];
-  return {
-    skillName: String(raw.skill_name || ''),
-    skillPath: String(raw.skill_path || ''),
-    riskScore: typeof raw.risk_score === 'number' ? raw.risk_score : 0,
-    riskLevel: String(raw.risk_level || 'A'),
-    findings,
-    tokenEstimate: {
-      l1SkillMd: Number(raw.token_estimate?.l1_skill_md || 0),
-      l2Eager: Number(raw.token_estimate?.l2_eager || 0),
-      l2Lazy: Number(raw.token_estimate?.l2_lazy || 0),
-      l3Total: Number(raw.token_estimate?.l3_total || 0),
-    },
-  };
-}
-
-const payload = JSON.parse(process.argv[1] || '{}');
-const skillDir = resolveSkillDir(payload);
-if (!skillDir) {
-  process.stderr.write('Installed skill directory not found for: ' + (payload.skillKey || payload.name || payload.slug || 'unknown') + '\n');
-  process.exit(2);
-}
-
-const child = spawnSync(
-  'npm',
-  ['exec', '--yes', '@clawmaster/skillguard-cli', '--', skillDir, '--json'],
-  {
-    encoding: 'utf8',
-    maxBuffer: 20 * 1024 * 1024,
-    env: process.env,
-  }
-);
-
-if (child.status !== 0) {
-  process.stderr.write((child.stderr || child.stdout || ('skillguard exited with code ' + (child.status || 1))).trim());
-  process.exit(child.status || 1);
-}
-
-let parsed;
-try {
-  parsed = JSON.parse(child.stdout);
-} catch (error) {
-  process.stderr.write('Invalid SkillGuard JSON: ' + (error instanceof Error ? error.message : String(error)));
-  process.exit(1);
-}
-
-const report = Array.isArray(parsed?.reports) ? mapReport(parsed.reports[0]) : null;
-const findings = Array.isArray(report?.findings) ? report.findings : [];
-const severityCounts = {};
-for (const finding of findings) {
-  const level = String(finding.severity || 'INFO').toUpperCase();
-  severityCounts[level] = (severityCounts[level] || 0) + 1;
-}
-
-process.stdout.write(JSON.stringify({
-  auditMetadata: {
-    toolVersion: String(parsed?.audit_metadata?.tool_version || ''),
-    timestamp: String(parsed?.audit_metadata?.timestamp || ''),
-    target: String(parsed?.audit_metadata?.target || skillDir),
-  },
-  summary: {
-    totalSkills: Number(parsed?.summary?.total_skills || 0),
-    byLevel: parsed?.summary?.by_level && typeof parsed.summary.by_level === 'object' ? parsed.summary.by_level : {},
-  },
-  report,
-  severityCounts,
-  totalFindings: findings.length,
-}));
-`
+const BUNDLED_SKILL_SLUGS = new Set([
+  'clawprobe-cost-digest',
+  'content-draft',
+  'ernie-image',
+  'models-dev',
+  'paddleocr-doc-parsing',
+])
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -433,12 +286,10 @@ export async function scanInstalledSkillResult(skill: SkillInfo): Promise<Adapte
   }
 
   return fromPromise(async () => {
-    const payload = JSON.stringify({
+    return tauriInvoke<SkillGuardScanResult>('scan_installed_skill', {
       skillKey,
       name: skill.name,
       slug: skill.slug,
     })
-    const raw = await execCommand('node', ['-e', SKILLGUARD_SCAN_SCRIPT, payload])
-    return JSON.parse(raw) as SkillGuardScanResult
   })
 }

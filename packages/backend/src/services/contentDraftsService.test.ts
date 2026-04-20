@@ -12,12 +12,14 @@ import {
 
 test('content draft service lists saved variants and guards file reads to content-draft roots', () => {
   const previousHome = process.env.HOME
+  const previousDataDir = process.env.OPENCLAW_DATA_DIR
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-content-drafts-home-'))
 
   try {
     process.env.HOME = tempHome
+    process.env.OPENCLAW_DATA_DIR = tempHome
 
-    const variantDir = path.join(tempHome, '.openclaw', 'workspace', 'content-drafts', 'run-001', 'xhs')
+    const variantDir = path.join(tempHome, 'workspace', 'content-drafts', 'run-001', 'xhs')
     const imagesDir = path.join(variantDir, 'images')
     fs.mkdirSync(imagesDir, { recursive: true })
     fs.writeFileSync(path.join(variantDir, 'draft.md'), '# Draft body\n', 'utf8')
@@ -58,18 +60,26 @@ test('content draft service lists saved variants and guards file reads to conten
     } else {
       process.env.HOME = previousHome
     }
+    if (previousDataDir === undefined) {
+      delete process.env.OPENCLAW_DATA_DIR
+    } else {
+      process.env.OPENCLAW_DATA_DIR = previousDataDir
+    }
     fs.rmSync(tempHome, { recursive: true, force: true })
   }
 })
 
 test('content draft service deletes a saved variant and prunes the empty run directory', () => {
   const previousHome = process.env.HOME
+  const previousDataDir = process.env.OPENCLAW_DATA_DIR
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-content-drafts-delete-'))
 
   try {
     process.env.HOME = tempHome
 
-    const variantDir = path.join(tempHome, '.openclaw', 'workspace', 'content-drafts', 'run-002', 'wechat')
+    process.env.OPENCLAW_DATA_DIR = tempHome
+
+    const variantDir = path.join(tempHome, 'workspace', 'content-drafts', 'run-002', 'wechat')
     fs.mkdirSync(path.join(variantDir, 'images'), { recursive: true })
     const manifestPath = path.join(variantDir, 'manifest.json')
     fs.writeFileSync(
@@ -90,6 +100,11 @@ test('content draft service deletes a saved variant and prunes the empty run dir
       delete process.env.HOME
     } else {
       process.env.HOME = previousHome
+    }
+    if (previousDataDir === undefined) {
+      delete process.env.OPENCLAW_DATA_DIR
+    } else {
+      process.env.OPENCLAW_DATA_DIR = previousDataDir
     }
     fs.rmSync(tempHome, { recursive: true, force: true })
   }

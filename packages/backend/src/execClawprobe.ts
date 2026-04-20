@@ -1,16 +1,25 @@
 import { execFile, execFileSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import fs, { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { getClawmasterRuntimeSelection } from './clawmasterSettings.js'
 import { resolveNpmExecFileCommand, needsShellOnWindows } from './execOpenclaw.js'
+import { getOpenclawDataDir } from './paths.js'
 import { normalizeLoginShellWhichLine } from './shellWhichNormalize.js'
+import { readFreshModelsDevCustomPrices, type ClawprobeCustomPrice } from './services/modelsDevPricing.js'
 import {
+  getWslHomeDirSync,
   getWslRuntimeUnavailableMessage,
+  readTextFileInWslSync,
   requireSelectedWslDistroSync,
   resolveCommandInWslSync,
+  runWslShell,
+  runWslShellSync,
+  shellEscapePosixArg,
   shouldUseWslRuntime,
+  writeTextFileInWslSync,
 } from './wslRuntime.js'
 
 const require = createRequire(import.meta.url)
@@ -40,11 +49,22 @@ export interface ClawprobeCommandOutput {
   stderr: string
 }
 
+export interface ClawprobeExecutionOptions {
+  useModelsDevPricing?: boolean
+}
+
 type ClawprobeCommandResolution = {
   cmd: string
   argsPrefix: string[]
   source: 'local-package' | 'global-package' | 'login-shell' | 'bare'
   globalInstallDetected: boolean
+}
+
+type PreparedClawprobeExecution = {
+  cmd?: string
+  args?: string[]
+  env?: NodeJS.ProcessEnv
+  cleanup?: () => Promise<void> | void
 }
 
 function getClawprobePackageRoot(): string | null {
@@ -255,28 +275,256 @@ function isClawprobeJsonError(v: unknown): v is { ok: false; error?: string; mes
   )
 }
 
-export async function runClawprobeJson(args: string[]): Promise<unknown> {
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readJsonObject(raw: string | null): Record<string, unknown> | null {
+  if (!raw?.trim()) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return isObjectRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export function buildClawprobeConfigOverrideForTest(
+  baseConfig: Record<string, unknown>,
+  customPrices: Record<string, ClawprobeCustomPrice>
+): Record<string, unknown> {
+  const currentCost = isObjectRecord(baseConfig.cost) ? baseConfig.cost : {}
+  const currentPrices = isObjectRecord(currentCost.customPrices) ? currentCost.customPrices : {}
+  return {
+    ...baseConfig,
+    cost: {
+      ...currentCost,
+      customPrices: {
+        ...customPrices,
+        ...currentPrices,
+      },
+    },
+  }
+}
+
+export function buildClawprobeHomeOverrideEnvForTest(
+  homeDir: string,
+  openclawDir: string,
+  baseEnv: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...baseEnv,
+    HOME: homeDir,
+    OPENCLAW_DIR: openclawDir,
+  }
+  if (process.platform === 'win32') {
+    env.USERPROFILE = homeDir
+  }
+  return env
+}
+
+export function mirrorClawprobeFilesForOverrideForTest(
+  sourceProbeDir: string,
+  targetProbeDir: string
+): void {
+  if (!fs.existsSync(sourceProbeDir)) {
+    return
+  }
+  for (const entry of fs.readdirSync(sourceProbeDir)) {
+    if (entry === 'config.json') {
+      continue
+    }
+    const sourcePath = path.join(sourceProbeDir, entry)
+    const targetPath = path.join(targetProbeDir, entry)
+    const stat = fs.statSync(sourcePath)
+    if (stat.isFile()) {
+      try {
+        fs.linkSync(sourcePath, targetPath)
+      } catch {
+        fs.copyFileSync(sourcePath, targetPath)
+      }
+      continue
+    }
+    fs.mkdirSync(targetPath, { recursive: true })
+    mirrorClawprobeFilesForOverrideForTest(sourcePath, targetPath)
+  }
+}
+
+export function withTempHomeDirForOverride<T>(callback: (tempHome: string) => T): T {
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-clawprobe-home-'))
+  try {
+    return callback(tempHome)
+  } catch (error) {
+    fs.rmSync(tempHome, { recursive: true, force: true })
+    throw error
+  }
+}
+
+function prepareLocalClawprobeExecution(
+  customPrices: Record<string, ClawprobeCustomPrice>
+): PreparedClawprobeExecution {
+  return withTempHomeDirForOverride((tempHome) => {
+    const realProbeDir = path.join(os.homedir(), '.clawprobe')
+    const tempProbeDir = path.join(tempHome, '.clawprobe')
+    fs.mkdirSync(tempProbeDir, { recursive: true })
+    mirrorClawprobeFilesForOverrideForTest(realProbeDir, tempProbeDir)
+
+    const baseConfig =
+      readJsonObject(
+        fs.existsSync(path.join(realProbeDir, 'config.json'))
+          ? fs.readFileSync(path.join(realProbeDir, 'config.json'), 'utf8')
+          : null
+      ) ?? {}
+    const mergedConfig = buildClawprobeConfigOverrideForTest(baseConfig, customPrices)
+    fs.writeFileSync(
+      path.join(tempProbeDir, 'config.json'),
+      `${JSON.stringify(mergedConfig, null, 2)}\n`,
+      'utf8'
+    )
+
+    return {
+      env: buildClawprobeHomeOverrideEnvForTest(tempHome, getOpenclawDataDir()),
+      cleanup: () => {
+        fs.rmSync(tempHome, { recursive: true, force: true })
+      },
+    }
+  })
+}
+
+export function buildWslClawprobeCommandScriptForTest(
+  tempHome: string,
+  openclawDir: string,
+  clawprobePath: string,
+  args: string[],
+): string {
+  return [
+    `HOME=${shellEscapePosixArg(tempHome)}`,
+    `OPENCLAW_DIR=${shellEscapePosixArg(openclawDir)}`,
+    [clawprobePath, ...args].map((value) => shellEscapePosixArg(value)).join(' '),
+  ].join(' ')
+}
+
+async function prepareWslClawprobeExecution(
+  args: string[],
+  customPrices: Record<string, ClawprobeCustomPrice>
+): Promise<PreparedClawprobeExecution> {
+  const runtimeSelection = getClawmasterRuntimeSelection()
+  const distro = requireSelectedWslDistroSync(runtimeSelection)
+  const homeDir = getWslHomeDirSync(distro)
+  const realProbeDir = path.posix.join(homeDir, '.clawprobe')
+  const tempHomeResult = runWslShellSync(distro, 'mktemp -d /tmp/clawmaster-clawprobe-home-XXXXXX')
+  if (tempHomeResult.code !== 0 || !tempHomeResult.stdout.trim()) {
+    throw new Error(tempHomeResult.stderr || 'Failed to create temporary clawprobe HOME in WSL')
+  }
+
+  const tempHome = tempHomeResult.stdout.trim()
+  try {
+    const tempProbeDir = path.posix.join(tempHome, '.clawprobe')
+    const mirrorScript = [
+      `mkdir -p ${shellEscapePosixArg(tempProbeDir)}`,
+      `if [ -d ${shellEscapePosixArg(realProbeDir)} ]; then cp -al ${shellEscapePosixArg(`${realProbeDir}/.`)} ${shellEscapePosixArg(`${tempProbeDir}/`)} 2>/dev/null || cp -a ${shellEscapePosixArg(`${realProbeDir}/.`)} ${shellEscapePosixArg(`${tempProbeDir}/`)}; fi`,
+      `rm -f ${shellEscapePosixArg(path.posix.join(tempProbeDir, 'config.json'))}`,
+    ].join(' && ')
+    const mirrorResult = runWslShellSync(distro, mirrorScript)
+    if (mirrorResult.code !== 0) {
+      throw new Error(mirrorResult.stderr || 'Failed to mirror clawprobe files in WSL')
+    }
+
+    const baseConfig =
+      readJsonObject(readTextFileInWslSync(distro, path.posix.join(realProbeDir, 'config.json'))) ?? {}
+    const mergedConfig = buildClawprobeConfigOverrideForTest(baseConfig, customPrices)
+    writeTextFileInWslSync(
+      distro,
+      path.posix.join(tempProbeDir, 'config.json'),
+      `${JSON.stringify(mergedConfig, null, 2)}\n`
+    )
+
+    const clawprobePath = resolveCommandInWslSync(distro, 'clawprobe') ?? 'clawprobe'
+    const commandScript = buildWslClawprobeCommandScriptForTest(
+      tempHome,
+      getOpenclawDataDir(),
+      clawprobePath,
+      args,
+    )
+
+    return {
+      cmd: 'wsl.exe',
+      args: ['-d', distro, '--', 'bash', '-lc', commandScript],
+      env: process.env,
+      cleanup: async () => {
+        await runWslShell(distro, `rm -rf ${shellEscapePosixArg(tempHome)}`)
+      },
+    }
+  } catch (error) {
+    await runWslShell(distro, `rm -rf ${shellEscapePosixArg(tempHome)}`)
+    throw error
+  }
+}
+
+async function prepareClawprobeExecution(
+  args: string[],
+  options: ClawprobeExecutionOptions
+): Promise<PreparedClawprobeExecution | null> {
+  if (!options.useModelsDevPricing) {
+    return null
+  }
+
+  const customPrices = readFreshModelsDevCustomPrices()
+  if (!customPrices || Object.keys(customPrices).length === 0) {
+    return null
+  }
+
+  const runtimeSelection = getClawmasterRuntimeSelection()
+  if (shouldUseWslRuntime(runtimeSelection)) {
+    return prepareWslClawprobeExecution(args, customPrices)
+  }
+  return prepareLocalClawprobeExecution(customPrices)
+}
+
+export async function runClawprobeJson(
+  args: string[],
+  options: ClawprobeExecutionOptions = {}
+): Promise<unknown> {
   const resolution = resolveClawprobeCommand()
-  const cmdArgs = [...resolution.argsPrefix, ...args]
+  let cmd = resolution.cmd
+  let cmdArgs = [...resolution.argsPrefix, ...args]
+  let env = process.env
+  let cleanup: PreparedClawprobeExecution['cleanup']
+
+  const prepared = await prepareClawprobeExecution(args, options)
+  if (prepared) {
+    cmd = prepared.cmd ?? cmd
+    cmdArgs = prepared.args ?? cmdArgs
+    env = prepared.env ?? env
+    cleanup = prepared.cleanup
+  }
 
   let stdout = ''
   let stderr = ''
   let exitCode = 0
   try {
-    const out = await execFileAsync(resolution.cmd, cmdArgs, {
+    const out = await execFileAsync(cmd, cmdArgs, {
       maxBuffer: 20 * 1024 * 1024,
-      env: process.env,
+      env,
     })
     stdout = String(out.stdout ?? '').trim()
     stderr = String(out.stderr ?? '').trim()
-  } catch (e: unknown) {
-    const err = e as NodeJS.ErrnoException & { stdout?: Buffer; stderr?: Buffer; code?: string | number }
+  } catch (error: unknown) {
+    const err = error as NodeJS.ErrnoException & {
+      stdout?: Buffer
+      stderr?: Buffer
+      code?: string | number
+    }
     if (isClawprobeUnavailableFailure(err)) {
       throw new ClawprobeUnavailableError(getUnavailableReason(resolution, err))
     }
     stdout = err.stdout ? String(err.stdout).trim() : ''
     stderr = err.stderr ? String(err.stderr).trim() : ''
     exitCode = typeof err.code === 'number' ? err.code : 1
+  } finally {
+    await cleanup?.()
   }
 
   if (!stdout && exitCode !== 0) {
@@ -303,7 +551,10 @@ export async function runClawprobeJson(args: string[]): Promise<unknown> {
   return parsed
 }
 
-export async function runClawprobeCommand(args: string[]): Promise<ClawprobeCommandOutput> {
+export async function runClawprobeCommand(
+  args: string[],
+  options: ClawprobeExecutionOptions = {}
+): Promise<ClawprobeCommandOutput> {
   let resolution: ClawprobeCommandResolution
   try {
     resolution = resolveClawprobeCommand()
@@ -318,10 +569,33 @@ export async function runClawprobeCommand(args: string[]): Promise<ClawprobeComm
     }
     throw error
   }
+
+  let cmd = resolution.cmd
+  let cmdArgs = [...resolution.argsPrefix, ...args]
+  let env = process.env
+  let cleanup: PreparedClawprobeExecution['cleanup']
+
   try {
-    const out = await execFileAsync(resolution.cmd, [...resolution.argsPrefix, ...args], {
+    const prepared = await prepareClawprobeExecution(args, options)
+    if (prepared) {
+      cmd = prepared.cmd ?? cmd
+      cmdArgs = prepared.args ?? cmdArgs
+      env = prepared.env ?? env
+      cleanup = prepared.cleanup
+    }
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      code: 1,
+      stdout: '',
+      stderr: error instanceof Error ? error.message : String(error),
+    }
+  }
+
+  try {
+    const out = await execFileAsync(cmd, cmdArgs, {
       maxBuffer: 20 * 1024 * 1024,
-      env: process.env,
+      env,
     })
     return {
       ok: true,
@@ -329,8 +603,12 @@ export async function runClawprobeCommand(args: string[]): Promise<ClawprobeComm
       stdout: String(out.stdout ?? '').trim(),
       stderr: String(out.stderr ?? '').trim(),
     }
-  } catch (e: unknown) {
-    const err = e as NodeJS.ErrnoException & { stdout?: Buffer; stderr?: Buffer; code?: string | number }
+  } catch (error: unknown) {
+    const err = error as NodeJS.ErrnoException & {
+      stdout?: Buffer
+      stderr?: Buffer
+      code?: string | number
+    }
     if (isClawprobeUnavailableFailure(err)) {
       const reason = getUnavailableReason(resolution, err)
       return {
@@ -349,5 +627,7 @@ export async function runClawprobeCommand(args: string[]): Promise<ClawprobeComm
       stdout: err.stdout ? String(err.stdout).trim() : '',
       stderr: err.stderr ? String(err.stderr).trim() : '',
     }
+  } finally {
+    await cleanup?.()
   }
 }

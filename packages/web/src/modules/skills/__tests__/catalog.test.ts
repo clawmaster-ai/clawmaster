@@ -43,7 +43,7 @@ describe('Skills catalog', () => {
     expect(FEATURED_SKILLS.find((skill) => skill.skillKey === 'find-skills')?.slug).toBe('find-skills-skill')
   })
 
-  it('includes bundled OCR, content, and image guides in the curated catalog', () => {
+  it('includes bundled skills in the curated catalog', () => {
     expect(SKILL_CATALOG.find((skill) => skill.slug === 'content-draft')).toMatchObject({
       slug: 'content-draft',
       name: 'Content Draft',
@@ -59,6 +59,18 @@ describe('Skills catalog', () => {
     expect(SKILL_CATALOG.find((skill) => skill.slug === 'ernie-image')).toMatchObject({
       slug: 'ernie-image',
       name: 'ERNIE-Image Guide',
+      category: 'productivity',
+      installSource: 'bundled',
+    })
+    expect(SKILL_CATALOG.find((skill) => skill.slug === 'models-dev')).toMatchObject({
+      slug: 'models-dev',
+      name: 'models.dev',
+      category: 'productivity',
+      installSource: 'bundled',
+    })
+    expect(SKILL_CATALOG.find((skill) => skill.slug === 'clawprobe-cost-digest')).toMatchObject({
+      slug: 'clawprobe-cost-digest',
+      name: 'ClawProbe Cost Digest',
       category: 'productivity',
       installSource: 'bundled',
     })

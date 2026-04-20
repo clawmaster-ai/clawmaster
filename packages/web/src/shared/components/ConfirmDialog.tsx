@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -13,6 +14,10 @@ interface ConfirmDialogProps {
   onCancel: () => void
   onConfirm: () => void
   children?: ReactNode
+  panelClassName?: string
+  headerClassName?: string
+  bodyClassName?: string
+  actionsClassName?: string
 }
 
 export function ConfirmDialog({
@@ -26,6 +31,10 @@ export function ConfirmDialog({
   onCancel,
   onConfirm,
   children,
+  panelClassName,
+  headerClassName,
+  bodyClassName,
+  actionsClassName,
 }: ConfirmDialogProps) {
   const { t } = useTranslation()
 
@@ -38,9 +47,12 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="relative z-10 w-full max-w-lg rounded-[1.75rem] border border-border/80 bg-background p-5 shadow-2xl sm:p-6"
+        className={cn(
+          'relative z-10 w-full max-w-lg overflow-hidden rounded-[1.75rem] border border-border/80 bg-background shadow-2xl',
+          panelClassName,
+        )}
       >
-        <div className="flex items-start gap-3">
+        <div className={cn('px-5 pt-5 sm:px-6 sm:pt-6', headerClassName)}>
           <div className="flex min-w-0 items-start gap-3">
             <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${tone === 'danger' ? 'border-destructive/30 bg-destructive/5 text-destructive' : 'border-border/70 bg-muted/60 text-foreground'}`}>
               <AlertTriangle className="h-5 w-5" />
@@ -54,9 +66,9 @@ export function ConfirmDialog({
           </div>
         </div>
 
-        {children ? <div className="mt-4">{children}</div> : null}
+        {children ? <div className={cn('px-5 pb-0 pt-4 sm:px-6', bodyClassName)}>{children}</div> : null}
 
-        <div className="mt-6 flex flex-wrap justify-end gap-3">
+        <div className={cn('flex flex-wrap justify-end gap-3 px-5 pb-5 pt-6 sm:px-6 sm:pb-6', actionsClassName)}>
           <button type="button" onClick={onCancel} disabled={busy} className="button-secondary">
             {cancelLabel ?? t('common.cancel')}
           </button>
