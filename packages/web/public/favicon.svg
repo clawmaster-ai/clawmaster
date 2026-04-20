@@ -1,0 +1,13 @@
+<svg viewBox="38 18 36 64" xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+  <!-- ClawMaster favicon · tighter crop for browser tabs -->
+  <circle cx="68" cy="50" r="5" fill="#F5A623"/>
+  <g fill="none" stroke="#F5A623" stroke-linecap="round">
+    <path d="M 68 40 A 10 10 0 0 0 68 60" stroke-width="3.5"/>
+    <path d="M 68 31 A 19 19 0 0 0 68 69" stroke-width="3"/>
+    <path d="M 68 22 A 28 28 0 0 0 68 78" stroke-width="2.5"/>
+  </g>
+  <g fill="#F5A623">
+    <circle cx="68" cy="22" r="2.5"/>
+    <circle cx="68" cy="78" r="2.5"/>
+  </g>
+</svg>
