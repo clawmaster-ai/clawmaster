@@ -22,6 +22,11 @@ const bundledPlugins = [
 ]
 const bundledSkills = [
   {
+    id: 'content-draft',
+    sourceRoot: path.join(repoRoot, 'bundled-skills', 'content-draft'),
+    bundledRoot: path.join(resourcesRoot, 'bundled-skills', 'content-draft'),
+  },
+  {
     id: 'clawprobe-cost-digest',
     sourceRoot: path.join(repoRoot, 'bundled-skills', 'clawprobe-cost-digest'),
     bundledRoot: path.join(resourcesRoot, 'bundled-skills', 'clawprobe-cost-digest'),

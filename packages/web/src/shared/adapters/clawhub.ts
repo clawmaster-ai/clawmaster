@@ -10,6 +10,7 @@ import { webFetch, webFetchJson } from '@/shared/adapters/webHttp'
 const SKILL_CLI_ROOTS = ['skills', 'clawbot', 'clawhub'] as const
 const BUNDLED_SKILL_SLUGS = new Set([
   'clawprobe-cost-digest',
+  'content-draft',
   'ernie-image',
   'models-dev',
   'paddleocr-doc-parsing',

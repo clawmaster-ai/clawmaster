@@ -27,7 +27,7 @@ export const NAV_SECTIONS: NavSectionMeta[] = [
     id: 'extend',
     labelKey: 'layout.section.extend',
     descriptionKey: 'layout.section.extendDesc',
-    paths: ['/capabilities', '/skills', '/plugins', '/mcp', '/docs'],
+    paths: ['/capabilities', '/skills', '/content-drafts', '/plugins', '/mcp', '/docs'],
   },
   {
     id: 'control',
@@ -49,6 +49,7 @@ export const PAGE_META: Record<string, PageMeta> = {
   '/memory': { sectionId: 'workspace', descriptionKey: 'layout.page.memory' },
   '/capabilities': { sectionId: 'extend', descriptionKey: 'layout.page.capabilities' },
   '/skills': { sectionId: 'extend', descriptionKey: 'layout.page.skills' },
+  '/content-drafts': { sectionId: 'extend', descriptionKey: 'layout.page.contentDrafts' },
   '/plugins': { sectionId: 'extend', descriptionKey: 'layout.page.plugins' },
   '/mcp': { sectionId: 'extend', descriptionKey: 'layout.page.mcp' },
   '/docs': { sectionId: 'extend', descriptionKey: 'layout.page.docs' },

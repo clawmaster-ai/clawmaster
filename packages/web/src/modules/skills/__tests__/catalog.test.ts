@@ -33,8 +33,8 @@ describe('Skills catalog', () => {
     }
   })
 
-  it('keeps five featured skills for the landing shelf', () => {
-    expect(FEATURED_SKILLS).toHaveLength(5)
+  it('keeps six featured skills for the landing shelf', () => {
+    expect(FEATURED_SKILLS).toHaveLength(6)
     expect(FEATURED_SKILLS.every((skill) => skill.skillKey)).toBe(true)
   })
 
@@ -44,6 +44,12 @@ describe('Skills catalog', () => {
   })
 
   it('includes bundled skills in the curated catalog', () => {
+    expect(SKILL_CATALOG.find((skill) => skill.slug === 'content-draft')).toMatchObject({
+      slug: 'content-draft',
+      name: 'Content Draft',
+      category: 'productivity',
+      installSource: 'bundled',
+    })
     expect(SKILL_CATALOG.find((skill) => skill.slug === 'paddleocr-doc-parsing')).toMatchObject({
       slug: 'paddleocr-doc-parsing',
       name: 'PaddleOCR Doc Parsing',

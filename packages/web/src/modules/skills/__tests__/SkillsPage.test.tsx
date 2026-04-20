@@ -79,11 +79,12 @@ describe('SkillsPage', () => {
 
     const headings = screen
       .getAllByRole('heading', { level: 3 })
-      .slice(0, 5)
+      .slice(0, 6)
       .map((node) => node.textContent)
 
     expect(headings).toEqual([
       'clawvet',
+      'content-draft',
       'ernie-image',
       'find-skills',
       'openclaw-memory-pro-system',
@@ -176,6 +177,6 @@ describe('SkillsPage', () => {
     expect(await screen.findByText('Install ClawHub CLI first')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Install ClawHub CLI' })).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Install ClawHub First' }).length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Install' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Install' }).length).toBeGreaterThan(0)
   })
 })

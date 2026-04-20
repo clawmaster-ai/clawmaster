@@ -1577,6 +1577,114 @@ fn read_active_openclaw_text_file(path: &Path) -> Result<Option<String>, String>
     }
 }
 
+const BASE64_STANDARD_ALPHABET: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn encode_base64_standard(input: &[u8]) -> String {
+    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    let mut index = 0;
+    while index < input.len() {
+        let chunk_len = (input.len() - index).min(3);
+        let mut chunk = [0u8; 3];
+        for offset in 0..chunk_len {
+            chunk[offset] = input[index + offset];
+        }
+        out.push(BASE64_STANDARD_ALPHABET[(chunk[0] >> 2) as usize] as char);
+        out.push(
+            BASE64_STANDARD_ALPHABET[(((chunk[0] & 0x03) << 4) | (chunk[1] >> 4)) as usize] as char,
+        );
+        if chunk_len > 1 {
+            out.push(
+                BASE64_STANDARD_ALPHABET[(((chunk[1] & 0x0F) << 2) | (chunk[2] >> 6)) as usize]
+                    as char,
+            );
+        } else {
+            out.push('=');
+        }
+        if chunk_len > 2 {
+            out.push(BASE64_STANDARD_ALPHABET[(chunk[2] & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        index += 3;
+    }
+    out
+}
+
+fn decode_base64_standard(input: &str) -> Result<Vec<u8>, String> {
+    const INVALID: u8 = 0xFF;
+    let mut table = [INVALID; 256];
+    for (index, &ch) in
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".iter().enumerate()
+    {
+        table[ch as usize] = index as u8;
+    }
+
+    let cleaned: Vec<u8> = input
+        .bytes()
+        .filter(|byte| !byte.is_ascii_whitespace())
+        .collect();
+    if cleaned.len() % 4 != 0 {
+        return Err("invalid base64 length".to_string());
+    }
+
+    let mut out = Vec::with_capacity(cleaned.len() / 4 * 3);
+    for chunk in cleaned.chunks(4) {
+        let mut values = [0u8; 4];
+        let mut padding = 0;
+        for (index, &byte) in chunk.iter().enumerate() {
+            if byte == b'=' {
+                padding += 1;
+                continue;
+            }
+            if padding > 0 {
+                return Err("invalid base64 padding".to_string());
+            }
+            let decoded = table[byte as usize];
+            if decoded == INVALID {
+                return Err("invalid base64 character".to_string());
+            }
+            values[index] = decoded;
+        }
+        out.push((values[0] << 2) | (values[1] >> 4));
+        if padding < 2 {
+            out.push((values[1] << 4) | (values[2] >> 2));
+        }
+        if padding < 1 {
+            out.push((values[2] << 6) | values[3]);
+        }
+    }
+    Ok(out)
+}
+
+fn read_active_openclaw_binary_file(path: &Path) -> Result<Option<Vec<u8>>, String> {
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        if !wsl_file_exists(&distro, &path.to_string_lossy()) {
+            return Ok(None);
+        }
+        // Pipe through base64 so Windows stdout newline translation cannot
+        // corrupt image bytes on their way out of wsl.exe.
+        let script = format!(
+            "base64 -- {} | tr -d '\\n'",
+            shell_escape_posix_arg(&path.to_string_lossy())
+        );
+        let output = run_wsl_shell(&distro, &script, None)?;
+        if output.code != 0 {
+            return Err(cmd_err_d("WSL_BINARY_READ_FAILED", output.stderr.trim()));
+        }
+        let decoded = decode_base64_standard(output.stdout.trim())
+            .map_err(|error| cmd_err_d("WSL_BINARY_READ_FAILED", error))?;
+        return Ok(Some(decoded));
+    }
+
+    match fs::read(path) {
+        Ok(content) => Ok(Some(content)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(cmd_err_d("IO_ERROR", error)),
+    }
+}
+
 fn write_active_openclaw_text_file(path: &Path, content: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     if let Some(distro) = active_wsl_distro() {
@@ -1658,6 +1766,36 @@ struct RequiredRuntimeTextFileDto {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct RuntimeBinaryFileDto {
+    path: String,
+    mime_type: String,
+    base64: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContentDraftVariantSummaryDto {
+    id: String,
+    run_id: String,
+    platform: String,
+    title: Option<String>,
+    slug: Option<String>,
+    source_url: Option<String>,
+    saved_at: Option<String>,
+    draft_path: String,
+    manifest_path: String,
+    images_dir: String,
+    image_files: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContentDraftDeleteResultDto {
+    removed_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct McpImportCandidateDto {
     id: String,
     format: String,
@@ -1675,6 +1813,387 @@ struct OpenclawMemoryFileEntry {
     modified_at_ms: u64,
     extension: String,
     kind: String,
+}
+
+fn default_content_drafts_root() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        return PathBuf::from(join_posix(
+            &get_wsl_home_dir(&distro),
+            ".openclaw/workspace/content-drafts",
+        ));
+    }
+
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".openclaw")
+        .join("workspace")
+        .join("content-drafts")
+}
+
+fn active_content_drafts_root() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if active_wsl_distro().is_some() {
+        return PathBuf::from(join_posix(
+            &get_config_resolution().data_dir.to_string_lossy(),
+            "workspace/content-drafts",
+        ));
+    }
+
+    get_config_resolution()
+        .data_dir
+        .join("workspace")
+        .join("content-drafts")
+}
+
+fn workspace_content_drafts_root() -> Option<PathBuf> {
+    let workspace_dir = std::env::var("OPENCLAW_WORKSPACE_DIR").ok()?;
+    let trimmed = workspace_dir.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    #[cfg(target_os = "windows")]
+    if active_wsl_distro().is_some() {
+        return Some(PathBuf::from(join_posix(trimmed, "content-drafts")));
+    }
+
+    Some(PathBuf::from(trimmed).join("content-drafts"))
+}
+
+fn data_dir_content_drafts_root() -> Option<PathBuf> {
+    let data_dir = std::env::var("OPENCLAW_DATA_DIR").ok()?;
+    let trimmed = data_dir.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    #[cfg(target_os = "windows")]
+    if active_wsl_distro().is_some() {
+        return Some(PathBuf::from(join_posix(
+            trimmed,
+            "workspace/content-drafts",
+        )));
+    }
+
+    Some(
+        PathBuf::from(trimmed)
+            .join("workspace")
+            .join("content-drafts"),
+    )
+}
+
+fn config_path_content_drafts_root() -> Option<PathBuf> {
+    let config_path = std::env::var("OPENCLAW_CONFIG_PATH").ok()?;
+    let trimmed = config_path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    #[cfg(target_os = "windows")]
+    if active_wsl_distro().is_some() {
+        return Some(PathBuf::from(join_posix(
+            &dirname_posix(trimmed),
+            "workspace/content-drafts",
+        )));
+    }
+
+    Some(
+        PathBuf::from(trimmed)
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("workspace")
+            .join("content-drafts"),
+    )
+}
+
+fn content_drafts_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    let mut candidates = Vec::new();
+    if let Some(workspace_root) = workspace_content_drafts_root() {
+        candidates.push(workspace_root);
+    }
+    if let Some(data_root) = data_dir_content_drafts_root() {
+        candidates.push(data_root);
+    }
+    if let Some(config_root) = config_path_content_drafts_root() {
+        candidates.push(config_root);
+    }
+    candidates.push(active_content_drafts_root());
+    candidates.push(default_content_drafts_root());
+
+    for root in candidates {
+        if !roots.iter().any(|existing| existing == &root) {
+            roots.push(root);
+        }
+    }
+    roots
+}
+
+fn content_draft_mime_type(path: &Path) -> String {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png".to_string(),
+        Some("jpg") | Some("jpeg") => "image/jpeg".to_string(),
+        Some("webp") => "image/webp".to_string(),
+        Some("gif") => "image/gif".to_string(),
+        Some("svg") => "image/svg+xml".to_string(),
+        _ => "application/octet-stream".to_string(),
+    }
+}
+
+fn safe_host_canonicalize(candidate: &Path) -> PathBuf {
+    if let Ok(real) = fs::canonicalize(candidate) {
+        return real;
+    }
+    match candidate.parent() {
+        Some(parent) if parent != candidate => match fs::canonicalize(parent) {
+            Ok(real_parent) => match candidate.file_name() {
+                Some(name) => real_parent.join(name),
+                None => candidate.to_path_buf(),
+            },
+            Err(_) => candidate.to_path_buf(),
+        },
+        _ => candidate.to_path_buf(),
+    }
+}
+
+fn content_draft_path_allowed(path: &Path) -> bool {
+    #[cfg(target_os = "windows")]
+    if active_wsl_distro().is_some() {
+        let candidate = path.to_string_lossy();
+        return content_drafts_roots().iter().any(|root| {
+            let normalized_root = root.to_string_lossy();
+            let trimmed = normalized_root.trim_end_matches('/');
+            candidate == trimmed || candidate.starts_with(&format!("{trimmed}/"))
+        });
+    }
+
+    let canonical_candidate = safe_host_canonicalize(path);
+    content_drafts_roots()
+        .iter()
+        .map(|root| safe_host_canonicalize(root))
+        .any(|root| canonical_candidate.starts_with(&root))
+}
+
+fn resolve_allowed_content_draft_path(input: &str) -> Result<PathBuf, String> {
+    let resolved = resolve_runtime_input_path(input)?;
+    if !content_draft_path_allowed(&resolved) {
+        return Err(cmd_err_p(
+            "CONTENT_DRAFT_PATH_NOT_ALLOWED",
+            serde_json::json!({ "path": resolved.to_string_lossy() }),
+        ));
+    }
+    Ok(resolved)
+}
+
+fn normalize_content_draft_variant(
+    manifest_path: &Path,
+    raw: &serde_json::Value,
+) -> Option<ContentDraftVariantSummaryDto> {
+    let platform_dir = manifest_path.parent()?;
+    let run_dir = platform_dir.parent()?;
+    let platform = raw
+        .get("platform")
+        .and_then(|value| value.as_str())
+        .unwrap_or_else(|| {
+            platform_dir
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+        })
+        .trim()
+        .to_ascii_lowercase();
+    let run_id = raw
+        .get("runId")
+        .and_then(|value| value.as_str())
+        .unwrap_or_else(|| {
+            run_dir
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+        })
+        .trim()
+        .to_string();
+    if platform.is_empty() || run_id.is_empty() {
+        return None;
+    }
+
+    let draft_path = raw
+        .get("draftPath")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| platform_dir.join("draft.md"));
+    let images_dir = raw
+        .get("imagesDir")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| platform_dir.join("images"));
+    let image_files = raw
+        .get("imageFiles")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str())
+                .map(|item| item.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Some(ContentDraftVariantSummaryDto {
+        id: format!("{run_id}:{platform}"),
+        run_id,
+        platform,
+        title: raw
+            .get("title")
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        slug: raw
+            .get("slug")
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        source_url: raw
+            .get("sourceUrl")
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        saved_at: raw
+            .get("savedAt")
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        draft_path: draft_path.to_string_lossy().to_string(),
+        manifest_path: manifest_path.to_string_lossy().to_string(),
+        images_dir: images_dir.to_string_lossy().to_string(),
+        image_files,
+    })
+}
+
+fn collect_content_draft_manifests_host(root: &Path) -> Vec<PathBuf> {
+    let mut manifests = Vec::new();
+    if !root.is_dir() {
+        return manifests;
+    }
+    let Ok(run_entries) = fs::read_dir(root) else {
+        return manifests;
+    };
+    for run_entry in run_entries.flatten() {
+        let run_path = run_entry.path();
+        if !run_path.is_dir() {
+            continue;
+        }
+        let Ok(platform_entries) = fs::read_dir(&run_path) else {
+            continue;
+        };
+        for platform_entry in platform_entries.flatten() {
+            let platform_path = platform_entry.path();
+            if !platform_path.is_dir() {
+                continue;
+            }
+            let manifest_path = platform_path.join("manifest.json");
+            if manifest_path.is_file() {
+                manifests.push(manifest_path);
+            }
+        }
+    }
+    manifests
+}
+
+#[cfg(target_os = "windows")]
+fn collect_content_draft_manifests_wsl(distro: &str, root: &str) -> Result<Vec<PathBuf>, String> {
+    if !wsl_is_dir(distro, root) {
+        return Ok(vec![]);
+    }
+    let script = format!(
+        "find {} -mindepth 2 -maxdepth 2 -type f -name manifest.json -print",
+        shell_escape_posix_arg(root)
+    );
+    let output = run_wsl_shell(distro, &script, None)?;
+    if output.code != 0 {
+        return Err(cmd_err_d(
+            "CONTENT_DRAFT_MANIFEST_LIST_FAILED",
+            output.stderr.trim(),
+        ));
+    }
+    Ok(output
+        .stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(PathBuf::from)
+        .collect())
+}
+
+fn list_content_draft_variants_state() -> Result<Vec<ContentDraftVariantSummaryDto>, String> {
+    let mut manifest_paths = Vec::<PathBuf>::new();
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        for root in content_drafts_roots() {
+            for manifest_path in
+                collect_content_draft_manifests_wsl(&distro, &root.to_string_lossy())?
+            {
+                if !manifest_paths
+                    .iter()
+                    .any(|existing| existing == &manifest_path)
+                {
+                    manifest_paths.push(manifest_path);
+                }
+            }
+        }
+    } else {
+        for root in content_drafts_roots() {
+            for manifest_path in collect_content_draft_manifests_host(&root) {
+                if !manifest_paths
+                    .iter()
+                    .any(|existing| existing == &manifest_path)
+                {
+                    manifest_paths.push(manifest_path);
+                }
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    for root in content_drafts_roots() {
+        for manifest_path in collect_content_draft_manifests_host(&root) {
+            if !manifest_paths
+                .iter()
+                .any(|existing| existing == &manifest_path)
+            {
+                manifest_paths.push(manifest_path);
+            }
+        }
+    }
+
+    let mut variants = Vec::new();
+    for manifest_path in manifest_paths {
+        let Some(content) = read_active_openclaw_text_file(&manifest_path)? else {
+            continue;
+        };
+        let Ok(raw) = serde_json::from_str::<serde_json::Value>(&content) else {
+            continue;
+        };
+        if let Some(variant) = normalize_content_draft_variant(&manifest_path, &raw) {
+            variants.push(variant);
+        }
+    }
+
+    variants.sort_by(|left, right| {
+        let left_saved = left.saved_at.as_deref().unwrap_or("");
+        let right_saved = right.saved_at.as_deref().unwrap_or("");
+        right_saved
+            .cmp(left_saved)
+            .then_with(|| right.id.cmp(&left.id))
+    });
+    Ok(variants)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2244,7 +2763,11 @@ fn trailing_slug_token(value: Option<&str>) -> String {
         .to_string()
 }
 
-fn push_unique_skill_token(tokens: &mut Vec<String>, seen: &mut HashSet<String>, value: Option<&str>) {
+fn push_unique_skill_token(
+    tokens: &mut Vec<String>,
+    seen: &mut HashSet<String>,
+    value: Option<&str>,
+) {
     let token = value.unwrap_or_default().trim();
     if token.is_empty() {
         return;
@@ -2593,7 +3116,15 @@ fn run_skillguard_scan_wsl(distro: &str, skill_dir: &str) -> Result<serde_json::
 
 fn managed_memory_runtime_data_root(
     profile_selection: &OpenclawProfileSelection,
-) -> (String, String, Option<String>, String, String, String, String) {
+) -> (
+    String,
+    String,
+    Option<String>,
+    String,
+    String,
+    String,
+    String,
+) {
     let host_platform = normalize_local_data_target_platform(std::env::consts::OS).to_string();
     let host_arch = normalize_arch_label(std::env::consts::ARCH);
 
@@ -2695,7 +3226,11 @@ fn normalize_comparable_plugin_path(value: &str) -> String {
         }
     }
     normalized = normalized.replace('\\', "/");
-    let lower_leaf = normalized.rsplit('/').next().unwrap_or("").to_ascii_lowercase();
+    let lower_leaf = normalized
+        .rsplit('/')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
     if lower_leaf == "openclaw.plugin.json"
         || lower_leaf == "index.js"
         || lower_leaf == "index.mjs"
@@ -2920,8 +3455,14 @@ fn row_is_table_separator(cells: &[String]) -> bool {
         return true;
     }
     inner.iter().all(|cell| {
-        let trimmed = cell.chars().filter(|ch| !ch.is_whitespace()).collect::<String>();
-        trimmed.is_empty() || trimmed.chars().all(|ch| matches!(ch, '-' | '─' | '═' | '┼' | '+'))
+        let trimmed = cell
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>();
+        trimmed.is_empty()
+            || trimmed
+                .chars()
+                .all(|ch| matches!(ch, '-' | '─' | '═' | '┼' | '+'))
     })
 }
 
@@ -2936,10 +3477,22 @@ fn find_openclaw_plugins_table_layout(
         if cells.len() < 6 {
             continue;
         }
-        let c1 = cells.get(1).map(|value| value.to_ascii_lowercase()).unwrap_or_default();
-        let c2 = cells.get(2).map(|value| value.to_ascii_lowercase()).unwrap_or_default();
-        let c3 = cells.get(3).map(|value| value.to_ascii_lowercase()).unwrap_or_default();
-        let c4 = cells.get(4).map(|value| value.to_ascii_lowercase()).unwrap_or_default();
+        let c1 = cells
+            .get(1)
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_default();
+        let c2 = cells
+            .get(2)
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_default();
+        let c3 = cells
+            .get(3)
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_default();
+        let c4 = cells
+            .get(4)
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_default();
         if c1 != "name" || c2 != "id" {
             continue;
         }
@@ -3013,7 +3566,10 @@ fn parse_openclaw_plugin_rows_plain_text(raw: &str) -> Vec<serde_json::Value> {
             continue;
         }
         let cells = split_pipe_row_preserving_cells(line);
-        if cells.len() <= status_index || cells.len() <= version_index || row_is_table_separator(&cells) {
+        if cells.len() <= status_index
+            || cells.len() <= version_index
+            || row_is_table_separator(&cells)
+        {
             continue;
         }
         if let Some(source_index) = source_index {
@@ -3201,7 +3757,9 @@ fn get_installed_managed_memory_plugin_status() -> InstalledManagedMemoryPluginS
 
 fn is_managed_memory_bridge_plugin_ready(plugin_status: Option<&str>) -> bool {
     matches!(
-        plugin_status.map(|value| value.trim().to_ascii_lowercase()).as_deref(),
+        plugin_status
+            .map(|value| value.trim().to_ascii_lowercase())
+            .as_deref(),
         Some("loaded") | Some("enabled") | Some("active") | Some("ready") | Some("ok")
     )
 }
@@ -3211,7 +3769,9 @@ fn managed_memory_bridge_plugin_issue(
     plugin_status: Option<&str>,
 ) -> Option<String> {
     if !installed {
-        return Some(format!("{MEMORY_BRIDGE_PLUGIN_ID} is not installed in OpenClaw yet."));
+        return Some(format!(
+            "{MEMORY_BRIDGE_PLUGIN_ID} is not installed in OpenClaw yet."
+        ));
     }
     if is_managed_memory_bridge_plugin_ready(plugin_status) {
         return None;
@@ -3263,7 +3823,10 @@ fn normalize_managed_memory_bridge_entry(
         return None;
     }
     Some(ManagedMemoryBridgeEntryPayload {
-        enabled: value.get("enabled").and_then(|item| item.as_bool()).unwrap_or(true),
+        enabled: value
+            .get("enabled")
+            .and_then(|item| item.as_bool())
+            .unwrap_or(true),
         config: ManagedMemoryBridgeConfigPayload {
             data_root,
             engine: config
@@ -3361,7 +3924,10 @@ fn resolve_managed_memory_bridge_runtime_paths(
     if store.runtime_target == "wsl2" {
         return (
             host_plugin_path_string.clone(),
-            host_plugin_path.join("openclaw.plugin.json").to_string_lossy().to_string(),
+            host_plugin_path
+                .join("openclaw.plugin.json")
+                .to_string_lossy()
+                .to_string(),
             windows_path_to_wsl_path(&host_plugin_path_string),
             windows_path_to_wsl_path(&store.data_root),
             host_plugin_path,
@@ -3370,7 +3936,10 @@ fn resolve_managed_memory_bridge_runtime_paths(
 
     (
         host_plugin_path_string.clone(),
-        host_plugin_path.join("openclaw.plugin.json").to_string_lossy().to_string(),
+        host_plugin_path
+            .join("openclaw.plugin.json")
+            .to_string_lossy()
+            .to_string(),
         Some(host_plugin_path_string),
         Some(store.data_root),
         host_plugin_path,
@@ -3395,7 +3964,9 @@ fn write_config_json(config_root: &serde_json::Value) -> Result<(), String> {
 fn get_current_managed_memory_bridge_state(
     config_root: &serde_json::Value,
 ) -> (Option<String>, Option<ManagedMemoryBridgeEntryPayload>) {
-    let plugins = config_root.get("plugins").and_then(|value| value.as_object());
+    let plugins = config_root
+        .get("plugins")
+        .and_then(|value| value.as_object());
     let slots = plugins
         .and_then(|value| value.get("slots"))
         .and_then(|value| value.as_object());
@@ -3428,11 +3999,15 @@ fn set_managed_memory_bridge_config(
         .get_mut("plugins")
         .and_then(|value| value.as_object_mut())
         .expect("plugins object");
-    if !plugins.contains_key("slots") || !plugins.get("slots").is_some_and(|value| value.is_object()) {
+    if !plugins.contains_key("slots")
+        || !plugins.get("slots").is_some_and(|value| value.is_object())
+    {
         plugins.insert("slots".to_string(), serde_json::json!({}));
     }
     if !plugins.contains_key("entries")
-        || !plugins.get("entries").is_some_and(|value| value.is_object())
+        || !plugins
+            .get("entries")
+            .is_some_and(|value| value.is_object())
     {
         plugins.insert("entries".to_string(), serde_json::json!({}));
     }
@@ -3457,8 +4032,13 @@ fn set_managed_memory_bridge_config(
 fn get_managed_memory_bridge_status_payload() -> Result<ManagedMemoryBridgeStatusPayload, String> {
     let store = build_managed_memory_store_context();
     let desired_entry = build_managed_memory_bridge_entry();
-    let (plugin_path, plugin_manifest_path, runtime_plugin_path, runtime_data_root, _host_plugin_path) =
-        resolve_managed_memory_bridge_runtime_paths();
+    let (
+        plugin_path,
+        plugin_manifest_path,
+        runtime_plugin_path,
+        runtime_data_root,
+        _host_plugin_path,
+    ) = resolve_managed_memory_bridge_runtime_paths();
     let plugin_path_exists = PathBuf::from(&plugin_manifest_path).exists();
     let config_root = read_config_json_or_empty();
     let (current_slot_value, current_entry) = get_current_managed_memory_bridge_state(&config_root);
@@ -3470,7 +4050,10 @@ fn get_managed_memory_bridge_status_payload() -> Result<ManagedMemoryBridgeStatu
 
     let mut issues = Vec::new();
     if !plugin_path_exists {
-        issues.push("The managed PowerMem plugin files are missing from the ClawMaster package.".to_string());
+        issues.push(
+            "The managed PowerMem plugin files are missing from the ClawMaster package."
+                .to_string(),
+        );
     }
     if let Some(plugin_issue) = managed_memory_bridge_plugin_issue(
         installed_status.installed,
@@ -3510,7 +4093,8 @@ fn get_managed_memory_bridge_status_payload() -> Result<ManagedMemoryBridgeStatu
         && managed_memory_bridge_entries_match(current_entry.as_ref(), &desired_entry)
     {
         "ready".to_string()
-    } else if current_entry.is_some() || current_slot_value.is_some() || installed_status.installed {
+    } else if current_entry.is_some() || current_slot_value.is_some() || installed_status.installed
+    {
         "drifted".to_string()
     } else {
         "missing".to_string()
@@ -3595,8 +4179,12 @@ fn sync_managed_memory_bridge() -> Result<ManagedMemoryBridgeStatusPayload, Stri
         runtime_data_root,
         _host_plugin_path,
     ) = resolve_managed_memory_bridge_runtime_paths();
-    let runtime_plugin_path = runtime_plugin_path
-        .ok_or_else(|| cmd_err_d("MANAGED_MEMORY_BRIDGE_UNSUPPORTED", "Runtime plugin path is unavailable"))?;
+    let runtime_plugin_path = runtime_plugin_path.ok_or_else(|| {
+        cmd_err_d(
+            "MANAGED_MEMORY_BRIDGE_UNSUPPORTED",
+            "Runtime plugin path is unavailable",
+        )
+    })?;
     if !PathBuf::from(&plugin_manifest_path).exists() {
         return Err(cmd_err("MANAGED_MEMORY_BRIDGE_PLUGIN_MISSING"));
     }
@@ -3788,26 +4376,20 @@ fn reindex_openclaw_memory() -> Result<OpenclawMemoryReindexPayload, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        build_clawprobe_env_overrides,
-        build_clawprobe_config_override,
-        build_clawprobe_custom_prices_from_models_dev_catalog,
-        build_paddleocr_request_json,
-        create_runtime_temp_dir,
-        parse_models_dev_fetched_at,
-        parse_http_status_output,
-        get_config_path_candidates_for, get_openclaw_profile_args, get_openclaw_profile_data_dir,
-        install_bundled_skill,
-        local_data_profile_key, managed_memory_windows_wsl_data_root,
-        normalize_clawmaster_runtime_selection, normalize_local_data_target_platform,
-        parse_json_lenient, parse_node_major, parse_wsl_list_verbose,
-        repo_bundled_skill_root, repo_plugin_root, resolve_plugin_root,
-        resolve_config_path_from_candidates, resolve_local_data_status,
-        resolve_selected_wsl_distro_from_list, supports_seekdb_embedded,
-        OpenclawProfileSelection,
-    };
     #[cfg(target_os = "windows")]
     use super::build_wsl_clawprobe_command_script;
+    use super::{
+        build_clawprobe_config_override, build_clawprobe_custom_prices_from_models_dev_catalog,
+        build_clawprobe_env_overrides, build_paddleocr_request_json, create_runtime_temp_dir,
+        decode_base64_standard, encode_base64_standard, get_config_path_candidates_for,
+        get_openclaw_profile_args, get_openclaw_profile_data_dir, install_bundled_skill,
+        local_data_profile_key, managed_memory_windows_wsl_data_root,
+        normalize_clawmaster_runtime_selection, normalize_local_data_target_platform,
+        parse_http_status_output, parse_json_lenient, parse_models_dev_fetched_at,
+        parse_node_major, parse_wsl_list_verbose, repo_bundled_skill_root, repo_plugin_root,
+        resolve_config_path_from_candidates, resolve_local_data_status, resolve_plugin_root,
+        resolve_selected_wsl_distro_from_list, supports_seekdb_embedded, OpenclawProfileSelection,
+    };
     use std::fs;
     use std::path::Path;
     use std::path::PathBuf;
@@ -3834,7 +4416,26 @@ mod tests {
         ))
     }
 
-
+    #[test]
+    fn decode_base64_standard_round_trips_binary_payloads() {
+        assert_eq!(decode_base64_standard("").expect("empty"), Vec::<u8>::new());
+        assert_eq!(
+            decode_base64_standard("aGVsbG8=").expect("hello"),
+            b"hello".to_vec()
+        );
+        // Bytes that would collide with Windows stdout newline translation
+        // (0x0A, 0x0D) must survive the base64 round-trip verbatim.
+        let binary: Vec<u8> = (0u8..=255u8).collect();
+        let encoded = encode_base64_standard(&binary);
+        assert_eq!(decode_base64_standard(&encoded).expect("round trip"), binary);
+        // Whitespace from `tr -d '\n'` remnants or stdout framing is tolerated.
+        assert_eq!(
+            decode_base64_standard("aGVsbG8=\n").expect("trailing newline"),
+            b"hello".to_vec()
+        );
+        assert!(decode_base64_standard("aGVsbG8").is_err());
+        assert!(decode_base64_standard("aGVsb@8=").is_err());
+    }
 
     #[test]
     fn paddleocr_request_json_keeps_large_base64_payload_in_json_body() {
@@ -4256,7 +4857,10 @@ mod tests {
 
         assert_eq!(payload.mode, "unsupported");
         assert_eq!(payload.reason.as_deref(), Some("command_unavailable"));
-        assert_eq!(payload.detail.as_deref(), Some("error: unknown command 'memory'"));
+        assert_eq!(
+            payload.detail.as_deref(),
+            Some("error: unknown command 'memory'")
+        );
     }
 
     #[test]
@@ -4266,10 +4870,7 @@ mod tests {
             name: Some("team-a".to_string()),
         };
 
-        let root = managed_memory_windows_wsl_data_root(
-            &selection,
-            Path::new(r"C:\Users\alice"),
-        );
+        let root = managed_memory_windows_wsl_data_root(&selection, Path::new(r"C:\Users\alice"));
 
         assert_eq!(root, "/mnt/c/Users/alice/.clawmaster/data/named/team-a");
     }
@@ -4282,8 +4883,8 @@ mod tests {
         let resolved = resolve_plugin_root("openclaw-ernie-image".to_string(), vec![])
             .expect("resolve_plugin_root should succeed");
 
-        let expected = repo_plugin_root("openclaw-ernie-image")
-            .expect("repo plugin root should resolve");
+        let expected =
+            repo_plugin_root("openclaw-ernie-image").expect("repo plugin root should resolve");
         assert_eq!(resolved, Some(expected.to_string_lossy().to_string()));
         assert!(expected.join("openclaw.plugin.json").exists());
     }
@@ -4309,8 +4910,8 @@ mod tests {
         )
         .expect("resolve_plugin_root should succeed");
 
-        let expected = repo_plugin_root("openclaw-ernie-image")
-            .expect("repo plugin root should resolve");
+        let expected =
+            repo_plugin_root("openclaw-ernie-image").expect("repo plugin root should resolve");
         assert_eq!(resolved, Some(expected.to_string_lossy().to_string()));
     }
 
@@ -4354,14 +4955,133 @@ mod tests {
             .join("ernie-image")
             .join("SKILL.md");
         assert!(installed_skill.exists());
-        assert!(
-            repo_bundled_skill_root("ernie-image")
-                .expect("repo bundled skill root should resolve")
-                .join("SKILL.md")
-                .exists()
-        );
+        assert!(repo_bundled_skill_root("ernie-image")
+            .expect("repo bundled skill root should resolve")
+            .join("SKILL.md")
+            .exists());
 
         let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn install_content_draft_bundled_skill_falls_back_to_repo_skill_in_unbundled_dev_runs() {
+        let _guard = lock_test_env();
+        let previous_skill_root = std::env::var_os("CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT");
+        let previous_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_home = std::env::var_os("HOME");
+        let temp_root = unique_test_dir("content-draft-skill-install");
+        fs::create_dir_all(&temp_root).expect("should create temp root");
+
+        std::env::remove_var("CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT");
+        std::env::set_var("XDG_CONFIG_HOME", &temp_root);
+        std::env::set_var("HOME", &temp_root);
+
+        let install_result = install_bundled_skill("content-draft".to_string());
+
+        if let Some(value) = previous_skill_root {
+            std::env::set_var("CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT", value);
+        } else {
+            std::env::remove_var("CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT");
+        }
+        if let Some(value) = previous_xdg_config_home {
+            std::env::set_var("XDG_CONFIG_HOME", value);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+        if let Some(value) = previous_home {
+            std::env::set_var("HOME", value);
+        } else {
+            std::env::remove_var("HOME");
+        }
+
+        install_result.expect("repo bundled skill fallback should install successfully");
+
+        let installed_skill = temp_root
+            .join(".openclaw")
+            .join("workspace")
+            .join("skills")
+            .join("content-draft")
+            .join("SKILL.md");
+        assert!(installed_skill.exists());
+        assert!(repo_bundled_skill_root("content-draft")
+            .expect("repo bundled skill root should resolve")
+            .join("SKILL.md")
+            .exists());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn content_drafts_roots_include_openclaw_workspace_dir_override() {
+        let _guard = lock_test_env();
+        let previous_workspace_dir = std::env::var_os("OPENCLAW_WORKSPACE_DIR");
+        let temp_workspace = unique_test_dir("content-drafts-workspace-root");
+        fs::create_dir_all(&temp_workspace).expect("should create temp workspace");
+
+        std::env::set_var("OPENCLAW_WORKSPACE_DIR", &temp_workspace);
+
+        let roots = super::content_drafts_roots();
+
+        if let Some(value) = previous_workspace_dir {
+            std::env::set_var("OPENCLAW_WORKSPACE_DIR", value);
+        } else {
+            std::env::remove_var("OPENCLAW_WORKSPACE_DIR");
+        }
+
+        assert!(roots
+            .iter()
+            .any(|root| root == &temp_workspace.join("content-drafts")));
+
+        let _ = fs::remove_dir_all(temp_workspace);
+    }
+
+    #[test]
+    fn content_drafts_roots_include_openclaw_data_dir_override() {
+        let _guard = lock_test_env();
+        let previous_data_dir = std::env::var_os("OPENCLAW_DATA_DIR");
+        let temp_data_dir = unique_test_dir("content-drafts-data-root");
+        fs::create_dir_all(&temp_data_dir).expect("should create temp data dir");
+
+        std::env::set_var("OPENCLAW_DATA_DIR", &temp_data_dir);
+
+        let roots = super::content_drafts_roots();
+
+        if let Some(value) = previous_data_dir {
+            std::env::set_var("OPENCLAW_DATA_DIR", value);
+        } else {
+            std::env::remove_var("OPENCLAW_DATA_DIR");
+        }
+
+        assert!(roots
+            .iter()
+            .any(|root| root == &temp_data_dir.join("workspace").join("content-drafts")));
+
+        let _ = fs::remove_dir_all(temp_data_dir);
+    }
+
+    #[test]
+    fn content_drafts_roots_include_openclaw_config_path_override() {
+        let _guard = lock_test_env();
+        let previous_config_path = std::env::var_os("OPENCLAW_CONFIG_PATH");
+        let temp_config_dir = unique_test_dir("content-drafts-config-root");
+        fs::create_dir_all(&temp_config_dir).expect("should create temp config dir");
+        let temp_config_path = temp_config_dir.join("openclaw.json");
+
+        std::env::set_var("OPENCLAW_CONFIG_PATH", &temp_config_path);
+
+        let roots = super::content_drafts_roots();
+
+        if let Some(value) = previous_config_path {
+            std::env::set_var("OPENCLAW_CONFIG_PATH", value);
+        } else {
+            std::env::remove_var("OPENCLAW_CONFIG_PATH");
+        }
+
+        assert!(roots
+            .iter()
+            .any(|root| root == &temp_config_dir.join("workspace").join("content-drafts")));
+
+        let _ = fs::remove_dir_all(temp_config_dir);
     }
 
     #[test]
@@ -4405,12 +5125,10 @@ mod tests {
             .join("paddleocr-doc-parsing")
             .join("SKILL.md");
         assert!(installed_skill.exists());
-        assert!(
-            repo_bundled_skill_root("paddleocr-doc-parsing")
-                .expect("repo bundled skill root should resolve")
-                .join("SKILL.md")
-                .exists()
-        );
+        assert!(repo_bundled_skill_root("paddleocr-doc-parsing")
+            .expect("repo bundled skill root should resolve")
+            .join("SKILL.md")
+            .exists());
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -4418,8 +5136,7 @@ mod tests {
     #[test]
     fn install_models_dev_bundled_skill_falls_back_to_repo_skill_in_unbundled_dev_runs() {
         let _guard = lock_test_env();
-        let previous_skill_root =
-            std::env::var_os("CLAWMASTER_BUNDLED_MODELS_DEV_SKILL_ROOT");
+        let previous_skill_root = std::env::var_os("CLAWMASTER_BUNDLED_MODELS_DEV_SKILL_ROOT");
         let previous_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
         let previous_home = std::env::var_os("HOME");
         let temp_root = unique_test_dir("models-dev-skill-install");
@@ -4456,19 +5173,17 @@ mod tests {
             .join("models-dev")
             .join("SKILL.md");
         assert!(installed_skill.exists());
-        assert!(
-            repo_bundled_skill_root("models-dev")
-                .expect("repo bundled skill root should resolve")
-                .join("SKILL.md")
-                .exists()
-        );
+        assert!(repo_bundled_skill_root("models-dev")
+            .expect("repo bundled skill root should resolve")
+            .join("SKILL.md")
+            .exists());
 
         let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]
-    fn install_clawprobe_cost_digest_bundled_skill_falls_back_to_repo_skill_in_unbundled_dev_runs(
-    ) {
+    fn install_clawprobe_cost_digest_bundled_skill_falls_back_to_repo_skill_in_unbundled_dev_runs()
+    {
         let _guard = lock_test_env();
         let previous_skill_root =
             std::env::var_os("CLAWMASTER_BUNDLED_CLAWPROBE_COST_DIGEST_SKILL_ROOT");
@@ -4508,12 +5223,10 @@ mod tests {
             .join("clawprobe-cost-digest")
             .join("SKILL.md");
         assert!(installed_skill.exists());
-        assert!(
-            repo_bundled_skill_root("clawprobe-cost-digest")
-                .expect("repo bundled skill root should resolve")
-                .join("SKILL.md")
-                .exists()
-        );
+        assert!(repo_bundled_skill_root("clawprobe-cost-digest")
+            .expect("repo bundled skill root should resolve")
+            .join("SKILL.md")
+            .exists());
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -4577,7 +5290,10 @@ mod tests {
             parse_models_dev_fetched_at("2026-04-18T00:00:00.000Z"),
             Some(1_776_470_400_000)
         );
-        assert_eq!(parse_models_dev_fetched_at("2026-02-29T09:00:00.000Z"), None);
+        assert_eq!(
+            parse_models_dev_fetched_at("2026-02-29T09:00:00.000Z"),
+            None
+        );
     }
 
     #[test]
@@ -4624,17 +5340,17 @@ mod tests {
             Path::new("/tmp/openclaw"),
         );
 
-        assert!(overrides.iter().any(|(key, value)| {
-            *key == "HOME" && value == "/tmp/clawmaster-home"
-        }));
-        assert!(overrides.iter().any(|(key, value)| {
-            *key == "OPENCLAW_DIR" && value == "/tmp/openclaw"
-        }));
+        assert!(overrides
+            .iter()
+            .any(|(key, value)| { *key == "HOME" && value == "/tmp/clawmaster-home" }));
+        assert!(overrides
+            .iter()
+            .any(|(key, value)| { *key == "OPENCLAW_DIR" && value == "/tmp/openclaw" }));
 
         #[cfg(target_os = "windows")]
-        assert!(overrides.iter().any(|(key, value)| {
-            *key == "USERPROFILE" && value == "/tmp/clawmaster-home"
-        }));
+        assert!(overrides
+            .iter()
+            .any(|(key, value)| { *key == "USERPROFILE" && value == "/tmp/clawmaster-home" }));
 
         #[cfg(not(target_os = "windows"))]
         assert!(!overrides.iter().any(|(key, _)| *key == "USERPROFILE"));
@@ -5063,7 +5779,10 @@ fn plugin_manifest_matches_id(plugin_root: &Path, plugin_id: &str) -> bool {
 }
 
 #[tauri::command]
-fn resolve_plugin_root(plugin_id: String, candidates: Vec<String>) -> Result<Option<String>, String> {
+fn resolve_plugin_root(
+    plugin_id: String,
+    candidates: Vec<String>,
+) -> Result<Option<String>, String> {
     let trimmed_plugin_id = plugin_id.trim();
     let env_key = match trimmed_plugin_id {
         "memory-clawmaster-powermem" => "CLAWMASTER_PACKAGED_MEMORY_PLUGIN_ROOT",
@@ -5102,6 +5821,7 @@ fn resolve_plugin_root(plugin_id: String, candidates: Vec<String>) -> Result<Opt
 
 fn bundled_skill_dir_name(skill_id: &str) -> Option<&'static str> {
     match skill_id.trim().to_ascii_lowercase().as_str() {
+        "content-draft" => Some("content-draft"),
         "clawprobe-cost-digest" => Some("clawprobe-cost-digest"),
         "ernie-image" => Some("ernie-image"),
         "models-dev" => Some("models-dev"),
@@ -5112,6 +5832,7 @@ fn bundled_skill_dir_name(skill_id: &str) -> Option<&'static str> {
 
 fn bundled_skill_env_key(skill_id: &str) -> Option<&'static str> {
     match skill_id.trim().to_ascii_lowercase().as_str() {
+        "content-draft" => Some("CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT"),
         "clawprobe-cost-digest" => Some("CLAWMASTER_BUNDLED_CLAWPROBE_COST_DIGEST_SKILL_ROOT"),
         "ernie-image" => Some("CLAWMASTER_BUNDLED_ERNIE_IMAGE_SKILL_ROOT"),
         "models-dev" => Some("CLAWMASTER_BUNDLED_MODELS_DEV_SKILL_ROOT"),
@@ -5192,7 +5913,10 @@ fn install_bundled_skill(skill_id: String) -> Result<(), String> {
     if !source_path.join("SKILL.md").exists() {
         return Err(cmd_err_d(
             "SKILL_SOURCE_INVALID",
-            format!("Bundled skill source missing SKILL.md: {}", source_path.display()),
+            format!(
+                "Bundled skill source missing SKILL.md: {}",
+                source_path.display()
+            ),
         ));
     }
 
@@ -6055,6 +6779,147 @@ fn read_runtime_text_file(path_input: String) -> Result<RuntimeTextFileDto, Stri
 }
 
 #[tauri::command]
+fn list_content_draft_variants() -> Result<Vec<ContentDraftVariantSummaryDto>, String> {
+    list_content_draft_variants_state()
+}
+
+#[tauri::command]
+fn read_content_draft_text_file(path_input: String) -> Result<RequiredRuntimeTextFileDto, String> {
+    let path = resolve_allowed_content_draft_path(&path_input)?;
+    let content = read_active_openclaw_text_file(&path)?.ok_or_else(|| {
+        cmd_err_p(
+            "CONTENT_DRAFT_FILE_NOT_FOUND",
+            serde_json::json!({ "path": path.to_string_lossy() }),
+        )
+    })?;
+    Ok(RequiredRuntimeTextFileDto {
+        path: path.to_string_lossy().to_string(),
+        content,
+    })
+}
+
+#[tauri::command]
+fn read_content_draft_image_file(path_input: String) -> Result<RuntimeBinaryFileDto, String> {
+    let path = resolve_allowed_content_draft_path(&path_input)?;
+    let bytes = read_active_openclaw_binary_file(&path)?.ok_or_else(|| {
+        cmd_err_p(
+            "CONTENT_DRAFT_FILE_NOT_FOUND",
+            serde_json::json!({ "path": path.to_string_lossy() }),
+        )
+    })?;
+    Ok(RuntimeBinaryFileDto {
+        path: path.to_string_lossy().to_string(),
+        mime_type: content_draft_mime_type(&path),
+        base64: encode_base64_standard(&bytes),
+    })
+}
+
+#[tauri::command]
+fn delete_content_draft_variant(path_input: String) -> Result<ContentDraftDeleteResultDto, String> {
+    let manifest_path = resolve_allowed_content_draft_path(&path_input)?;
+    if manifest_path.file_name().and_then(|value| value.to_str()) != Some("manifest.json") {
+        return Err(cmd_err_p(
+            "CONTENT_DRAFT_INVALID_MANIFEST_PATH",
+            serde_json::json!({ "path": manifest_path.to_string_lossy() }),
+        ));
+    }
+
+    let platform_dir = manifest_path.parent().ok_or_else(|| {
+        cmd_err_p(
+            "CONTENT_DRAFT_INVALID_MANIFEST_PATH",
+            serde_json::json!({ "path": manifest_path.to_string_lossy() }),
+        )
+    })?;
+    let run_dir = platform_dir.parent().ok_or_else(|| {
+        cmd_err_p(
+            "CONTENT_DRAFT_INVALID_MANIFEST_PATH",
+            serde_json::json!({ "path": manifest_path.to_string_lossy() }),
+        )
+    })?;
+
+    if !content_draft_path_allowed(platform_dir) {
+        return Err(cmd_err_p(
+            "CONTENT_DRAFT_PATH_NOT_ALLOWED",
+            serde_json::json!({ "path": platform_dir.to_string_lossy() }),
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        let remove_output = run_wsl_shell(
+            &distro,
+            &format!(
+                "rm -rf {}",
+                shell_escape_posix_arg(&platform_dir.to_string_lossy())
+            ),
+            None,
+        )?;
+        if remove_output.code != 0 {
+            return Err(cmd_err_d(
+                "CONTENT_DRAFT_DELETE_FAILED",
+                remove_output.stderr.trim(),
+            ));
+        }
+
+        let prune_output = run_wsl_shell(
+            &distro,
+            &format!(
+                "[ -d {run_dir} ] && rmdir {run_dir} 2>/dev/null || true",
+                run_dir = shell_escape_posix_arg(&run_dir.to_string_lossy())
+            ),
+            None,
+        )?;
+        if prune_output.code != 0 {
+            return Err(cmd_err_d(
+                "CONTENT_DRAFT_DELETE_FAILED",
+                prune_output.stderr.trim(),
+            ));
+        }
+
+        return Ok(ContentDraftDeleteResultDto {
+            removed_path: platform_dir.to_string_lossy().to_string(),
+        });
+    }
+
+    fs::remove_dir_all(platform_dir).map_err(|error| {
+        cmd_err_p(
+            "CONTENT_DRAFT_DELETE_FAILED",
+            serde_json::json!({
+                "path": platform_dir.to_string_lossy(),
+                "detail": error.to_string(),
+            }),
+        )
+    })?;
+
+    if run_dir.is_dir() {
+        let mut entries = fs::read_dir(run_dir).map_err(|error| {
+            cmd_err_p(
+                "CONTENT_DRAFT_DELETE_FAILED",
+                serde_json::json!({
+                    "path": run_dir.to_string_lossy(),
+                    "detail": error.to_string(),
+                }),
+            )
+        })?;
+        if entries.next().is_none() {
+            fs::remove_dir(run_dir).map_err(|error| {
+                cmd_err_p(
+                    "CONTENT_DRAFT_DELETE_FAILED",
+                    serde_json::json!({
+                        "path": run_dir.to_string_lossy(),
+                        "detail": error.to_string(),
+                    }),
+                )
+            })?;
+        }
+    }
+
+    Ok(ContentDraftDeleteResultDto {
+        removed_path: platform_dir.to_string_lossy().to_string(),
+    })
+}
+
+#[tauri::command]
 fn read_required_runtime_text_file(
     path_input: String,
 ) -> Result<RequiredRuntimeTextFileDto, String> {
@@ -6460,8 +7325,7 @@ fn build_clawprobe_custom_prices_from_models_dev_catalog(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .unwrap_or(model_key.as_str());
-            let Some(custom_price) =
-                model.get("cost").and_then(build_models_dev_custom_price)
+            let Some(custom_price) = model.get("cost").and_then(build_models_dev_custom_price)
             else {
                 continue;
             };
@@ -6635,7 +7499,9 @@ fn build_clawprobe_config_override(
         .cloned()
         .unwrap_or_else(serde_json::Map::new);
     for (key, value) in custom_prices {
-        current_prices.entry(key.clone()).or_insert_with(|| value.clone());
+        current_prices
+            .entry(key.clone())
+            .or_insert_with(|| value.clone());
     }
     cost.insert(
         "customPrices".to_string(),
@@ -6677,9 +7543,7 @@ fn mirror_clawprobe_files_for_override(
                 fs::copy(&from, &to).map_err(|copy_error| {
                     cmd_err_d(
                         "IO_ERROR",
-                        format!(
-                            "hard link failed: {link_error}; copy failed: {copy_error}"
-                        ),
+                        format!("hard link failed: {link_error}; copy failed: {copy_error}"),
                     )
                 })?;
             }
@@ -6813,13 +7677,18 @@ fn run_clawprobe_command_with_models_dev_pricing_local(
     let merged_config = build_clawprobe_config_override(&base_config, custom_prices);
     let config_raw = serde_json::to_string_pretty(&merged_config)
         .map_err(|e| cmd_err_d("CLAWPROBE_CONFIG_SERIALIZE_FAILED", e))?;
-    fs::write(temp_probe_dir.join("config.json"), format!("{config_raw}\n"))
-        .map_err(|e| cmd_err_d("CLAWPROBE_CONFIG_WRITE_FAILED", e))?;
+    fs::write(
+        temp_probe_dir.join("config.json"),
+        format!("{config_raw}\n"),
+    )
+    .map_err(|e| cmd_err_d("CLAWPROBE_CONFIG_WRITE_FAILED", e))?;
 
     let output = {
         let mut command = clawprobe_cmd();
         let config_resolution = get_config_resolution();
-        for (key, value) in build_clawprobe_env_overrides(temp_home.path(), &config_resolution.data_dir) {
+        for (key, value) in
+            build_clawprobe_env_overrides(temp_home.path(), &config_resolution.data_dir)
+        {
             command.env(key, value);
         }
         command
@@ -6845,7 +7714,11 @@ fn run_clawprobe_command_with_models_dev_pricing_wsl(
 ) -> Result<String, String> {
     let home_dir = get_wsl_home_dir(distro);
     let real_probe_dir = join_posix(&home_dir, ".clawprobe");
-    let temp_home_output = run_wsl_shell(distro, "mktemp -d /tmp/clawmaster-clawprobe-home-XXXXXX", None)?;
+    let temp_home_output = run_wsl_shell(
+        distro,
+        "mktemp -d /tmp/clawmaster-clawprobe-home-XXXXXX",
+        None,
+    )?;
     if temp_home_output.code != 0 || temp_home_output.stdout.trim().is_empty() {
         return Err(cmd_err_d(
             "WSL_TEMP_DIR_FAILED",
@@ -7289,9 +8162,10 @@ fn fetch_provider_catalog(payload: FetchProviderCatalogPayload) -> Result<String
     let mut curl_config = String::from("silent\nshow-error\nlocation\nmax-time = 10\n");
     for (key, value) in payload.headers {
         curl_config.push_str("header = ");
-        curl_config.push_str(&serde_json::to_string(&format!("{key}: {value}")).map_err(|e| {
-            cmd_err_d("SYSTEM_CMD_CONFIG_ENCODE_FAILED", e)
-        })?);
+        curl_config.push_str(
+            &serde_json::to_string(&format!("{key}: {value}"))
+                .map_err(|e| cmd_err_d("SYSTEM_CMD_CONFIG_ENCODE_FAILED", e))?,
+        );
         curl_config.push('\n');
     }
     curl_config.push_str("write-out = \"\\n__CLAWMASTER_STATUS__:%{http_code}\"\n");
@@ -7382,7 +8256,10 @@ fn build_paddleocr_request_json(
     }
 
     let option_pairs = [
-        ("useDocOrientationClassify", payload.use_doc_orientation_classify),
+        (
+            "useDocOrientationClassify",
+            payload.use_doc_orientation_classify,
+        ),
         ("useDocUnwarping", payload.use_doc_unwarping),
         ("useLayoutDetection", payload.use_layout_detection),
         ("useChartRecognition", payload.use_chart_recognition),
@@ -7421,7 +8298,10 @@ fn parse_http_status_output(raw: &str) -> (String, u16) {
     }
 }
 
-fn paddleocr_request(payload: &PaddleOcrPayload, fallback_file: &str) -> Result<serde_json::Value, String> {
+fn paddleocr_request(
+    payload: &PaddleOcrPayload,
+    fallback_file: &str,
+) -> Result<serde_json::Value, String> {
     let endpoint = paddleocr_endpoint(&payload.endpoint)?;
     let access_token = paddleocr_required_text(&payload.access_token, "PADDLEOCR_TOKEN_REQUIRED")?;
     let body_json = build_paddleocr_request_json(payload, fallback_file, false)?;
@@ -7437,12 +8317,14 @@ fn paddleocr_request(payload: &PaddleOcrPayload, fallback_file: &str) -> Result<
     fs::write(&body_path, body_json.as_bytes())
         .map_err(|e| cmd_err_d("SYSTEM_CMD_TEMPFILE_WRITE_FAILED", e))?;
 
-    let mut curl_config = String::from("silent
+    let mut curl_config = String::from(
+        "silent
 show-error
 location
 max-time = 60
 request = POST
-");
+",
+    );
     for header in [
         format!("Authorization: token {}", access_token),
         "Content-Type: application/json".to_string(),
@@ -7590,6 +8472,10 @@ pub fn run() {
             list_openclaw_backups,
             restore_openclaw_backup,
             remove_openclaw_data,
+            list_content_draft_variants,
+            read_content_draft_text_file,
+            read_content_draft_image_file,
+            delete_content_draft_variant,
             read_runtime_text_file,
             read_required_runtime_text_file,
             write_runtime_text_file,
@@ -7625,13 +8511,25 @@ pub fn run() {
                     );
                 }
                 let ernie_image_plugin_root = resource_dir.join("openclaw-ernie-image");
-                if ernie_image_plugin_root.join("openclaw.plugin.json").exists() {
+                if ernie_image_plugin_root
+                    .join("openclaw.plugin.json")
+                    .exists()
+                {
                     std::env::set_var(
                         "CLAWMASTER_PACKAGED_ERNIE_IMAGE_PLUGIN_ROOT",
                         ernie_image_plugin_root.to_string_lossy().to_string(),
                     );
                 }
-                let ernie_image_skill_root = resource_dir.join("bundled-skills").join("ernie-image");
+                let content_draft_skill_root =
+                    resource_dir.join("bundled-skills").join("content-draft");
+                if content_draft_skill_root.join("SKILL.md").exists() {
+                    std::env::set_var(
+                        "CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT",
+                        content_draft_skill_root.to_string_lossy().to_string(),
+                    );
+                }
+                let ernie_image_skill_root =
+                    resource_dir.join("bundled-skills").join("ernie-image");
                 if ernie_image_skill_root.join("SKILL.md").exists() {
                     std::env::set_var(
                         "CLAWMASTER_BUNDLED_ERNIE_IMAGE_SKILL_ROOT",
@@ -7644,7 +8542,9 @@ pub fn run() {
                 if clawprobe_cost_digest_skill_root.join("SKILL.md").exists() {
                     std::env::set_var(
                         "CLAWMASTER_BUNDLED_CLAWPROBE_COST_DIGEST_SKILL_ROOT",
-                        clawprobe_cost_digest_skill_root.to_string_lossy().to_string(),
+                        clawprobe_cost_digest_skill_root
+                            .to_string_lossy()
+                            .to_string(),
                     );
                 }
                 let models_dev_skill_root = resource_dir.join("bundled-skills").join("models-dev");
@@ -7654,8 +8554,9 @@ pub fn run() {
                         models_dev_skill_root.to_string_lossy().to_string(),
                     );
                 }
-                let paddleocr_skill_root =
-                    resource_dir.join("bundled-skills").join("paddleocr-doc-parsing");
+                let paddleocr_skill_root = resource_dir
+                    .join("bundled-skills")
+                    .join("paddleocr-doc-parsing");
                 if paddleocr_skill_root.join("SKILL.md").exists() {
                     std::env::set_var(
                         "CLAWMASTER_BUNDLED_PADDLEOCR_DOC_PARSING_SKILL_ROOT",

@@ -333,6 +333,7 @@
   "skills.catalog.okSkills.desc": "厳選 AI コーディングスキルと AGENTS.md プレイブック、マルチツール対応",
   "skills.catalog.memoryPro.desc": "階層記憶システム：memory → knowledge → skill、自動知識蒸留",
   "skills.catalog.skillnote.desc": "オープンソースのスキルレジストリ、SKILL.md ファイルのクロスプラットフォーム配布",
+  "skills.catalog.contentDraft.desc": "ブログ、リポジトリ、動画のリンクを XHS / WeChat 向け原稿と画像アセットにまとめて保存する下書きワークフロー",
   "skills.catalog.ernieImage.desc": "ERNIE-Image 専用ガイド。プロンプト整理と、size・seed・use_pe・steps・guidance scale などの Baidu 画像引数選びを支援します。",
   "skills.catalog.modelsDev.desc": "価格、コンテキスト上限、能力フラグ、Provider 比較をキャッシュ付きで引ける汎用 models.dev スキル",
   "skills.catalog.clawprobeCostDigest.desc": "bundled の ClawProbe コストダイジェストスキル。models.dev 価格を更新し、日次・週次・月次の支出要約と高コスト session / model を生成します。",

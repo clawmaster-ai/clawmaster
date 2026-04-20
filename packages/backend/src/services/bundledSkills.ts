@@ -9,6 +9,10 @@ import {
 } from '../wslRuntime.js'
 
 const BUNDLED_SKILLS = {
+  'content-draft': {
+    dirName: 'content-draft',
+    envKey: 'CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT',
+  },
   'clawprobe-cost-digest': {
     dirName: 'clawprobe-cost-digest',
     envKey: 'CLAWMASTER_BUNDLED_CLAWPROBE_COST_DIGEST_SKILL_ROOT',

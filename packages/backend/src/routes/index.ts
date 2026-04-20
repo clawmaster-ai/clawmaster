@@ -16,6 +16,7 @@ import { registerExecRoutes } from './execRoutes.js'
 import { registerStorageRoutes } from './storageRoutes.js'
 import { registerMcpRoutes } from './mcpRoutes.js'
 import { registerOllamaRoutes } from './ollamaRoutes.js'
+import { registerContentDraftRoutes } from './contentDraftRoutes.js'
 
 export function registerDomainRoutes(app: express.Express): void {
   registerSystemRoutes(app)
@@ -32,6 +33,7 @@ export function registerDomainRoutes(app: express.Express): void {
   registerOcrRoutes(app)
   registerMcpRoutes(app)
   registerOllamaRoutes(app)
+  registerContentDraftRoutes(app)
   registerExecRoutes(app)
   registerStorageRoutes(app)
 }
