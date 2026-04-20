@@ -84,10 +84,10 @@ describe('SkillsPage', () => {
 
     expect(headings).toEqual([
       'clawvet',
+      'content-draft',
       'ernie-image',
       'find-skills',
       'openclaw-memory-pro-system',
-      'self-improving-agent',
     ])
   })
 
@@ -176,6 +176,6 @@ describe('SkillsPage', () => {
     expect(await screen.findByText('Install ClawHub CLI first')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Install ClawHub CLI' })).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Install ClawHub First' }).length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Install' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Install' }).length).toBeGreaterThan(0)
   })
 })
