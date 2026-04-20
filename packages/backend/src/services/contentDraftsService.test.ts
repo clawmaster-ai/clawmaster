@@ -49,7 +49,7 @@ test('content draft service lists saved variants and guards file reads to conten
 
     const imageFile = readContentDraftImageFile(path.join(imagesDir, 'cover.png'))
     assert.equal(imageFile.mimeType, 'image/png')
-    assert.deepEqual(imageFile.bytes, [...Buffer.from('png')])
+    assert.equal(imageFile.base64, Buffer.from('png').toString('base64'))
 
     const outsidePath = path.join(tempHome, 'outside.md')
     fs.writeFileSync(outsidePath, 'nope\n', 'utf8')

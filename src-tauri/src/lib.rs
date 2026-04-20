@@ -1577,23 +1577,105 @@ fn read_active_openclaw_text_file(path: &Path) -> Result<Option<String>, String>
     }
 }
 
+const BASE64_STANDARD_ALPHABET: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn encode_base64_standard(input: &[u8]) -> String {
+    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    let mut index = 0;
+    while index < input.len() {
+        let chunk_len = (input.len() - index).min(3);
+        let mut chunk = [0u8; 3];
+        for offset in 0..chunk_len {
+            chunk[offset] = input[index + offset];
+        }
+        out.push(BASE64_STANDARD_ALPHABET[(chunk[0] >> 2) as usize] as char);
+        out.push(
+            BASE64_STANDARD_ALPHABET[(((chunk[0] & 0x03) << 4) | (chunk[1] >> 4)) as usize] as char,
+        );
+        if chunk_len > 1 {
+            out.push(
+                BASE64_STANDARD_ALPHABET[(((chunk[1] & 0x0F) << 2) | (chunk[2] >> 6)) as usize]
+                    as char,
+            );
+        } else {
+            out.push('=');
+        }
+        if chunk_len > 2 {
+            out.push(BASE64_STANDARD_ALPHABET[(chunk[2] & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        index += 3;
+    }
+    out
+}
+
+fn decode_base64_standard(input: &str) -> Result<Vec<u8>, String> {
+    const INVALID: u8 = 0xFF;
+    let mut table = [INVALID; 256];
+    for (index, &ch) in
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".iter().enumerate()
+    {
+        table[ch as usize] = index as u8;
+    }
+
+    let cleaned: Vec<u8> = input
+        .bytes()
+        .filter(|byte| !byte.is_ascii_whitespace())
+        .collect();
+    if cleaned.len() % 4 != 0 {
+        return Err("invalid base64 length".to_string());
+    }
+
+    let mut out = Vec::with_capacity(cleaned.len() / 4 * 3);
+    for chunk in cleaned.chunks(4) {
+        let mut values = [0u8; 4];
+        let mut padding = 0;
+        for (index, &byte) in chunk.iter().enumerate() {
+            if byte == b'=' {
+                padding += 1;
+                continue;
+            }
+            if padding > 0 {
+                return Err("invalid base64 padding".to_string());
+            }
+            let decoded = table[byte as usize];
+            if decoded == INVALID {
+                return Err("invalid base64 character".to_string());
+            }
+            values[index] = decoded;
+        }
+        out.push((values[0] << 2) | (values[1] >> 4));
+        if padding < 2 {
+            out.push((values[1] << 4) | (values[2] >> 2));
+        }
+        if padding < 1 {
+            out.push((values[2] << 6) | values[3]);
+        }
+    }
+    Ok(out)
+}
+
 fn read_active_openclaw_binary_file(path: &Path) -> Result<Option<Vec<u8>>, String> {
     #[cfg(target_os = "windows")]
     if let Some(distro) = active_wsl_distro() {
         if !wsl_file_exists(&distro, &path.to_string_lossy()) {
             return Ok(None);
         }
-        let output = Command::new("wsl.exe")
-            .args(["-d", &distro, "--", "cat", &path.to_string_lossy()])
-            .output()
-            .map_err(|e| cmd_err_d("WSL_BINARY_READ_FAILED", e))?;
-        if !output.status.success() {
-            return Err(cmd_err_d(
-                "WSL_BINARY_READ_FAILED",
-                String::from_utf8_lossy(&output.stderr).trim().to_string(),
-            ));
+        // Pipe through base64 so Windows stdout newline translation cannot
+        // corrupt image bytes on their way out of wsl.exe.
+        let script = format!(
+            "base64 -- {} | tr -d '\\n'",
+            shell_escape_posix_arg(&path.to_string_lossy())
+        );
+        let output = run_wsl_shell(&distro, &script, None)?;
+        if output.code != 0 {
+            return Err(cmd_err_d("WSL_BINARY_READ_FAILED", output.stderr.trim()));
         }
-        return Ok(Some(output.stdout));
+        let decoded = decode_base64_standard(output.stdout.trim())
+            .map_err(|error| cmd_err_d("WSL_BINARY_READ_FAILED", error))?;
+        return Ok(Some(decoded));
     }
 
     match fs::read(path) {
@@ -1687,7 +1769,7 @@ struct RequiredRuntimeTextFileDto {
 struct RuntimeBinaryFileDto {
     path: String,
     mime_type: String,
-    bytes: Vec<u8>,
+    base64: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1864,6 +1946,22 @@ fn content_draft_mime_type(path: &Path) -> String {
     }
 }
 
+fn safe_host_canonicalize(candidate: &Path) -> PathBuf {
+    if let Ok(real) = fs::canonicalize(candidate) {
+        return real;
+    }
+    match candidate.parent() {
+        Some(parent) if parent != candidate => match fs::canonicalize(parent) {
+            Ok(real_parent) => match candidate.file_name() {
+                Some(name) => real_parent.join(name),
+                None => candidate.to_path_buf(),
+            },
+            Err(_) => candidate.to_path_buf(),
+        },
+        _ => candidate.to_path_buf(),
+    }
+}
+
 fn content_draft_path_allowed(path: &Path) -> bool {
     #[cfg(target_os = "windows")]
     if active_wsl_distro().is_some() {
@@ -1875,9 +1973,11 @@ fn content_draft_path_allowed(path: &Path) -> bool {
         });
     }
 
+    let canonical_candidate = safe_host_canonicalize(path);
     content_drafts_roots()
         .iter()
-        .any(|root| path.starts_with(root))
+        .map(|root| safe_host_canonicalize(root))
+        .any(|root| canonical_candidate.starts_with(&root))
 }
 
 fn resolve_allowed_content_draft_path(input: &str) -> Result<PathBuf, String> {
@@ -4281,8 +4381,9 @@ mod tests {
     use super::{
         build_clawprobe_config_override, build_clawprobe_custom_prices_from_models_dev_catalog,
         build_clawprobe_env_overrides, build_paddleocr_request_json, create_runtime_temp_dir,
-        get_config_path_candidates_for, get_openclaw_profile_args, get_openclaw_profile_data_dir,
-        install_bundled_skill, local_data_profile_key, managed_memory_windows_wsl_data_root,
+        decode_base64_standard, encode_base64_standard, get_config_path_candidates_for,
+        get_openclaw_profile_args, get_openclaw_profile_data_dir, install_bundled_skill,
+        local_data_profile_key, managed_memory_windows_wsl_data_root,
         normalize_clawmaster_runtime_selection, normalize_local_data_target_platform,
         parse_http_status_output, parse_json_lenient, parse_models_dev_fetched_at,
         parse_node_major, parse_wsl_list_verbose, repo_bundled_skill_root, repo_plugin_root,
@@ -4313,6 +4414,27 @@ mod tests {
             "clawmaster-config-path-{label}-{}-{nanos}",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn decode_base64_standard_round_trips_binary_payloads() {
+        assert_eq!(decode_base64_standard("").expect("empty"), Vec::<u8>::new());
+        assert_eq!(
+            decode_base64_standard("aGVsbG8=").expect("hello"),
+            b"hello".to_vec()
+        );
+        // Bytes that would collide with Windows stdout newline translation
+        // (0x0A, 0x0D) must survive the base64 round-trip verbatim.
+        let binary: Vec<u8> = (0u8..=255u8).collect();
+        let encoded = encode_base64_standard(&binary);
+        assert_eq!(decode_base64_standard(&encoded).expect("round trip"), binary);
+        // Whitespace from `tr -d '\n'` remnants or stdout framing is tolerated.
+        assert_eq!(
+            decode_base64_standard("aGVsbG8=\n").expect("trailing newline"),
+            b"hello".to_vec()
+        );
+        assert!(decode_base64_standard("aGVsbG8").is_err());
+        assert!(decode_base64_standard("aGVsb@8=").is_err());
     }
 
     #[test]
@@ -6688,7 +6810,7 @@ fn read_content_draft_image_file(path_input: String) -> Result<RuntimeBinaryFile
     Ok(RuntimeBinaryFileDto {
         path: path.to_string_lossy().to_string(),
         mime_type: content_draft_mime_type(&path),
-        bytes,
+        base64: encode_base64_standard(&bytes),
     })
 }
 

@@ -36,7 +36,7 @@ export interface ContentDraftTextFile {
 export interface ContentDraftImageFile {
   path: string
   mimeType: string
-  bytes: number[]
+  base64: string
 }
 
 export interface ContentDraftDeleteResult {
@@ -102,10 +102,33 @@ function isWithinRoot(rootPath: string, candidatePath: string): boolean {
   return relative === '' || (!relative.startsWith('..') && !pathModule.isAbsolute(relative))
 }
 
+function safeHostRealpath(candidate: string): string {
+  try {
+    return fs.realpathSync(candidate)
+  } catch {
+    const parent = path.dirname(candidate)
+    if (!parent || parent === candidate) return candidate
+    try {
+      return path.join(fs.realpathSync(parent), path.basename(candidate))
+    } catch {
+      return candidate
+    }
+  }
+}
+
+function pathIsWithinAnyRoot(candidate: string, roots: string[]): boolean {
+  const runtimeSelection = getClawmasterRuntimeSelection()
+  if (process.platform === 'win32' && shouldUseWslRuntime(runtimeSelection)) {
+    return roots.some((rootPath) => isWithinRoot(rootPath, candidate))
+  }
+  const realCandidate = safeHostRealpath(candidate)
+  const realRoots = roots.map(safeHostRealpath)
+  return realRoots.some((rootPath) => isWithinRoot(rootPath, realCandidate))
+}
+
 function resolveAllowedContentDraftPath(pathInput: string): string {
   const resolved = resolveRuntimePathSync(pathInput)
-  const roots = getContentDraftRootPaths()
-  if (!roots.some((rootPath) => isWithinRoot(rootPath, resolved))) {
+  if (!pathIsWithinAnyRoot(resolved, getContentDraftRootPaths())) {
     throw new Error(`Path is outside content draft roots: ${resolved}`)
   }
   return resolved
@@ -268,7 +291,7 @@ export function readContentDraftImageFile(pathInput: string): ContentDraftImageF
   return {
     path: resolved,
     mimeType: inferMimeType(resolved),
-    bytes: [...content],
+    base64: content.toString('base64'),
   }
 }
 
@@ -282,7 +305,7 @@ export function deleteContentDraftVariant(pathInput: string): ContentDraftDelete
   if (pathModule.basename(manifestPath) !== 'manifest.json') {
     throw new Error(`Expected a content draft manifest path, got: ${manifestPath}`)
   }
-  if (!getContentDraftRootPaths().some((rootPath) => isWithinRoot(rootPath, platformDir))) {
+  if (!pathIsWithinAnyRoot(platformDir, getContentDraftRootPaths())) {
     throw new Error(`Path is outside content draft roots: ${platformDir}`)
   }
 

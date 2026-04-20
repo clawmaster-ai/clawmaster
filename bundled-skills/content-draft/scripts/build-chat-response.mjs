@@ -65,6 +65,7 @@ function inferMimeType(filePath) {
 function normalizeRef(value) {
   return String(value || '')
     .trim()
+    .replace(/\\/g, '/')
     .replace(/^['"]|['"]$/g, '')
     .replace(/[?#].*$/, '')
     .replace(/^\.?\//, '')

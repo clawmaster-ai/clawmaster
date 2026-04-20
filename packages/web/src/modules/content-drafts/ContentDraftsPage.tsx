@@ -66,7 +66,11 @@ function joinFilePath(dir: string, fileName: string): string {
 }
 
 function imageFileToObjectUrl(file: ContentDraftImageFile): string {
-  const bytes = Uint8Array.from(file.bytes)
+  const binary = atob(file.base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
   const blob = new Blob([bytes], { type: file.mimeType })
   return URL.createObjectURL(blob)
 }
@@ -74,6 +78,7 @@ function imageFileToObjectUrl(file: ContentDraftImageFile): string {
 function normalizeDraftImageReference(value: string): string {
   return value
     .trim()
+    .replace(/\\/g, '/')
     .replace(/^['"]|['"]$/g, '')
     .replace(/[?#].*$/, '')
     .replace(/^\.?\//, '')

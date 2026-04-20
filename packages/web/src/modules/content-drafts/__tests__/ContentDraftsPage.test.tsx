@@ -74,7 +74,7 @@ describe('ContentDraftsPage', () => {
       data: {
         path: targetPath,
         mimeType: targetPath.endsWith('.png') ? 'image/png' : 'image/webp',
-        bytes: [1, 2, 3, 4],
+        base64: Buffer.from([1, 2, 3, 4]).toString('base64'),
       },
     }))
 

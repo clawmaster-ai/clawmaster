@@ -281,7 +281,7 @@ export interface ContentDraftTextFile {
 export interface ContentDraftImageFile {
   path: string
   mimeType: string
-  bytes: number[]
+  base64: string
 }
 
 export interface ContentDraftDeleteResult {

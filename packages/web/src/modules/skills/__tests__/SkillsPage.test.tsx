@@ -79,7 +79,7 @@ describe('SkillsPage', () => {
 
     const headings = screen
       .getAllByRole('heading', { level: 3 })
-      .slice(0, 5)
+      .slice(0, 6)
       .map((node) => node.textContent)
 
     expect(headings).toEqual([
@@ -88,6 +88,7 @@ describe('SkillsPage', () => {
       'ernie-image',
       'find-skills',
       'openclaw-memory-pro-system',
+      'self-improving-agent',
     ])
   })
 
