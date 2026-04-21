@@ -295,7 +295,7 @@ export function formatServeReadyMessage({
   if (browserRequested) {
     lines.push(formatServeStatusLine(
       'browser:',
-      ready ? 'opening the default browser' : 'auto-open skipped until the service answers',
+      ready ? 'opening the default browser' : 'opening when the web console becomes reachable',
     ))
   }
   lines.push(formatServeStatusLine(
@@ -485,6 +485,47 @@ async function waitForServiceReady(baseUrl, options = {}) {
   } catch {
     return false
   }
+}
+
+export async function waitForUrlReady(targetUrl, options = {}) {
+  const {
+    retries = SERVICE_READY_RETRIES,
+    retryDelayMs = SERVICE_READY_RETRY_DELAY_MS,
+    timeoutMs = SERVICE_READY_TIMEOUT_MS,
+    fetchImpl = fetch,
+  } = options
+
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetchImpl(targetUrl, {
+        signal: controller.signal,
+      })
+      if (response.ok) {
+        return true
+      }
+    } catch {
+      // ignore transient startup failures
+    } finally {
+      clearTimeout(timer)
+    }
+
+    if (attempt < retries - 1) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+    }
+  }
+
+  return false
+}
+
+function openBrowserWhenReady(targetUrl, options = {}) {
+  void (async () => {
+    const ready = await waitForUrlReady(targetUrl, options)
+    if (ready) {
+      requestBrowserOpen(targetUrl, options)
+    }
+  })()
 }
 
 export async function validateServiceState(state, options = {}) {
@@ -790,19 +831,15 @@ async function runServe(args) {
     process.exit(code ?? 0)
   })
 
-  const ready = await waitForServiceReady(url, { token })
-
   console.log(formatServeReadyMessage({
     daemon: false,
     urls,
     token,
     browserRequested: !silent,
-    ready,
+    ready: false,
   }))
   if (!silent) {
-    if (ready) {
-      requestBrowserOpen(launchUrl)
-    }
+    openBrowserWhenReady(launchUrl)
   }
 }
 

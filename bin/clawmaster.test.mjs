@@ -150,6 +150,21 @@ test('formatServeReadyMessage clearly reports the console and bind addresses', (
   assert.match(message, /next:\s+clawmaster status \| clawmaster stop/)
 })
 
+test('formatServeReadyMessage describes deferred foreground browser launch without skipping it', () => {
+  const message = cliModule.formatServeReadyMessage({
+    daemon: false,
+    urls: cliModule.resolveServiceUrls('127.0.0.1', '3001'),
+    token: 'secret-token',
+    browserRequested: true,
+    ready: false,
+  })
+
+  assert.match(message, /ClawMaster service is starting\./)
+  assert.match(message, /browser:\s+opening when the web console becomes reachable/)
+  assert.match(message, /next:\s+Ctrl\+C to stop/)
+  assert.doesNotMatch(message, /skipped/i)
+})
+
 test('resolveServiceStatePaths prefers an explicit Windows HOME override', () => {
   assert.deepEqual(
     cliModule.resolveServiceStatePaths({
@@ -226,6 +241,44 @@ test('validateServiceState rejects unreachable recorded daemons when callers req
   )
 
   assert.equal(result, null)
+})
+
+test('waitForUrlReady succeeds when the web console url responds even if detect would be slower', async () => {
+  const server = createServer((req, res) => {
+    if (req.url?.startsWith('/api/system/detect')) {
+      setTimeout(() => {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ runtime: { mode: 'native' } }))
+      }, 500)
+      return
+    }
+
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    res.end('<!doctype html><title>ClawMaster</title>')
+  })
+
+  try {
+    await new Promise((resolve, reject) => {
+      server.listen(0, '127.0.0.1', (error) => (error ? reject(error) : resolve()))
+    })
+    const address = server.address()
+    assert.ok(address && typeof address === 'object')
+
+    const ready = await cliModule.waitForUrlReady(
+      `http://127.0.0.1:${address.port}/?serviceToken=secret-token`,
+      {
+        retries: 2,
+        retryDelayMs: 10,
+        timeoutMs: 100,
+      },
+    )
+
+    assert.equal(ready, true)
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+    })
+  }
 })
 
 test('validateServiceState drops dead recorded daemons', async () => {
