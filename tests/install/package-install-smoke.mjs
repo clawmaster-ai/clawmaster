@@ -54,6 +54,44 @@ function runBinary(binary, args, env) {
   return spawnSync(binary, args, getBinaryExecOptions(env))
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isIgnorableWindowsCleanupError(error) {
+  if (process.platform !== 'win32') {
+    return false
+  }
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : ''
+  return code === 'ENOTEMPTY' || code === 'EPERM' || code === 'EBUSY'
+}
+
+async function cleanupTempHome(binary, env, tempHome) {
+  runBinary(binary, ['stop'], env)
+
+  // Windows runners can keep the detached daemon's log directory busy briefly
+  // after `clawmaster stop` succeeds. Cleanup is best effort; the smoke signal
+  // is whether install/start/status/stop work, not whether the temp dir deletes
+  // immediately on the runner filesystem.
+  const attempts = process.platform === 'win32' ? 12 : 1
+  const delayMs = process.platform === 'win32' ? 1000 : 0
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      fs.rmSync(tempHome, { recursive: true, force: true })
+      return
+    } catch (error) {
+      if (!isIgnorableWindowsCleanupError(error) || attempt === attempts - 1) {
+        if (isIgnorableWindowsCleanupError(error)) {
+          return
+        }
+        throw error
+      }
+      await sleep(delayMs)
+    }
+  }
+}
+
 async function waitForHealthyStatus(binary, env) {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const result = runBinary(binary, ['status', '--url', smokeUrl, '--token', smokeToken], env)
@@ -67,12 +105,6 @@ async function waitForHealthyStatus(binary, env) {
 
 const binary = resolveInstalledBinary()
 const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-install-smoke-'))
-const cleanupRmOptions = {
-  recursive: true,
-  force: true,
-  maxRetries: process.platform === 'win32' ? 20 : 0,
-  retryDelay: 200,
-}
 const env = {
   ...process.env,
   HOME: tempHome,
@@ -111,6 +143,5 @@ try {
   assertSuccess(stopResult, binary, ['stop'])
   assert.match(stopResult.stdout, /Stopped ClawMaster service/)
 } finally {
-  runBinary(binary, ['stop'], env)
-  fs.rmSync(tempHome, cleanupRmOptions)
+  await cleanupTempHome(binary, env, tempHome)
 }
