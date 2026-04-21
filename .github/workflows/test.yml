@@ -50,6 +50,41 @@ jobs:
       - name: Build web
         run: npm run build
 
+  package-install-smoke:
+    name: Packaged Install Smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Pack published tarball
+        id: pack
+        run: |
+          npm pack --json > pack-result.json
+          node -e "const fs=require('node:fs'); const data=JSON.parse(fs.readFileSync('pack-result.json','utf8')); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'tarball=' + data[0].filename + '\\n')"
+
+      - name: Install tarball globally
+        run: npm install -g "./${{ steps.pack.outputs.tarball }}"
+
+      - name: Locate installed CLI binary
+        id: binary
+        run: |
+          node -e "const { execFileSync } = require('node:child_process'); const fs = require('node:fs'); const path = require('node:path'); const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'; const prefix = execFileSync(npmCommand, ['prefix', '-g'], { encoding: 'utf8' }).trim(); const binary = process.platform === 'win32' ? path.join(prefix, 'clawmaster.cmd') : path.join(prefix, 'bin', 'clawmaster'); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'path=' + binary + '\\n')"
+
+      - name: Smoke test packaged install
+        env:
+          CLAWMASTER_BINARY: ${{ steps.binary.outputs.path }}
+        run: node tests/install/package-install-smoke.mjs
+
   # ─── Backend Integration Tests ───
   backend:
     name: Backend Integration

@@ -62,6 +62,94 @@ test('resolveServiceUrls maps wildcard hosts to local probe urls', () => {
   })
 })
 
+test('buildServiceLaunchUrl appends the service token for browser auto-open', () => {
+  assert.equal(
+    cliModule.buildServiceLaunchUrl('http://127.0.0.1:3001', 'secret-token'),
+    'http://127.0.0.1:3001/?serviceToken=secret-token',
+  )
+})
+
+test('resolveBrowserOpenCommand picks the native opener for each platform', () => {
+  assert.deepEqual(
+    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:3001', { platform: 'darwin' }),
+    { command: 'open', args: ['http://127.0.0.1:3001'] },
+  )
+  assert.deepEqual(
+    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:3001', { platform: 'linux' }),
+    { command: 'xdg-open', args: ['http://127.0.0.1:3001'] },
+  )
+  assert.deepEqual(
+    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:3001', { platform: 'win32' }),
+    { command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', 'http://127.0.0.1:3001'] },
+  )
+})
+
+test('isCliEntryInvocation treats npm-installed symlinks as the CLI entry', () => {
+  assert.equal(
+    cliModule.isCliEntryInvocation('/opt/homebrew/bin/clawmaster', {
+      cliEntryPath: '/opt/homebrew/lib/node_modules/clawmaster/bin/clawmaster.mjs',
+      realCliEntryPath: '/opt/homebrew/lib/node_modules/clawmaster/bin/clawmaster.mjs',
+      resolvePath: (value) => value,
+      realpath: (value) => value === '/opt/homebrew/bin/clawmaster'
+        ? '/opt/homebrew/lib/node_modules/clawmaster/bin/clawmaster.mjs'
+        : value,
+    }),
+    true,
+  )
+})
+
+test('isCliEntryInvocation rejects unrelated binaries', () => {
+  assert.equal(
+    cliModule.isCliEntryInvocation('/opt/homebrew/bin/not-clawmaster', {
+      cliEntryPath: '/opt/homebrew/lib/node_modules/clawmaster/bin/clawmaster.mjs',
+      realCliEntryPath: '/opt/homebrew/lib/node_modules/clawmaster/bin/clawmaster.mjs',
+      resolvePath: (value) => value,
+      realpath: () => '/opt/homebrew/lib/node_modules/other/bin/not-clawmaster.mjs',
+    }),
+    false,
+  )
+})
+
+test('renderServeBanner falls back to compact plain text on narrow terminals', () => {
+  assert.equal(
+    cliModule.renderServeBanner({
+      color: false,
+      columns: 20,
+      version: '9.9.9',
+    }),
+    'CLAWMASTER v9.9.9',
+  )
+})
+
+test('renderServeBanner can render a plain-text full banner without ANSI escapes', () => {
+  const banner = cliModule.renderServeBanner({
+    color: false,
+    columns: 120,
+    version: '9.9.9',
+  })
+
+  assert.match(banner, /v9\.9\.9/)
+  assert.ok(banner.split('\n').length >= 13)
+  assert.doesNotMatch(banner, /\x1b\[/)
+})
+
+test('formatServeReadyMessage clearly reports the console and bind addresses', () => {
+  const message = cliModule.formatServeReadyMessage({
+    daemon: true,
+    urls: cliModule.resolveServiceUrls('0.0.0.0', '3001'),
+    token: 'secret-token',
+    browserRequested: true,
+    ready: true,
+  })
+
+  assert.match(message, /ClawMaster service ready\./)
+  assert.match(message, /web console:\s+http:\/\/127\.0\.0\.1:3001/)
+  assert.match(message, /bind:\s+0\.0\.0\.0:3001/)
+  assert.match(message, /token:\s+secret-token/)
+  assert.match(message, /browser:\s+opening the default browser/)
+  assert.match(message, /next:\s+clawmaster status \| clawmaster stop/)
+})
+
 test('resolveServiceStatePaths prefers an explicit Windows HOME override', () => {
   assert.deepEqual(
     cliModule.resolveServiceStatePaths({
@@ -248,6 +336,17 @@ test('buildServiceSpawnOptions propagates a Windows HOME override to backend env
   assert.equal(options.env.USERPROFILE, '\\\\server\\share\\portable-home')
   assert.equal(options.env.APPDATA, '\\\\server\\share\\portable-home\\AppData\\Roaming')
   assert.equal(options.env.LOCALAPPDATA, '\\\\server\\share\\portable-home\\AppData\\Local')
+})
+
+test('help documents serve silent mode and browser auto-open', async () => {
+  const tempHome = createTempHome()
+  try {
+    const { stdout } = await runCli(['--help'], tempHome)
+    assert.match(stdout, /serve \[--host 127\.0\.0\.1] \[--port 3001] \[--daemon] \[--token <token>] \[--silent]/)
+    assert.match(stdout, /opens the web console in your default browser unless you pass --silent/i)
+  } finally {
+    rmSync(tempHome, { recursive: true, force: true })
+  }
 })
 
 test('status --url does not reuse local daemon token or metadata for a different target', async () => {
