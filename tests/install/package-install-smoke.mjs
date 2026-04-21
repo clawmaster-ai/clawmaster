@@ -11,12 +11,19 @@ const smokePort = String(Number.parseInt(process.env.CLAWMASTER_SMOKE_PORT ?? '3
 const smokeToken = process.env.CLAWMASTER_SMOKE_TOKEN?.trim() || 'ci-install-smoke-token'
 const smokeUrl = `http://127.0.0.1:${smokePort}`
 
+function getNpmExecOptions() {
+  return {
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  }
+}
+
 function resolveInstalledBinary() {
   if (process.env.CLAWMASTER_BINARY?.trim()) {
     return process.env.CLAWMASTER_BINARY.trim()
   }
   const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const prefix = execFileSync(npmCommand, ['prefix', '-g'], { encoding: 'utf8' }).trim()
+  const prefix = execFileSync(npmCommand, ['prefix', '-g'], getNpmExecOptions()).trim()
   return process.platform === 'win32'
     ? path.join(prefix, 'clawmaster.cmd')
     : path.join(prefix, 'bin', 'clawmaster')
@@ -77,6 +84,9 @@ try {
   const serveArgs = ['serve', '--daemon', '--silent', '--host', '127.0.0.1', '--port', smokePort, '--token', smokeToken]
   const serveResult = spawnSync(binary, serveArgs, { encoding: 'utf8', env })
   assertSuccess(serveResult, binary, serveArgs)
+  assert.match(serveResult.stdout, new RegExp(`web console:\\s+${smokeUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+  assert.match(serveResult.stdout, new RegExp(`token:\\s+${smokeToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+  assert.doesNotMatch(serveResult.stdout, /browser:\s+/)
 
   const statusOutput = await waitForHealthyStatus(binary, env)
   assert.match(statusOutput, new RegExp(`ClawMaster service is reachable at ${smokeUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))

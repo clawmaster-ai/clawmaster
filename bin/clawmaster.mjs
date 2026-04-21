@@ -755,14 +755,14 @@ async function runServe(args) {
     }
 
     child.unref()
+    console.log(formatServeReadyMessage({
+      daemon: true,
+      urls,
+      token,
+      browserRequested: !silent,
+      ready: true,
+    }))
     if (!silent) {
-      console.log(formatServeReadyMessage({
-        daemon: true,
-        urls,
-        token,
-        browserRequested: true,
-        ready: true,
-      }))
       requestBrowserOpen(launchUrl)
     }
     return
@@ -792,14 +792,14 @@ async function runServe(args) {
 
   const ready = await waitForServiceReady(url, { token })
 
+  console.log(formatServeReadyMessage({
+    daemon: false,
+    urls,
+    token,
+    browserRequested: !silent,
+    ready,
+  }))
   if (!silent) {
-    console.log(formatServeReadyMessage({
-      daemon: false,
-      urls,
-      token,
-      browserRequested: true,
-      ready,
-    }))
     if (ready) {
       requestBrowserOpen(launchUrl)
     }

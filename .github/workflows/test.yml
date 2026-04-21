@@ -68,17 +68,14 @@ jobs:
 
       - name: Pack published tarball
         id: pack
-        run: |
-          npm pack --json > pack-result.json
-          node -e "const fs=require('node:fs'); const data=JSON.parse(fs.readFileSync('pack-result.json','utf8')); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'tarball=' + data[0].filename + '\\n')"
+        run: node tests/install/github-actions.mjs pack-output
 
       - name: Install tarball globally
         run: npm install -g "./${{ steps.pack.outputs.tarball }}"
 
       - name: Locate installed CLI binary
         id: binary
-        run: |
-          node -e "const { execFileSync } = require('node:child_process'); const fs = require('node:fs'); const path = require('node:path'); const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'; const prefix = execFileSync(npmCommand, ['prefix', '-g'], { encoding: 'utf8' }).trim(); const binary = process.platform === 'win32' ? path.join(prefix, 'clawmaster.cmd') : path.join(prefix, 'bin', 'clawmaster'); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'path=' + binary + '\\n')"
+        run: node tests/install/github-actions.mjs binary-output
 
       - name: Smoke test packaged install
         env:
