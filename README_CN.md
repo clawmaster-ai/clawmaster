@@ -67,7 +67,7 @@ clawmaster doctor            # 检查环境
 clawmaster serve             # 启动 Web 控制台
 ```
 
-在浏览器中打开 `http://127.0.0.1:3001`，输入终端中打印的令牌即可使用。
+`clawmaster serve` 会打印绑定地址和令牌，并默认在浏览器中打开 Web 控制台。传入 `--silent` 可跳过横幅和自动打开浏览器。
 
 ```bash
 clawmaster serve --daemon    # 后台运行

@@ -50,6 +50,38 @@ jobs:
       - name: Build web
         run: npm run build
 
+  package-install-smoke:
+    name: Packaged Install Smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Pack published tarball
+        id: pack
+        run: node tests/install/github-actions.mjs pack-output
+
+      - name: Install tarball globally
+        run: npm install -g "./${{ steps.pack.outputs.tarball }}"
+
+      - name: Locate installed CLI binary
+        id: binary
+        run: node tests/install/github-actions.mjs binary-output
+
+      - name: Smoke test packaged install
+        env:
+          CLAWMASTER_BINARY: ${{ steps.binary.outputs.path }}
+        run: node tests/install/package-install-smoke.mjs
+
   # ─── Backend Integration Tests ───
   backend:
     name: Backend Integration

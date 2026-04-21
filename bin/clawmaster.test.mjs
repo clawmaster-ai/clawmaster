@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { execFile as execFileCallback } from 'node:child_process'
+import { execFile as execFileCallback, spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { closeSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
@@ -33,6 +33,19 @@ async function runCli(args, homeDir) {
   })
 }
 
+async function waitForExit(child) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return {
+      code: child.exitCode,
+      signal: child.signalCode,
+    }
+  }
+  return new Promise((resolve, reject) => {
+    child.once('exit', (code, signal) => resolve({ code, signal }))
+    child.once('error', reject)
+  })
+}
+
 test('published package ships the backend ESM package marker', () => {
   const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
   assert.ok(
@@ -60,6 +73,109 @@ test('resolveServiceUrls maps wildcard hosts to local probe urls', () => {
     url: 'http://[::1]:3001',
     wildcard: false,
   })
+})
+
+test('buildServiceLaunchUrl appends the service token for browser auto-open', () => {
+  assert.equal(
+    cliModule.buildServiceLaunchUrl('http://127.0.0.1:3001', 'secret-token'),
+    'http://127.0.0.1:3001/?serviceToken=secret-token',
+  )
+})
+
+test('resolveBrowserOpenCommand picks the native opener for each platform', () => {
+  assert.deepEqual(
+    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:3001', { platform: 'darwin' }),
+    { command: 'open', args: ['http://127.0.0.1:3001'] },
+  )
+  assert.deepEqual(
+    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:3001', { platform: 'linux' }),
+    { command: 'xdg-open', args: ['http://127.0.0.1:3001'] },
+  )
+  assert.deepEqual(
+    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:3001', { platform: 'win32' }),
+    { command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', 'http://127.0.0.1:3001'] },
+  )
+})
+
+test('isCliEntryInvocation treats npm-installed symlinks as the CLI entry', () => {
+  assert.equal(
+    cliModule.isCliEntryInvocation('/opt/homebrew/bin/clawmaster', {
+      cliEntryPath: '/opt/homebrew/lib/node_modules/clawmaster/bin/clawmaster.mjs',
+      realCliEntryPath: '/opt/homebrew/lib/node_modules/clawmaster/bin/clawmaster.mjs',
+      resolvePath: (value) => value,
+      realpath: (value) => value === '/opt/homebrew/bin/clawmaster'
+        ? '/opt/homebrew/lib/node_modules/clawmaster/bin/clawmaster.mjs'
+        : value,
+    }),
+    true,
+  )
+})
+
+test('isCliEntryInvocation rejects unrelated binaries', () => {
+  assert.equal(
+    cliModule.isCliEntryInvocation('/opt/homebrew/bin/not-clawmaster', {
+      cliEntryPath: '/opt/homebrew/lib/node_modules/clawmaster/bin/clawmaster.mjs',
+      realCliEntryPath: '/opt/homebrew/lib/node_modules/clawmaster/bin/clawmaster.mjs',
+      resolvePath: (value) => value,
+      realpath: () => '/opt/homebrew/lib/node_modules/other/bin/not-clawmaster.mjs',
+    }),
+    false,
+  )
+})
+
+test('renderServeBanner falls back to compact plain text on narrow terminals', () => {
+  assert.equal(
+    cliModule.renderServeBanner({
+      color: false,
+      columns: 20,
+      version: '9.9.9',
+    }),
+    'CLAWMASTER v9.9.9',
+  )
+})
+
+test('renderServeBanner can render a plain-text full banner without ANSI escapes', () => {
+  const banner = cliModule.renderServeBanner({
+    color: false,
+    columns: 120,
+    version: '9.9.9',
+  })
+
+  assert.match(banner, /v9\.9\.9/)
+  assert.ok(banner.split('\n').length >= 13)
+  assert.doesNotMatch(banner, /\x1b\[/)
+})
+
+test('formatServeReadyMessage clearly reports the console and bind addresses', () => {
+  const message = cliModule.formatServeReadyMessage({
+    daemon: true,
+    urls: cliModule.resolveServiceUrls('0.0.0.0', '3001'),
+    token: 'secret-token',
+    browserRequested: true,
+    ready: true,
+  })
+
+  assert.match(message, /ClawMaster service ready\./)
+  assert.match(message, /web console:\s+http:\/\/127\.0\.0\.1:3001/)
+  assert.match(message, /bind:\s+0\.0\.0\.0:3001/)
+  assert.match(message, /token:\s+secret-token/)
+  assert.match(message, /browser:\s+opening the default browser/)
+  assert.match(message, /next:\s+clawmaster status \| clawmaster stop/)
+})
+
+test('formatServeReadyMessage describes deferred foreground browser launch without skipping it', () => {
+  const message = cliModule.formatServeReadyMessage({
+    daemon: false,
+    urls: cliModule.resolveServiceUrls('127.0.0.1', '3001'),
+    token: 'secret-token',
+    browserRequested: true,
+    ready: false,
+  })
+
+  assert.match(message, /ClawMaster service is starting\./)
+  assert.match(message, /browser:\s+opening when the web console becomes reachable/)
+  assert.match(message, /next:\s+Ctrl\+C to stop/)
+  assert.doesNotMatch(message, /skipped/i)
 })
 
 test('resolveServiceStatePaths prefers an explicit Windows HOME override', () => {
@@ -138,6 +254,44 @@ test('validateServiceState rejects unreachable recorded daemons when callers req
   )
 
   assert.equal(result, null)
+})
+
+test('waitForUrlReady succeeds when the web console url responds even if detect would be slower', async () => {
+  const server = createServer((req, res) => {
+    if (req.url?.startsWith('/api/system/detect')) {
+      setTimeout(() => {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ runtime: { mode: 'native' } }))
+      }, 500)
+      return
+    }
+
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    res.end('<!doctype html><title>ClawMaster</title>')
+  })
+
+  try {
+    await new Promise((resolve, reject) => {
+      server.listen(0, '127.0.0.1', (error) => (error ? reject(error) : resolve()))
+    })
+    const address = server.address()
+    assert.ok(address && typeof address === 'object')
+
+    const ready = await cliModule.waitForUrlReady(
+      `http://127.0.0.1:${address.port}/?serviceToken=secret-token`,
+      {
+        retries: 2,
+        retryDelayMs: 10,
+        timeoutMs: 100,
+      },
+    )
+
+    assert.equal(ready, true)
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+    })
+  }
 })
 
 test('validateServiceState drops dead recorded daemons', async () => {
@@ -250,6 +404,17 @@ test('buildServiceSpawnOptions propagates a Windows HOME override to backend env
   assert.equal(options.env.LOCALAPPDATA, '\\\\server\\share\\portable-home\\AppData\\Local')
 })
 
+test('help documents serve silent mode and browser auto-open', async () => {
+  const tempHome = createTempHome()
+  try {
+    const { stdout } = await runCli(['--help'], tempHome)
+    assert.match(stdout, /serve \[--host 127\.0\.0\.1] \[--port 3001] \[--daemon] \[--token <token>] \[--silent]/)
+    assert.match(stdout, /opens the web console in your default browser unless you pass --silent/i)
+  } finally {
+    rmSync(tempHome, { recursive: true, force: true })
+  }
+})
+
 test('status --url does not reuse local daemon token or metadata for a different target', async () => {
   const tempHome = createTempHome()
   const requests = []
@@ -281,12 +446,15 @@ test('status --url does not reuse local daemon token or metadata for a different
     })
 
     const { stdout } = await runCli(['status', '--url', url], tempHome)
+    const persistedState = JSON.parse(readFileSync(path.join(tempHome, '.clawmaster', 'service', 'service-state.json'), 'utf8'))
 
     assert.match(stdout, new RegExp(`ClawMaster service is reachable at ${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
     assert.doesNotMatch(stdout, /pid:\s+/)
     assert.doesNotMatch(stdout, /started:\s+/)
     assert.equal(requests[0]?.url, '/api/system/detect')
     assert.equal(requests[0]?.authorization, undefined)
+    assert.equal(persistedState.pid, process.pid)
+    assert.equal(persistedState.token, 'local-service-token')
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()))
@@ -343,6 +511,45 @@ test('status reuses the local daemon token and metadata for the recorded service
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()))
     })
+    rmSync(tempHome, { recursive: true, force: true })
+  }
+})
+
+test('stop kills a recorded live daemon even if the service probe is unreachable', async () => {
+  const tempHome = createTempHome()
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    detached: process.platform !== 'win32',
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+
+  if (process.platform !== 'win32') {
+    child.unref()
+  }
+
+  writeServiceState(tempHome, {
+    pid: child.pid,
+    url: 'http://127.0.0.1:9',
+    token: 'stale-token',
+    startedAt: '2026-04-11T00:00:00.000Z',
+  })
+
+  try {
+    const { stdout, stderr } = await runCli(['stop'], tempHome)
+    assert.equal(stderr, '')
+    assert.match(stdout, new RegExp(`Stopped ClawMaster service \\(pid ${child.pid}\\)\\.`))
+
+    const exit = await Promise.race([
+      waitForExit(child),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for daemon to stop')), 5000)),
+    ])
+    assert.ok(exit)
+  } finally {
+    try {
+      process.kill(child.pid, 'SIGKILL')
+    } catch {
+      // best effort in case the CLI already stopped it
+    }
     rmSync(tempHome, { recursive: true, force: true })
   }
 })

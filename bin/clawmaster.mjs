@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto'
 import { spawn, execFile as execFileCallback, execFileSync } from 'node:child_process'
 import { dirname, join, posix as pathPosix, resolve, win32 as pathWin32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { promisify } from 'node:util'
 import os from 'node:os'
 
@@ -15,6 +15,28 @@ const root = resolve(__dirname, '..')
 const cliEntryPath = fileURLToPath(import.meta.url)
 const require = createRequire(import.meta.url)
 const pkg = require(resolve(root, 'package.json'))
+const realCliEntryPath = resolveRealPath(cliEntryPath)
+const SERVICE_READY_RETRIES = 40
+const SERVICE_READY_RETRY_DELAY_MS = 250
+const SERVICE_READY_TIMEOUT_MS = 1000
+const BANNER_PRIMARY = '\x1b[1;38;2;35;214;171m'
+const BANNER_SECONDARY = '\x1b[1;38;2;71;198;255m'
+const BANNER_VERSION = '\x1b[38;2;35;214;171m'
+const ANSI_RESET = '\x1b[0m'
+const SERVE_BANNER_LINES = [
+  ' ██████╗ ██╗      █████╗ ██╗    ██╗',
+  '██╔════╝ ██║     ██╔══██╗██║    ██║',
+  '██║      ██║     ███████║██║ █╗ ██║',
+  '██║      ██║     ██╔══██║██║███╗██║',
+  '╚██████╗ ███████╗██║  ██║╚███╔███╔╝',
+  ' ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ ',
+  '███╗   ███╗ █████╗ ███████╗████████╗███████╗██████╗ ',
+  '████╗ ████║██╔══██╗██╔════╝╚══██╔══╝██╔════╝██╔══██╗',
+  '██╔████╔██║███████║███████╗   ██║   █████╗  ██████╔╝',
+  '██║╚██╔╝██║██╔══██║╚════██║   ██║   ██╔══╝  ██╔══██╗',
+  '██║ ╚═╝ ██║██║  ██║███████║   ██║   ███████╗██║  ██║',
+  '╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝',
+]
 
 function getServiceStatePathModule(platform = process.platform) {
   return platform === 'win32' ? pathWin32 : pathPosix
@@ -62,7 +84,7 @@ function printHelp() {
 ClawMaster v${pkg.version}
 
 Usage:
-  clawmaster serve [--host 127.0.0.1] [--port 3001] [--daemon] [--token <token>]
+  clawmaster serve [--host 127.0.0.1] [--port 3001] [--daemon] [--token <token>] [--silent]
   clawmaster status [--url http://127.0.0.1:3001] [--token <token>]
   clawmaster stop
   clawmaster doctor
@@ -70,7 +92,7 @@ Usage:
   clawmaster --help
 
 Commands:
-  serve    Start the ClawMaster service in the foreground, or in the background with --daemon.
+  serve    Start the ClawMaster service and open the web console, or run it in the background with --daemon.
   status   Check whether a running ClawMaster service is reachable.
   stop     Stop the background ClawMaster service recorded in the local state file.
   doctor   Inspect local runtime prerequisites and packaged build assets.
@@ -78,6 +100,7 @@ Commands:
 Notes:
   The service expects built backend and frontend assets.
   clawmaster serve protects the web UI with a service token by default.
+  clawmaster serve opens the web console in your default browser unless you pass --silent.
   For local source checkouts, run:
     npm run build:backend
     npm run build
@@ -106,6 +129,53 @@ function hasFlag(args, name) {
 function hasValueFlag(args, name) {
   const longFlag = `--${name}`
   return args.some((arg) => arg === longFlag || arg.startsWith(`${longFlag}=`))
+}
+
+function supportsColor(stream = process.stdout, env = process.env) {
+  return Boolean(stream?.isTTY) && env.NO_COLOR === undefined && env.TERM !== 'dumb'
+}
+
+export function renderServeBanner(options = {}) {
+  const version = String(options.version ?? pkg.version)
+  const stream = options.stream ?? process.stdout
+  const env = options.env ?? process.env
+  const color = options.color ?? supportsColor(stream, env)
+  const maxWidth = SERVE_BANNER_LINES.reduce((width, line) => Math.max(width, line.length), 0)
+  const columns = Number(options.columns ?? stream?.columns ?? 0)
+  const compact = columns > 0 && columns < maxWidth + 4
+
+  if (compact) {
+    if (!color) {
+      return `CLAWMASTER v${version}`
+    }
+    return `${BANNER_PRIMARY}CLAWMASTER${ANSI_RESET} ${BANNER_SECONDARY}v${version}${ANSI_RESET}`
+  }
+
+  const versionLine = `v${version}`.padStart(maxWidth)
+  const lines = [...SERVE_BANNER_LINES, versionLine]
+  if (!color) {
+    return lines.join('\n')
+  }
+
+  return lines
+    .map((line, index) => {
+      if (index < 6) return `${BANNER_PRIMARY}${line}${ANSI_RESET}`
+      if (index < 12) return `${BANNER_SECONDARY}${line}${ANSI_RESET}`
+      return `${BANNER_VERSION}${line}${ANSI_RESET}`
+    })
+    .join('\n')
+}
+
+function printServeBanner() {
+  console.log(renderServeBanner())
+}
+
+function resolveRealPath(pathToResolve) {
+  try {
+    return realpathSync(pathToResolve)
+  } catch {
+    return null
+  }
 }
 
 function normalizeServiceUrl(value) {
@@ -146,6 +216,93 @@ export function resolveServiceUrls(host, port) {
     url: buildHttpUrl(reachableHost, port),
     wildcard: isWildcardHost(bindHost),
   }
+}
+
+export function isCliEntryInvocation(entryPath, options = {}) {
+  if (!entryPath) return false
+  const cliPath = options.cliEntryPath ?? cliEntryPath
+  const realCliPath = options.realCliEntryPath ?? realCliEntryPath
+  const resolvePath = options.resolvePath ?? resolve
+  const realpath = options.realpath ?? resolveRealPath
+  const resolvedEntryPath = resolvePath(entryPath)
+
+  if (resolvedEntryPath === cliPath) {
+    return true
+  }
+
+  const realEntryPath = realpath(resolvedEntryPath)
+  return Boolean(realEntryPath && realCliPath && realEntryPath === realCliPath)
+}
+
+export function buildServiceLaunchUrl(baseUrl, token) {
+  const url = new URL(normalizeServiceUrl(baseUrl))
+  const normalizedToken = String(token ?? '').trim()
+  if (normalizedToken) {
+    url.searchParams.set('serviceToken', normalizedToken)
+  }
+  return url.toString()
+}
+
+export function resolveBrowserOpenCommand(targetUrl, options = {}) {
+  const platform = options.platform ?? process.platform
+  if (platform === 'darwin') {
+    return { command: 'open', args: [targetUrl] }
+  }
+  if (platform === 'win32') {
+    return { command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', targetUrl] }
+  }
+  return { command: 'xdg-open', args: [targetUrl] }
+}
+
+function requestBrowserOpen(targetUrl, options = {}) {
+  const spawnImpl = options.spawnImpl ?? spawn
+  const opener = resolveBrowserOpenCommand(targetUrl, options)
+  try {
+    const child = spawnImpl(opener.command, opener.args, {
+      detached: true,
+      shell: false,
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    child.on('error', () => {})
+    child.unref()
+  } catch {
+    // best effort
+  }
+}
+
+function isServeSilent(args = []) {
+  return hasFlag(args, 'silent') || hasFlag(args, 'quiet')
+}
+
+function formatServeStatusLine(label, value) {
+  return `${label.padEnd(13)}${value}`
+}
+
+export function formatServeReadyMessage({
+  daemon = false,
+  urls,
+  token,
+  browserRequested = false,
+  ready = true,
+}) {
+  const lines = [
+    ready ? 'ClawMaster service ready.' : 'ClawMaster service is starting.',
+    formatServeStatusLine('web console:', urls.url),
+    formatServeStatusLine('bind:', `${urls.bindHost}:${urls.port}`),
+    formatServeStatusLine('token:', token),
+  ]
+  if (browserRequested) {
+    lines.push(formatServeStatusLine(
+      'browser:',
+      ready ? 'opening the default browser' : 'opening when the web console becomes reachable',
+    ))
+  }
+  lines.push(formatServeStatusLine(
+    'next:',
+    daemon ? 'clawmaster status | clawmaster stop' : 'Ctrl+C to stop',
+  ))
+  return lines.join('\n')
 }
 
 function getServiceUrl(args = []) {
@@ -316,6 +473,47 @@ async function fetchServiceInfo(baseUrl, options = {}) {
   throw lastError ?? new Error('unknown service probe failure')
 }
 
+export async function waitForUrlReady(targetUrl, options = {}) {
+  const {
+    retries = SERVICE_READY_RETRIES,
+    retryDelayMs = SERVICE_READY_RETRY_DELAY_MS,
+    timeoutMs = SERVICE_READY_TIMEOUT_MS,
+    fetchImpl = fetch,
+  } = options
+
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetchImpl(targetUrl, {
+        signal: controller.signal,
+      })
+      if (response.ok) {
+        return true
+      }
+    } catch {
+      // ignore transient startup failures
+    } finally {
+      clearTimeout(timer)
+    }
+
+    if (attempt < retries - 1) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+    }
+  }
+
+  return false
+}
+
+function openBrowserWhenReady(targetUrl, options = {}) {
+  void (async () => {
+    const ready = await waitForUrlReady(targetUrl, options)
+    if (ready) {
+      requestBrowserOpen(targetUrl, options)
+    }
+  })()
+}
+
 export async function validateServiceState(state, options = {}) {
   if (!state) return null
   if (!isProcessAlive(Number(state.pid))) {
@@ -385,7 +583,7 @@ async function runDoctor() {
 
 async function runStatus(args) {
   const baseUrl = normalizeServiceUrl(getServiceUrl(args))
-  const storedState = await getRunningServiceState({ allowUnreachable: false })
+  const storedState = await getRunningServiceState({ allowUnreachable: true })
   const explicitUrl = hasValueFlag(args, 'url')
   const state = storedState && (!explicitUrl || normalizeServiceUrl(storedState.url) === baseUrl)
     ? storedState
@@ -409,7 +607,7 @@ async function runStatus(args) {
 }
 
 async function runStop() {
-  const state = await getRunningServiceState({ allowUnreachable: false })
+  const state = await getRunningServiceState({ allowUnreachable: true })
   if (!state) {
     console.error('No running ClawMaster background service was found.')
     process.exitCode = 1
@@ -485,10 +683,12 @@ async function runServe(args) {
   const host = getBackendHost(args)
   const port = getBackendPort(args)
   const daemon = hasFlag(args, 'daemon')
+  const silent = isServeSilent(args)
   const token = getServiceToken(args)
   const assets = resolveServiceAssets()
   const urls = resolveServiceUrls(host, port)
   const url = urls.url
+  const launchUrl = buildServiceLaunchUrl(url, token)
   const running = await getRunningServiceState({ allowUnreachable: false })
   const { serviceStateDir } = resolveServiceStatePaths()
   const stdoutLog = join(serviceStateDir, 'service.stdout.log')
@@ -508,6 +708,10 @@ async function runServe(args) {
     console.error(`ClawMaster service is already running at ${running.url} (pid ${running.pid}).`)
     console.error('Use `clawmaster status` to inspect it or `clawmaster stop` to stop it first.')
     process.exit(1)
+  }
+
+  if (!silent) {
+    printServeBanner()
   }
 
   ensureServiceStateDir()
@@ -552,10 +756,12 @@ async function runServe(args) {
   })
 
   if (daemon) {
-    try {
-      await fetchServiceInfo(url, { retries: 40, retryDelayMs: 250, timeoutMs: 1000, token })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+    const ready = await waitForUrlReady(url, {
+      retries: SERVICE_READY_RETRIES,
+      retryDelayMs: SERVICE_READY_RETRY_DELAY_MS,
+      timeoutMs: SERVICE_READY_TIMEOUT_MS,
+    })
+    if (!ready) {
       try {
         process.kill(child.pid, 'SIGTERM')
       } catch {
@@ -563,7 +769,7 @@ async function runServe(args) {
       }
       const stderrTail = readLogTail(stderrLog).trim()
       clearServiceState()
-      console.error(`ClawMaster service failed to become ready at ${url}: ${message}`)
+      console.error(`ClawMaster web console failed to become ready at ${url}.`)
       if (stderrTail) {
         console.error('')
         console.error('Recent stderr:')
@@ -573,22 +779,18 @@ async function runServe(args) {
     }
 
     child.unref()
-    console.log(`Started ClawMaster service in the background at ${url}`)
-    if (urls.wildcard) {
-      console.log(`bound: ${host}:${port}`)
+    console.log(formatServeReadyMessage({
+      daemon: true,
+      urls,
+      token,
+      browserRequested: !silent,
+      ready: true,
+    }))
+    if (!silent) {
+      requestBrowserOpen(launchUrl)
     }
-    console.log(`pid: ${child.pid}`)
-    console.log(`token: ${token}`)
-    console.log('Use `clawmaster status` to inspect it and `clawmaster stop` to stop it.')
     return
   }
-
-  console.log(`Starting ClawMaster service on ${url}`)
-  if (urls.wildcard) {
-    console.log(`bound: ${host}:${port}`)
-  }
-  console.log(`token: ${token}`)
-  console.log('Press Ctrl+C to stop.')
 
   const stopChild = (signal) => {
     if (!child.killed) {
@@ -601,7 +803,6 @@ async function runServe(args) {
 
   process.on('SIGINT', handleSigint)
   process.on('SIGTERM', handleSigterm)
-
   child.on('exit', (code, signal) => {
     clearServiceState()
     process.off('SIGINT', handleSigint)
@@ -612,6 +813,17 @@ async function runServe(args) {
     }
     process.exit(code ?? 0)
   })
+
+  console.log(formatServeReadyMessage({
+    daemon: false,
+    urls,
+    token,
+    browserRequested: !silent,
+    ready: false,
+  }))
+  if (!silent) {
+    openBrowserWhenReady(launchUrl)
+  }
 }
 
 async function main() {
@@ -654,6 +866,6 @@ async function main() {
   process.exitCode = 1
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === cliEntryPath) {
+if (isCliEntryInvocation(process.argv[1])) {
   void main()
 }

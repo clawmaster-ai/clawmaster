@@ -67,7 +67,7 @@ clawmaster doctor            # 環境を確認
 clawmaster serve             # Web コンソールを起動
 ```
 
-ブラウザで `http://127.0.0.1:3001` を開き、ターミナルに表示されたトークンを入力してください。
+`clawmaster serve` はバインド先とトークンを表示し、既定では Web コンソールをブラウザで開きます。バナー表示と自動起動を止めたい場合は `--silent` を使ってください。
 
 ```bash
 clawmaster serve --daemon    # バックグラウンド実行

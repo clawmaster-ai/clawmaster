@@ -67,7 +67,7 @@ clawmaster doctor            # verify your environment
 clawmaster serve             # start the web console
 ```
 
-Open `http://127.0.0.1:3001` in your browser and enter the token printed in the terminal.
+`clawmaster serve` prints the bind address and token, then opens the web console in your default browser. Pass `--silent` to skip the banner and browser launch.
 
 ```bash
 clawmaster serve --daemon    # run in background

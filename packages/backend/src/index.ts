@@ -78,7 +78,7 @@ export function startServer() {
     const uiStatus = frontendDist
       ? `serving UI from ${frontendDist}`
       : 'UI assets not found; API only'
-    console.log(`OpenClaw Manager Service on http://${host}:${port} (${uiStatus})`)
+    console.log(`ClawMaster service listening on http://${host}:${port} (${uiStatus})`)
   })
 
   attachLogsStreamServer(server)
