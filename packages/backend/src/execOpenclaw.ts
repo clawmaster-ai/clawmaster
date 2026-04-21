@@ -29,6 +29,11 @@ import net from 'node:net'
 let cachedOpenclawBin: string | null | undefined
 let cachedDarwinCompatibleNodeBin: string | null | undefined
 
+export function clearOpenclawBinCache(): void {
+  cachedOpenclawBin = undefined
+  cachedDarwinCompatibleNodeBin = undefined
+}
+
 type ResolvedOpenclawCommand = {
   bin: string
   argsPrefix: string[]
