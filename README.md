@@ -184,8 +184,8 @@ Pre-release tags (`-rc.N`) are used for release candidates.
 ```bash
 npm install
 npm run dev:web       # frontend + backend
-npm run dev           # frontend only (port 3000)
-npm run dev:backend   # backend only (port 3001)
+npm run dev           # frontend only (port 16223)
+npm run dev:backend   # backend only (port 16224)
 npm run tauri:dev     # desktop app
 ```
 

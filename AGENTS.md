@@ -187,8 +187,8 @@ Violating any of these will cause a PR to be rejected without review:
 ```bash
 npm install                  # install dependencies
 
-npm run dev                  # web frontend only (port 3000)
-npm run dev:web              # backend (port 3001) + frontend
+npm run dev                  # web frontend only (port 16223)
+npm run dev:web              # backend (port 16224) + frontend
 npm run dev:backend          # Express backend only
 npm run tauri:dev            # desktop app (Tauri)
 
@@ -247,7 +247,7 @@ clawmaster/
 │   ├── app/                routing, sidebar, startup, command registry
 │   ├── pages/              legacy pages — do not add new code here
 │   └── locales/main/       zh.ts · en.ts · ja.ts
-├── packages/backend/       Express API server (web mode, port 3001)
+├── packages/backend/       Express API server (standalone dev default port 16224)
 ├── src-tauri/              Tauri 2 desktop backend (Rust)
 ├── bin/clawmaster.mjs      CLI entry point
 └── tests/ui/               YAML-based manual UI test plans
@@ -299,12 +299,12 @@ Walk a UI flow against the running dev server:
 
 ```bash
 # start the app first
-npm run dev:web              # http://localhost:3000
+npm run dev:web              # http://localhost:16223
 
 # then drive it
 dev-browser --headless <<'EOF'
 const page = await browser.getPage("main");
-await page.goto("http://localhost:3000", { waitUntil: "domcontentloaded" });
+await page.goto("http://localhost:16223", { waitUntil: "domcontentloaded" });
 await page.screenshot({ path: "screenshot.png" });
 console.log(await page.title());
 EOF

@@ -19,7 +19,7 @@ Prerequisites: **Node.js 20+** and npm.
 git clone https://github.com/openmaster-ai/clawmaster.git
 cd clawmaster
 npm install
-npm run dev:web    # Starts backend (port 3001) + frontend (port 3000)
+npm run dev:web    # Starts backend (port 16224) + frontend (port 16223)
 npm test           # Run all tests
 ```
 

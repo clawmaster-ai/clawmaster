@@ -221,7 +221,7 @@ export function buildChannelRegistry(t: TFunction): Record<string, ChannelRegist
           key: 'endpoint',
           label: 'Endpoint',
           required: true,
-          placeholder: 'ws://127.0.0.1:3001',
+          placeholder: 'ws://127.0.0.1:16223',
           hint: tr(t, 'qq_hint_endpoint'),
         },
         {

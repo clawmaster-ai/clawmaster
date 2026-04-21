@@ -25,7 +25,7 @@ function getArg(name, fallback) {
   const idx = args.indexOf(name)
   return idx >= 0 && args[idx + 1] ? args[idx + 1] : fallback
 }
-const BASE_URL = getArg('--base-url', 'http://localhost:3000')
+const BASE_URL = getArg('--base-url', 'http://localhost:16223')
 const SCREENSHOT_DIR = getArg('--screenshots', join(__dirname, '../../test-results/screenshots'))
 const SUITE_FILTER = getArg('--suites', '')  // e.g. "02,06,10"
 const DEMO_PARAM = '?demo=skip'

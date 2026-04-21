@@ -5,7 +5,7 @@
   "identifier": "ai.openclaw.manager",
   "build": {
     "frontendDist": "../packages/web/dist",
-    "devUrl": "http://localhost:3000",
+    "devUrl": "http://localhost:16223",
     "beforeDevCommand": "npm run dev --workspace=@openclaw-manager/web",
     "beforeBuildCommand": "npm run prepare:tauri-memory-plugin && npm run build"
   },

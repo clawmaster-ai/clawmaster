@@ -13,7 +13,7 @@ description: |
 
 preconditions:
   - npm install 已完成
-  - npm run dev:web 已启动（前端 {BASE_URL} + 后端 localhost:3001）
+  - npm run dev:web 已启动（前端 {BASE_URL} + 后端 localhost:16224）
   - 不使用 ?demo 参数（走 realSetupAdapter）
   - 测试开始前 openclaw 已通过 npm install -g openclaw 安装
 
@@ -200,7 +200,7 @@ cases:
   - id: real-setup-11
     name: 后端不可用时 → 检测报错 + 重试
     preconditions:
-      - Express 后端已停止（localhost:3001 不可达）
+      - Express 后端已停止（localhost:16224 不可达）
     steps:
       - action: navigate
         url: "{BASE_URL}"
@@ -248,7 +248,7 @@ cases:
     steps:
       - action: api_call
         method: POST
-        url: "http://localhost:3001/api/exec"
+        url: "http://localhost:16224/api/exec"
         body: '{"cmd":"openclaw","args":["--version"]}'
     assertions:
       - HTTP 200
@@ -264,7 +264,7 @@ cases:
     steps:
       - action: api_call
         method: POST
-        url: "http://localhost:3001/api/exec"
+        url: "http://localhost:16224/api/exec"
         body: '{"cmd":"clawprobe","args":["--version"]}'
     assertions:
       - HTTP 500
@@ -276,7 +276,7 @@ cases:
     steps:
       - action: api_call
         method: POST
-        url: "http://localhost:3001/api/exec"
+        url: "http://localhost:16224/api/exec"
         body: '{"args":["--version"]}'
     assertions:
       - HTTP 400
@@ -289,7 +289,7 @@ cases:
     steps:
       - action: api_call
         method: POST
-        url: "http://localhost:3001/api/exec"
+        url: "http://localhost:16224/api/exec"
         body: '{"cmd":"npm","args":["install","-g","openclaw"]}'
       - action: wait
         duration: 180000ms

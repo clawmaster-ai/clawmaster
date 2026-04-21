@@ -88,11 +88,11 @@ During development, use headless Playwright via `dev-browser` for rapid visual +
 
 ```bash
 # 1. Start services
-npm run dev:backend   # port 3001
-npm run dev           # port 3000
+npm run dev:backend   # port 16224
+npm run dev           # port 16223
 
 # 2. In dev-browser session:
-page.goto('http://localhost:3000/observe')
+page.goto('http://localhost:16223/observe')
 page.waitForTimeout(3000)
 page.screenshot({ path: '/tmp/observe.png' })
 

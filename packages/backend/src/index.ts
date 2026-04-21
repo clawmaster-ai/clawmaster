@@ -70,7 +70,7 @@ export function createApp() {
 
 export function startServer() {
   const app = createApp()
-  const port = Number.parseInt(process.env.BACKEND_PORT ?? process.env.PORT ?? '3001', 10)
+  const port = Number.parseInt(process.env.BACKEND_PORT ?? process.env.PORT ?? '16224', 10)
   const host = process.env.BACKEND_HOST ?? '127.0.0.1'
   const frontendDist = resolveFrontendDistDir()
 

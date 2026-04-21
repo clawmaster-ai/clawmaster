@@ -184,8 +184,8 @@ ClawMaster 采用 [Pride Versioning](https://pridever.org/)（自豪版本号）
 ```bash
 npm install
 npm run dev:web       # 前端 + 后端
-npm run dev           # 仅前端（端口 3000）
-npm run dev:backend   # 仅后端（端口 3001）
+npm run dev           # 仅前端（端口 16223）
+npm run dev:backend   # 仅后端（端口 16224）
 npm run tauri:dev     # 桌面应用
 ```
 

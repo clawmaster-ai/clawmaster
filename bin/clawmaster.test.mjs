@@ -55,45 +55,45 @@ test('published package ships the backend ESM package marker', () => {
 })
 
 test('resolveServiceUrls maps wildcard hosts to local probe urls', () => {
-  assert.deepEqual(cliModule.resolveServiceUrls('0.0.0.0', '3001'), {
+  assert.deepEqual(cliModule.resolveServiceUrls('0.0.0.0', '16223'), {
     bindHost: '0.0.0.0',
-    port: '3001',
-    url: 'http://127.0.0.1:3001',
+    port: '16223',
+    url: 'http://127.0.0.1:16223',
     wildcard: true,
   })
-  assert.deepEqual(cliModule.resolveServiceUrls('::', '3001'), {
+  assert.deepEqual(cliModule.resolveServiceUrls('::', '16223'), {
     bindHost: '::',
-    port: '3001',
-    url: 'http://[::1]:3001',
+    port: '16223',
+    url: 'http://[::1]:16223',
     wildcard: true,
   })
-  assert.deepEqual(cliModule.resolveServiceUrls('::1', '3001'), {
+  assert.deepEqual(cliModule.resolveServiceUrls('::1', '16223'), {
     bindHost: '::1',
-    port: '3001',
-    url: 'http://[::1]:3001',
+    port: '16223',
+    url: 'http://[::1]:16223',
     wildcard: false,
   })
 })
 
 test('buildServiceLaunchUrl appends the service token for browser auto-open', () => {
   assert.equal(
-    cliModule.buildServiceLaunchUrl('http://127.0.0.1:3001', 'secret-token'),
-    'http://127.0.0.1:3001/?serviceToken=secret-token',
+    cliModule.buildServiceLaunchUrl('http://127.0.0.1:16223', 'secret-token'),
+    'http://127.0.0.1:16223/?serviceToken=secret-token',
   )
 })
 
 test('resolveBrowserOpenCommand picks the native opener for each platform', () => {
   assert.deepEqual(
-    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:3001', { platform: 'darwin' }),
-    { command: 'open', args: ['http://127.0.0.1:3001'] },
+    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:16223', { platform: 'darwin' }),
+    { command: 'open', args: ['http://127.0.0.1:16223'] },
   )
   assert.deepEqual(
-    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:3001', { platform: 'linux' }),
-    { command: 'xdg-open', args: ['http://127.0.0.1:3001'] },
+    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:16223', { platform: 'linux' }),
+    { command: 'xdg-open', args: ['http://127.0.0.1:16223'] },
   )
   assert.deepEqual(
-    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:3001', { platform: 'win32' }),
-    { command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', 'http://127.0.0.1:3001'] },
+    cliModule.resolveBrowserOpenCommand('http://127.0.0.1:16223', { platform: 'win32' }),
+    { command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', 'http://127.0.0.1:16223'] },
   )
 })
 
@@ -149,15 +149,15 @@ test('renderServeBanner can render a plain-text full banner without ANSI escapes
 test('formatServeReadyMessage clearly reports the console and bind addresses', () => {
   const message = cliModule.formatServeReadyMessage({
     daemon: true,
-    urls: cliModule.resolveServiceUrls('0.0.0.0', '3001'),
+    urls: cliModule.resolveServiceUrls('0.0.0.0', '16223'),
     token: 'secret-token',
     browserRequested: true,
     ready: true,
   })
 
   assert.match(message, /ClawMaster service ready\./)
-  assert.match(message, /web console:\s+http:\/\/127\.0\.0\.1:3001/)
-  assert.match(message, /bind:\s+0\.0\.0\.0:3001/)
+  assert.match(message, /web console:\s+http:\/\/127\.0\.0\.1:16223/)
+  assert.match(message, /bind:\s+0\.0\.0\.0:16223/)
   assert.match(message, /token:\s+secret-token/)
   assert.match(message, /browser:\s+opening the default browser/)
   assert.match(message, /next:\s+clawmaster status \| clawmaster stop/)
@@ -166,7 +166,7 @@ test('formatServeReadyMessage clearly reports the console and bind addresses', (
 test('formatServeReadyMessage describes deferred foreground browser launch without skipping it', () => {
   const message = cliModule.formatServeReadyMessage({
     daemon: false,
-    urls: cliModule.resolveServiceUrls('127.0.0.1', '3001'),
+    urls: cliModule.resolveServiceUrls('127.0.0.1', '16223'),
     token: 'secret-token',
     browserRequested: true,
     ready: false,
@@ -223,7 +223,7 @@ test('resolveServiceStatePaths accepts Windows UNC HOME overrides written with f
 test('validateServiceState preserves recorded daemons while the pid is still alive', async () => {
   const state = {
     pid: process.pid,
-    url: 'http://127.0.0.1:3001',
+    url: 'http://127.0.0.1:16223',
     token: 'stale-token',
   }
   const result = await cliModule.validateServiceState(
@@ -242,7 +242,7 @@ test('validateServiceState rejects unreachable recorded daemons when callers req
   const result = await cliModule.validateServiceState(
     {
       pid: process.pid,
-      url: 'http://127.0.0.1:3001',
+      url: 'http://127.0.0.1:16223',
       token: 'stale-token',
     },
     {
@@ -298,7 +298,7 @@ test('validateServiceState drops dead recorded daemons', async () => {
   const result = await cliModule.validateServiceState(
     {
       pid: 999999,
-      url: 'http://127.0.0.1:3001',
+      url: 'http://127.0.0.1:16223',
       token: 'dead-token',
     },
     {
@@ -365,7 +365,7 @@ test('buildServiceSpawnOptions preserves the caller working directory', () => {
     assets: { frontendDist: '/tmp/frontend-dist' },
     daemon: true,
     host: '127.0.0.1',
-    port: '3001',
+    port: '16223',
     token: 'secret-token',
     stdoutLog,
     stderrLog,
@@ -376,7 +376,7 @@ test('buildServiceSpawnOptions preserves the caller working directory', () => {
   assert.equal(options.env.CLAWMASTER_FRONTEND_DIST, '/tmp/frontend-dist')
   assert.equal(options.env.CLAWMASTER_SERVICE_TOKEN, 'secret-token')
   assert.equal(options.env.BACKEND_HOST, '127.0.0.1')
-  assert.equal(options.env.BACKEND_PORT, '3001')
+  assert.equal(options.env.BACKEND_PORT, '16223')
   assert.equal(options.windowsHide, true)
   closeSync(options.stdio[1])
   closeSync(options.stdio[2])
@@ -389,7 +389,7 @@ test('buildServiceSpawnOptions propagates a Windows HOME override to backend env
     assets: { frontendDist: 'C:\\portable-home\\frontend-dist' },
     daemon: false,
     host: '127.0.0.1',
-    port: '3001',
+    port: '16223',
     token: 'secret-token',
     stdoutLog: 'ignored.stdout.log',
     stderrLog: 'ignored.stderr.log',
@@ -408,7 +408,7 @@ test('help documents serve silent mode and browser auto-open', async () => {
   const tempHome = createTempHome()
   try {
     const { stdout } = await runCli(['--help'], tempHome)
-    assert.match(stdout, /serve \[--host 127\.0\.0\.1] \[--port 3001] \[--daemon] \[--token <token>] \[--silent]/)
+    assert.match(stdout, /serve \[--host 127\.0\.0\.1] \[--port 16223] \[--daemon] \[--token <token>] \[--silent]/)
     assert.match(stdout, /opens the web console in your default browser unless you pass --silent/i)
   } finally {
     rmSync(tempHome, { recursive: true, force: true })
@@ -440,7 +440,7 @@ test('status --url does not reuse local daemon token or metadata for a different
 
     writeServiceState(tempHome, {
       pid: process.pid,
-      url: 'http://127.0.0.1:3001',
+      url: 'http://127.0.0.1:16223',
       token: 'local-service-token',
       startedAt: '2026-04-11T00:00:00.000Z',
     })

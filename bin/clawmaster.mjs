@@ -19,6 +19,7 @@ const realCliEntryPath = resolveRealPath(cliEntryPath)
 const SERVICE_READY_RETRIES = 40
 const SERVICE_READY_RETRY_DELAY_MS = 250
 const SERVICE_READY_TIMEOUT_MS = 1000
+const DEFAULT_SERVICE_PORT = '16223'
 const BANNER_PRIMARY = '\x1b[1;38;2;35;214;171m'
 const BANNER_SECONDARY = '\x1b[1;38;2;71;198;255m'
 const BANNER_VERSION = '\x1b[38;2;35;214;171m'
@@ -84,8 +85,8 @@ function printHelp() {
 ClawMaster v${pkg.version}
 
 Usage:
-  clawmaster serve [--host 127.0.0.1] [--port 3001] [--daemon] [--token <token>] [--silent]
-  clawmaster status [--url http://127.0.0.1:3001] [--token <token>]
+  clawmaster serve [--host 127.0.0.1] [--port ${DEFAULT_SERVICE_PORT}] [--daemon] [--token <token>] [--silent]
+  clawmaster status [--url http://127.0.0.1:${DEFAULT_SERVICE_PORT}] [--token <token>]
   clawmaster stop
   clawmaster doctor
   clawmaster --version
@@ -307,7 +308,7 @@ export function formatServeReadyMessage({
 
 function getServiceUrl(args = []) {
   const stored = readServiceState()
-  return parseFlagValue(args, 'url', stored?.url ?? 'http://127.0.0.1:3001')
+  return parseFlagValue(args, 'url', stored?.url ?? `http://127.0.0.1:${DEFAULT_SERVICE_PORT}`)
 }
 
 function getBackendHost(args = []) {
@@ -315,7 +316,7 @@ function getBackendHost(args = []) {
 }
 
 function getBackendPort(args = []) {
-  const raw = parseFlagValue(args, 'port', '3001')
+  const raw = parseFlagValue(args, 'port', DEFAULT_SERVICE_PORT)
   const parsed = Number.parseInt(String(raw), 10)
   if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535) {
     throw new Error(`Invalid --port value: ${raw}`)
