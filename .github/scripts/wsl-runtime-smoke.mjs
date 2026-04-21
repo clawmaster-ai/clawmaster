@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 
-const port = Number.parseInt(process.env.BACKEND_PORT ?? '3001', 10)
+const port = Number.parseInt(process.env.BACKEND_PORT ?? '16224', 10)
 const distro = process.env.DISTRO_NAME ?? 'Ubuntu-24.04'
 const baseUrl = `http://127.0.0.1:${port}`
 const smokeMarker = process.env.WSL_SMOKE_MARKER ?? 'WSL-SMOKE-MARKER'
