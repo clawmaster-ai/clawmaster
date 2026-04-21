@@ -446,12 +446,15 @@ test('status --url does not reuse local daemon token or metadata for a different
     })
 
     const { stdout } = await runCli(['status', '--url', url], tempHome)
+    const persistedState = JSON.parse(readFileSync(path.join(tempHome, '.clawmaster', 'service', 'service-state.json'), 'utf8'))
 
     assert.match(stdout, new RegExp(`ClawMaster service is reachable at ${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
     assert.doesNotMatch(stdout, /pid:\s+/)
     assert.doesNotMatch(stdout, /started:\s+/)
     assert.equal(requests[0]?.url, '/api/system/detect')
     assert.equal(requests[0]?.authorization, undefined)
+    assert.equal(persistedState.pid, process.pid)
+    assert.equal(persistedState.token, 'local-service-token')
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()))

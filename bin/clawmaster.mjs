@@ -583,7 +583,7 @@ async function runDoctor() {
 
 async function runStatus(args) {
   const baseUrl = normalizeServiceUrl(getServiceUrl(args))
-  const storedState = await getRunningServiceState({ allowUnreachable: false })
+  const storedState = await getRunningServiceState({ allowUnreachable: true })
   const explicitUrl = hasValueFlag(args, 'url')
   const state = storedState && (!explicitUrl || normalizeServiceUrl(storedState.url) === baseUrl)
     ? storedState
