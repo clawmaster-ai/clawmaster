@@ -473,20 +473,6 @@ async function fetchServiceInfo(baseUrl, options = {}) {
   throw lastError ?? new Error('unknown service probe failure')
 }
 
-async function waitForServiceReady(baseUrl, options = {}) {
-  try {
-    await fetchServiceInfo(baseUrl, {
-      retries: options.retries ?? SERVICE_READY_RETRIES,
-      retryDelayMs: options.retryDelayMs ?? SERVICE_READY_RETRY_DELAY_MS,
-      timeoutMs: options.timeoutMs ?? SERVICE_READY_TIMEOUT_MS,
-      token: options.token ?? '',
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
 export async function waitForUrlReady(targetUrl, options = {}) {
   const {
     retries = SERVICE_READY_RETRIES,
@@ -770,15 +756,12 @@ async function runServe(args) {
   })
 
   if (daemon) {
-    try {
-      await fetchServiceInfo(url, {
-        retries: SERVICE_READY_RETRIES,
-        retryDelayMs: SERVICE_READY_RETRY_DELAY_MS,
-        timeoutMs: SERVICE_READY_TIMEOUT_MS,
-        token,
-      })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+    const ready = await waitForUrlReady(url, {
+      retries: SERVICE_READY_RETRIES,
+      retryDelayMs: SERVICE_READY_RETRY_DELAY_MS,
+      timeoutMs: SERVICE_READY_TIMEOUT_MS,
+    })
+    if (!ready) {
       try {
         process.kill(child.pid, 'SIGTERM')
       } catch {
@@ -786,7 +769,7 @@ async function runServe(args) {
       }
       const stderrTail = readLogTail(stderrLog).trim()
       clearServiceState()
-      console.error(`ClawMaster service failed to become ready at ${url}: ${message}`)
+      console.error(`ClawMaster web console failed to become ready at ${url}.`)
       if (stderrTail) {
         console.error('')
         console.error('Recent stderr:')
