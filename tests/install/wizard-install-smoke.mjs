@@ -155,11 +155,13 @@ try {
     assert.equal(installResult.ok, true, `npm install failed: ${installResult.error ?? installResult.stderr}`)
     console.log('[wizard-smoke]   install succeeded')
 
-    // Verify install
-    const verifyResult = await apiExec('openclaw', ['--version'])
-    assert.equal(verifyResult.ok, true, `post-install openclaw --version failed: ${verifyResult.error}`)
-    assert.match(verifyResult.stdout, /OpenClaw/i)
-    console.log(`[wizard-smoke]   verified: ${verifyResult.stdout.trim()}`)
+    // Verify install — use the binary directly (not via exec API)
+    // because the backend's openclaw path cache may not resolve in CI
+    // where login-shell PATH differs from the runner PATH
+    const verifyBin = runBinary('openclaw', ['--version'], env)
+    assert.equal(verifyBin.status, 0, `post-install openclaw --version failed (exit ${verifyBin.status}): ${verifyBin.stderr}`)
+    assert.match(verifyBin.stdout, /OpenClaw/i)
+    console.log(`[wizard-smoke]   verified: ${verifyBin.stdout.trim()}`)
   } else {
     console.log('[wizard-smoke] Step 2: Skipped (openclaw already installed)')
   }

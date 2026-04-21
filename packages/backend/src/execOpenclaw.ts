@@ -70,6 +70,15 @@ function resolveOpenclawBin(): string {
   } catch {
     cachedOpenclawBin = null
   }
+  // Fallback: login shell may not see npm global bin (CI runners, GUI apps).
+  // Try resolving via the current process PATH directly.
+  if (!cachedOpenclawBin && process.platform !== 'win32') {
+    try {
+      const out = execFileSync('which', ['openclaw'], { encoding: 'utf8' })
+      const line = out.trim().split('\n')[0]?.trim()
+      if (line && line.length > 0) cachedOpenclawBin = line
+    } catch { /* ignore */ }
+  }
   return cachedOpenclawBin ?? 'openclaw'
 }
 
