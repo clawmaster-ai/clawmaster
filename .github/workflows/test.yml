@@ -67,6 +67,7 @@ jobs:
       - run: npm ci
 
       - name: Verify npm publish would succeed
+        shell: bash
         run: npm publish --dry-run 2>&1 | tee /dev/stderr | grep -q 'npm notice name:'
 
       - name: Pack published tarball
