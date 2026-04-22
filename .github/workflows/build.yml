@@ -80,10 +80,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             label: Linux x64
             artifact_name: clawmaster-linux-x64
+            bundles: appimage,deb
           - os: macos-15-intel
             target: x86_64-apple-darwin
             label: macOS Intel
@@ -150,7 +151,7 @@ jobs:
           echo "Normalized tauri.conf.json version to $NUMERIC"
 
       - name: Build Tauri desktop bundles
-        run: npx tauri build --target ${{ matrix.target }}
+        run: npx tauri build --target ${{ matrix.target }} ${{ matrix.bundles && format('--bundles {0}', matrix.bundles) || '' }}
 
       - name: Collect workflow bundle files
         shell: bash
@@ -180,25 +181,28 @@ jobs:
             exit 1
           fi
 
+          # Use -maxdepth to stay in top-level bundle output dirs (e.g. bundle/msi/,
+          # bundle/deb/). This keeps internal resources (ICU data, npm packages
+          # bundled via .tauri-resources/) out of the release artifacts.
           case "$RUNNER_OS" in
             Linux)
               for root in "${BUNDLE_ROOTS[@]}"; do
-                find "$root" -type f \
-                  \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.sig' -o -name '*.json' \) \
+                find "$root" -maxdepth 3 -type f \
+                  \( -name '*.AppImage' -o -name '*.deb' -o -name '*.sig' \) \
                   -exec cp '{}' "$ARTIFACT_DIR"/ \;
               done
               ;;
             macOS)
               for root in "${BUNDLE_ROOTS[@]}"; do
-                find "$root" -type f \
-                  \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.sig' -o -name '*.json' \) \
+                find "$root" -maxdepth 3 -type f \
+                  \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.sig' \) \
                   -exec cp '{}' "$ARTIFACT_DIR"/ \;
               done
               ;;
             Windows)
               for root in "${BUNDLE_ROOTS[@]}"; do
-                find "$root" -type f \
-                  \( -name '*.msi' -o -name '*.exe' -o -name '*.zip' -o -name '*.sig' -o -name '*.json' \) \
+                find "$root" -maxdepth 3 -type f \
+                  \( -name '*.msi' -o -name '*.exe' -o -name '*.zip' -o -name '*.sig' \) \
                   -exec cp '{}' "$ARTIFACT_DIR"/ \;
               done
               ;;
@@ -260,7 +264,19 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check if version already published
+        id: check_npm
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "clawmaster@$VERSION" version >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "clawmaster@$VERSION is already on npm; skipping publish"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish
+        if: steps.check_npm.outputs.skip != 'true'
         run: npm publish --tag ${{ steps.npm_tag.outputs.tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -319,8 +335,13 @@ jobs:
           set -euo pipefail
           mkdir -p release-assets
 
+          # Only installer bundles — exclude internal JSON (ICU data, package
+          # manifests, tsconfig) that gets packaged inside Tauri resources.
           find release-bundles -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' -o -name '*.zip' -o -name '*.tar.gz' -o -name '*.sig' -o -name '*.json' \) \
+            \( -name '*.AppImage' -o -name '*.deb' \
+               -o -name '*.dmg' -o -name '*.app.tar.gz' \
+               -o -name '*.msi' -o -name '*.exe' \
+               -o -name '*.sig' \) \
             -exec cp '{}' release-assets/ \;
 
           if [ -z "$(find release-assets -maxdepth 1 -type f -print -quit)" ]; then
@@ -353,39 +374,38 @@ jobs:
 
           GENERATED_BODY="$(node -e "const fs=require('fs'); const body=JSON.parse(fs.readFileSync('generated-release-notes.json','utf8')).body || ''; process.stdout.write(body.trim());")"
 
-          cat <<EOF > RELEASE_NOTES.md
-          ## Install
+          VERSION="${TAG#v}"
+          NPM_TAG="latest"
+          if printf '%s' "$VERSION" | grep -Eq -- '-(rc|beta|alpha)'; then
+            NPM_TAG="rc"
+          fi
 
-          ### CLI + Web Console (Recommended)
-
-          \`\`\`bash
-          npm install -g clawmaster@\${TAG#v}
-          clawmaster
-          \`\`\`
-
-          Open http://localhost:16223 — the setup wizard guides you through OpenClaw engine detection and LLM provider configuration.
-
-          ### Desktop App (Beta)
-
-          Download the installer for your platform from the Assets section below.
-
-          | Platform | Files |
-          |---|---|
-          | Linux x64 | \`.AppImage\`, \`.deb\`, \`.rpm\` |
-          | macOS Intel | \`.dmg\` |
-          | macOS Apple Silicon | \`.dmg\` |
-          | Windows x64 | \`.msi\`, \`.exe\` |
-
-          > **Note:** Desktop builds are in beta. The CLI + Web Console is the recommended install method.
-
-          ## Checksums
-
-          Verify downloads with \`SHA256SUMS.txt\` attached to this release.
-
-          ## What's Changed
-
-          $GENERATED_BODY
-          EOF
+          # Use printf instead of heredoc because YAML's `run: |` indentation
+          # leaks into the heredoc content — turning every heading into an
+          # indented code block in the rendered markdown.
+          {
+            printf '## Install\n\n'
+            printf '### CLI + Web Console (Recommended)\n\n'
+            printf '```bash\n'
+            printf 'npm install -g clawmaster@%s\n' "$NPM_TAG"
+            printf 'clawmaster\n'
+            printf '```\n\n'
+            printf 'Open http://localhost:16223 — the setup wizard guides you through OpenClaw engine detection and LLM provider configuration.\n\n'
+            printf '> To pin this exact version: `npm install -g clawmaster@%s`\n\n' "$VERSION"
+            printf '### Desktop App (Beta)\n\n'
+            printf 'Download the installer for your platform from the Assets section below.\n\n'
+            printf '| Platform | Files |\n'
+            printf '|---|---|\n'
+            printf '| Linux x64 | `.AppImage`, `.deb` |\n'
+            printf '| macOS Intel | `.dmg` |\n'
+            printf '| macOS Apple Silicon | `.dmg` |\n'
+            printf '| Windows x64 | `.msi`, `.exe` |\n\n'
+            printf '> **Note:** Desktop builds are in beta. The CLI + Web Console is the recommended install method.\n\n'
+            printf '## Checksums\n\n'
+            printf 'Verify downloads with `SHA256SUMS.txt` attached to this release.\n\n'
+            printf "## What's Changed\n\n"
+            printf '%s\n' "$GENERATED_BODY"
+          } > RELEASE_NOTES.md
 
       - name: Create or update GitHub release
         env:
@@ -413,17 +433,27 @@ jobs:
             fi
           fi
 
+          # Pre-releases must not become the "latest" release on GitHub
+          LATEST_FLAG="--latest"
+          if [ -n "$PRERELEASE_FLAG" ]; then
+            LATEST_FLAG="--latest=false"
+          fi
+
           if gh release view "$TAG" >/dev/null 2>&1; then
+            # Force un-draft so tag re-pushes produce a publicly-visible release
             gh release edit "$TAG" \
               --title "ClawMaster $TAG" \
-              --notes-file RELEASE_NOTES.md
+              --notes-file RELEASE_NOTES.md \
+              --draft=false \
+              $LATEST_FLAG
             gh release upload "$TAG" release-assets/* --clobber
           else
             gh release create "$TAG" release-assets/* \
               --title "ClawMaster $TAG" \
               --notes-file RELEASE_NOTES.md \
               $DRAFT_FLAG \
-              $PRERELEASE_FLAG
+              $PRERELEASE_FLAG \
+              $LATEST_FLAG
           fi
 
       - name: Add workflow summary
