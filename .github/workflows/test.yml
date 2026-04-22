@@ -2,14 +2,14 @@ name: Test Suite
 
 on:
   push:
-    branches: [main, 'feat/**']
+    branches: [main, develop, 'feat/**', 'release/**', 'hotfix/**']
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/PULL_REQUEST_TEMPLATE.md'
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -66,6 +66,13 @@ jobs:
 
       - run: npm ci
 
+      - name: Verify npm publish would succeed
+        shell: bash
+        run: |
+          OUTPUT=$(npm publish --dry-run 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q 'npm notice name:'
+
       - name: Pack published tarball
         id: pack
         run: node tests/install/github-actions.mjs pack-output
@@ -87,6 +94,44 @@ jobs:
         env:
           CLAWMASTER_BINARY: ${{ steps.binary.outputs.path }}
         run: node tests/install/wizard-install-smoke.mjs
+
+  # ─── Tauri Rust Check (fast type-check, no codegen) ───
+  tauri-check:
+    name: Tauri Cargo Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - uses: ./.github/actions/setup-rust
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
+
+      - run: npm ci
+
+      - name: Prepare Tauri resources and build web
+        run: npm run prepare:tauri-memory-plugin && npm run build
+
+      - name: Cargo check (type-check without codegen)
+        working-directory: src-tauri
+        run: cargo check --all-targets
 
   # ─── Backend Integration Tests ───
   backend:
@@ -318,6 +363,82 @@ jobs:
           process.exit(fail > 0 ? 1 : 0);
           SCRIPT
           node _smoke.mjs
+
+      - name: Wizard E2E — demo install flow
+        run: |
+          cat << 'SCRIPT' > _wizard_e2e.mjs
+          import { chromium } from 'playwright';
+
+          const browser = await chromium.launch({ headless: true });
+          const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+          const BASE = 'http://localhost:16223';
+          let step = 0;
+          const ok = (msg) => console.log(`PASS [${++step}] ${msg}`);
+          const bail = (msg) => { console.error(`FAIL [${step + 1}] ${msg}`); process.exit(1); };
+
+          // Step 1: Navigate to wizard in demo mode
+          await page.goto(`${BASE}?demo=install`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+          ok('Wizard loaded');
+
+          // Step 2: Wait for detection phase to complete → should auto-advance to provider step
+          await page.waitForSelector('text=配置 LLM 提供商', { timeout: 15000 })
+            .catch(() => page.waitForSelector('text=Configure LLM Provider', { timeout: 5000 }));
+          ok('Provider step rendered');
+
+          // Step 3: Gold sponsor (Wenxin) should be visible
+          const wenxin = await page.locator('text=文心大模型').or(page.locator('text=ERNIE')).first();
+          await wenxin.waitFor({ timeout: 5000 });
+          ok('Gold sponsor provider visible');
+
+          // Step 4: Select OpenAI provider
+          await page.locator('text=OpenAI').click();
+          ok('OpenAI selected');
+
+          // Step 5: API Key input should appear
+          const keyInput = page.locator('input[type="password"]');
+          await keyInput.waitFor({ timeout: 5000 });
+          ok('API Key input visible');
+
+          // Step 6: Enter a test key and validate
+          await keyInput.fill('sk-demo-test-key');
+          const validateBtn = page.locator('text=验证并继续').or(page.locator('text=Validate'));
+          await validateBtn.first().click();
+          ok('Validate clicked');
+
+          // Step 7: Model picker should appear after demo validation
+          const modelPicker = page.locator('text=选择默认模型').or(page.locator('text=Select Default Model'));
+          await modelPicker.first().waitFor({ timeout: 10000 });
+          ok('Model picker rendered');
+
+          // Step 8: "Enter" button should be present
+          const enterBtn = page.locator('text=进入管理大师').or(page.locator('text=Enter ClawMaster'));
+          await enterBtn.first().waitFor({ timeout: 5000 });
+          ok('Enter button visible');
+
+          // Step 9: Click enter → circle reveal animation → main app
+          await enterBtn.first().click();
+          await page.waitForTimeout(2000);
+          const mainVisible = await page.locator('.app-layout, [class*="Layout"], nav').first()
+            .isVisible().catch(() => false);
+          if (!mainVisible) bail('Main app layout not visible after circle reveal');
+          ok('Circle reveal → main app rendered');
+
+          // Step 10: Test skip flow
+          await page.goto(`${BASE}?demo=install`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+          await page.waitForSelector('text=配置 LLM 提供商', { timeout: 15000 })
+            .catch(() => page.waitForSelector('text=Configure LLM Provider', { timeout: 5000 }));
+          const skipLink = page.locator('text=跳过剩余步骤').or(page.locator('text=Skip'));
+          await skipLink.first().click();
+          await page.waitForTimeout(2000);
+          const skipMainVisible = await page.locator('.app-layout, [class*="Layout"], nav').first()
+            .isVisible().catch(() => false);
+          if (!skipMainVisible) bail('Main app not visible after skip');
+          ok('Skip flow → main app rendered');
+
+          console.log(`\nAll ${step} wizard E2E checks passed`);
+          await browser.close();
+          SCRIPT
+          node _wizard_e2e.mjs
 
       - name: Run YAML UI tests (CI-safe suites)
         run: node tests/ui/runner.mjs --suites 06,10,16,18

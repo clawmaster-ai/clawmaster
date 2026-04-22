@@ -25,10 +25,94 @@ Read this file before any other. Full contributor guide: [CONTRIBUTING.md](./CON
 
 **3. Comment on the issue** — state what you plan to do and how.
 
-**4. Create a branch:**
+**4. Create a branch from `develop`:**
 ```bash
-git checkout -b feat/short-description main   # or fix/, docs/, test/, chore/
+git checkout -b feat/short-description develop   # or fix/, docs/, test/, chore/
 ```
+
+---
+
+## Branching & release (git-flow)
+
+This project uses **git-flow**. Two long-lived branches exist at all times:
+
+| Branch | Purpose |
+|---|---|
+| `main` | Production-ready releases only. Every commit on `main` is a tagged release. |
+| `develop` | Integration branch. All feature/fix PRs target `develop`. |
+
+### Branch types
+
+| Prefix | Base → merge target | Lifecycle |
+|---|---|---|
+| `feat/` | `develop` → `develop` | Day-to-day feature work |
+| `fix/` | `develop` → `develop` | Non-urgent bug fixes |
+| `refactor/`, `docs/`, `test/`, `ci/`, `chore/` | `develop` → `develop` | Same as feat/fix |
+| `release/` | `develop` → `main` **+** `develop` | Stabilisation before a release |
+| `hotfix/` | `main` → `main` **+** `develop` | Critical production-only fixes |
+
+### Day-to-day workflow
+
+```
+develop ──●──●──────●──────●── ...
+           \      /
+  feat/x    ●──●─┘   (PR → develop, squash-merge)
+```
+
+1. Branch off `develop`.
+2. Open a PR targeting `develop`.
+3. Squash-merge when CI is green and review passes.
+
+### Cutting a release
+
+```
+develop ──●──●──┬──────────●── ...   (release branch merges back)
+                 \        /
+  release/0.2.0   ●──●──●           (bug-fixes only)
+                          \
+main ─────────────────────●── v0.2.0 (tag + merge)
+```
+
+1. `git checkout -b release/X.Y.Z develop`
+2. Bump version in `package.json` (and `src-tauri/tauri.conf.json` for desktop).
+3. Only bug-fixes, docs, and metadata changes on this branch — no new features.
+4. When stable:
+   ```bash
+   # merge to main and tag
+   git checkout main && git merge --no-ff release/X.Y.Z
+   git tag -a vX.Y.Z -m "Release X.Y.Z"
+   git push origin main --follow-tags
+
+   # merge back to develop
+   git checkout develop && git merge --no-ff release/X.Y.Z
+   git push origin develop
+
+   # clean up
+   git branch -d release/X.Y.Z
+   git push origin --delete release/X.Y.Z
+   ```
+5. The `vX.Y.Z` tag triggers CI to build desktop bundles and create a GitHub release.
+
+### Hotfixes
+
+```
+main ──●────────────●── v0.2.1  (tag)
+        \          /
+  hotfix/0.2.1  ●─┘
+                 \
+develop ──●──────●── ...  (hotfix merges here too)
+```
+
+1. `git checkout -b hotfix/X.Y.Z main`
+2. Fix the issue, bump patch version.
+3. Merge to `main` (tag `vX.Y.Z`), then merge to `develop`.
+
+### Rules
+
+- **Never push directly to `main` or `develop`** — always go through a PR.
+- **Never merge `main` into `develop`** — always merge release/hotfix branches back.
+- Feature PRs that accidentally target `main` will be redirected to `develop`.
+- The `develop` branch should always be in a buildable, test-passing state.
 
 ---
 
@@ -120,7 +204,7 @@ dev-browser --help               # full UI automation API reference
 
 ```bash
 git push -u origin feat/my-feature
-gh pr create --fill   # opens the PR template
+gh pr create --base develop --fill   # PRs target develop by default
 ```
 
 Fill in **## What**, **## Why**, and **## How** — the `pr-description-check` CI job
@@ -176,7 +260,7 @@ Violating any of these will cause a PR to be rejected without review:
 - **No hardcoded display strings** — every UI string goes through `t()`.
 - **No `console.log`** in production code paths.
 - **No generated files** in commits: `dist/`, `coverage/`, `src-tauri/target/`, `*.tsbuildinfo`.
-- **Branch prefix required**: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `ci/`, `chore/`.
+- **Branch prefix required**: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `ci/`, `chore/`, `release/`, `hotfix/`.
 
 ---
 
@@ -342,6 +426,7 @@ Run `dev-browser --help` for the full LLM-oriented API reference.
 
 ### CI
 
-Every push/PR: `npm ci` → TypeScript check → `npm test` → `npm run build`.
-Tags + main + manual dispatch: multi-platform Tauri builds (Linux x64, macOS x64/ARM64, Windows x64).
+Every push/PR to `develop` or `main`: `npm ci` → TypeScript check → `npm test` → `npm run build`.
+Tags (`v*`) + `main` + manual dispatch: multi-platform Tauri builds (Linux x64, macOS x64/ARM64, Windows x64).
 Draft GitHub releases created on tag pushes; non-tag builds upload artifacts with 7-day retention.
+Release (`release/*`) and hotfix (`hotfix/*`) branches also trigger CI on push and PR.
