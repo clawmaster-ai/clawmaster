@@ -263,7 +263,19 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check if version already published
+        id: check_npm
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "clawmaster@$VERSION" version >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "clawmaster@$VERSION is already on npm; skipping publish"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish
+        if: steps.check_npm.outputs.skip != 'true'
         run: npm publish --tag ${{ steps.npm_tag.outputs.tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
