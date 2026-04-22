@@ -68,7 +68,10 @@ jobs:
 
       - name: Verify npm publish would succeed
         shell: bash
-        run: npm publish --dry-run 2>&1 | tee /dev/stderr | grep -q 'npm notice name:'
+        run: |
+          OUTPUT=$(npm publish --dry-run 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q 'npm notice name:'
 
       - name: Pack published tarball
         id: pack
@@ -123,8 +126,8 @@ jobs:
 
       - run: npm ci
 
-      - name: Build web (required by Tauri)
-        run: npm run build
+      - name: Prepare Tauri resources and build web
+        run: npm run prepare:tauri-memory-plugin && npm run build
 
       - name: Cargo check (type-check without codegen)
         working-directory: src-tauri
