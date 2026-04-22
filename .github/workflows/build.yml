@@ -133,6 +133,15 @@ jobs:
 
       - run: npm ci
 
+      - name: Normalize version for MSI (numeric-only required)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          RAW=$(node -p "require('./package.json').version")
+          # Strip pre-release suffix (0.3.0-rc.1 → 0.3.0) for MSI compatibility
+          NUMERIC="${RAW%%-*}"
+          echo "TAURI_CONFIG={\"version\":\"$NUMERIC\"}" >> "$GITHUB_ENV"
+
       - name: Build Tauri desktop bundles
         run: npx tauri build --target ${{ matrix.target }}
 
