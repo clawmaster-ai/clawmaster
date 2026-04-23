@@ -153,23 +153,27 @@ You still get provider management, observability, memory tooling, sessions, plug
 
 <table>
   <tr>
-    <td align="center" width="33%">
+    <td align="center" width="25%">
       <a href="./docs/screenshots/wizard-provider.png"><img src="./docs/screenshots/wizard-provider.png" alt="Setup wizard with tiered providers" /></a><br/>
       <sub><b>Setup wizard</b> · 2-step guided install, tiered providers</sub>
     </td>
-    <td align="center" width="33%">
+    <td align="center" width="25%">
       <a href="./docs/screenshots/page-dashboard.png"><img src="./docs/screenshots/page-dashboard.png" alt="Overview dashboard" /></a><br/>
       <sub><b>Overview</b> · Runtime health, next-step task flows</sub>
     </td>
-    <td align="center" width="33%">
+    <td align="center" width="25%">
       <a href="./docs/screenshots/page-models.png"><img src="./docs/screenshots/page-models.png" alt="Models and providers page" /></a><br/>
       <sub><b>Models</b> · Multi-provider config with live key validation</sub>
+    </td>
+    <td align="center" width="25%">
+      <a href="./docs/screenshots/page-channels.png"><img src="./docs/screenshots/page-channels.png" alt="Channels onboarding" /></a><br/>
+      <sub><b>Channels</b> · Feishu · WeChat · Discord · Slack · Telegram · WhatsApp</sub>
     </td>
   </tr>
   <tr>
     <td align="center">
-      <a href="./docs/screenshots/page-channels.png"><img src="./docs/screenshots/page-channels.png" alt="Channels onboarding" /></a><br/>
-      <sub><b>Channels</b> · Feishu · WeChat · Discord · Slack · Telegram · WhatsApp</sub>
+      <a href="./docs/screenshots/page-observe.png"><img src="./docs/screenshots/page-observe.png" alt="Observability with ClawProbe" /></a><br/>
+      <sub><b>Observe</b> · ClawProbe-backed cost, tokens, session health</sub>
     </td>
     <td align="center">
       <a href="./docs/screenshots/page-memory.png"><img src="./docs/screenshots/page-memory.png" alt="Memory workspace" /></a><br/>
@@ -178,6 +182,10 @@ You still get provider management, observability, memory tooling, sessions, plug
     <td align="center">
       <a href="./docs/screenshots/page-mcp.png"><img src="./docs/screenshots/page-mcp.png" alt="MCP servers page" /></a><br/>
       <sub><b>MCP</b> · Servers, endpoints, and skill definitions</sub>
+    </td>
+    <td align="center">
+      <a href="./docs/screenshots/page-skills.png"><img src="./docs/screenshots/page-skills.png" alt="Skills marketplace" /></a><br/>
+      <sub><b>Skills</b> · ClawHub marketplace with install and audit</sub>
     </td>
   </tr>
 </table>
