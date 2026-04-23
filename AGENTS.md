@@ -425,7 +425,12 @@ Run `dev-browser --help` for the full LLM-oriented API reference.
 
 ### CI
 
-Every push/PR to `develop` or `main`: `npm ci` → TypeScript check → `npm test` → `npm run build`.
-Tags (`v*`) + `main` + manual dispatch: multi-platform Tauri builds (Linux x64, macOS x64/ARM64, Windows x64).
-Draft GitHub releases created on tag pushes; non-tag builds upload artifacts with 7-day retention.
-Release (`release/*`) and hotfix (`hotfix/*`) branches also trigger CI on push and PR.
+**Test Suite** (`test.yml`) runs on every push/PR to `develop`, `main`, `release/**`, `hotfix/**`: TypeScript check → unit tests (546) → package install smoke (Linux/macOS/Windows) → backend integration → Tauri cargo check → E2E smoke.
+
+**Desktop Bundles** (`build.yml`) only runs on release-track events:
+- Push to `release/**` or `hotfix/**` — validates bundles before tagging
+- Push of tag `v*` — produces release artifacts + publishes to npm + creates GitHub release
+- PR to `main` (i.e. release/hotfix PRs) — runs `verify` job for quick validation
+- Manual `workflow_dispatch`
+
+Push to `main`/`develop` does **not** trigger desktop bundle builds — Test Suite covers regression checks, and `tauri-check` (fast `cargo check`) catches Rust compile errors. This keeps the slow multi-platform Tauri builds scoped to actual release work.

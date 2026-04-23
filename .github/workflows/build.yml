@@ -1,15 +1,22 @@
 name: Desktop Bundles
 
 on:
+  # Expensive desktop bundle builds only run on release-track events:
+  #   - push to release/**, hotfix/**  (validate before tagging)
+  #   - tag push v*                   (actual release)
+  #   - PR to main                    (release/hotfix PRs — verify job only)
+  #   - workflow_dispatch             (manual)
+  # Push to main/develop does NOT trigger this workflow. Test Suite (test.yml)
+  # handles TypeScript/tests/build validation on those branches.
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/PULL_REQUEST_TEMPLATE.md'
   push:
-    branches: [main, develop, 'release/**', 'hotfix/**']
+    branches: ['release/**', 'hotfix/**']
     tags: ['v*']
     paths-ignore:
       - '**.md'
