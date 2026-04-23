@@ -12,6 +12,7 @@ import {
   PROVIDERS,
   PRIMARY_PROVIDERS,
   PRIMARY_IMAGE_PROVIDERS,
+  TEXT_PROVIDER_TIERS,
   PROVIDER_BADGES,
   getProviderCredentialLabel,
   getProviderDefaultTarget,
@@ -1012,16 +1013,24 @@ function AddProviderPanel({
   const [customBaseUrl, setCustomBaseUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showMore, setShowMore] = useState(false)
+  const [expandedTiers, setExpandedTiers] = useState<Record<string, boolean>>({})
   const adapter = getSetupAdapter()
 
   const allIds = Object.keys(PROVIDERS)
-  const primaryTextIds = PRIMARY_PROVIDERS as readonly string[]
   const primaryImageIds = PRIMARY_IMAGE_PROVIDERS as readonly string[]
-  const initialVisibleIds = [...new Set([...primaryTextIds, ...primaryImageIds])]
-  const visibleIds = showMore ? allIds : initialVisibleIds
-  const textIds = sortProviderIds(visibleIds.filter((providerId) => getProviderKind(providerId) !== 'text-to-image'))
-  const imageIds = sortProviderIds(visibleIds.filter((providerId) => getProviderKind(providerId) === 'text-to-image'))
+  const imageIds = sortProviderIds(primaryImageIds.filter((providerId) => allIds.includes(providerId)))
+  // Count hidden (collapsible) text providers to decide whether to show the
+  // tier-level "更多" toggles. Non-tiered text providers (if any) fall into
+  // a legacy bucket shown in the compatible-and-local tier's tail.
+  const tieredTextIds = new Set(
+    TEXT_PROVIDER_TIERS.flatMap((tier) => [
+      ...tier.members,
+      ...(tier.collapsible?.members ?? []),
+    ]),
+  )
+  const legacyTextIds = allIds.filter(
+    (id) => getProviderKind(id) !== 'text-to-image' && !tieredTextIds.has(id),
+  )
   const cfg = PROVIDERS[provider]
   const credentialLabel = getProviderCredentialLabel(provider, i18n.language)
   const providerLabel = getProviderLabel(provider, i18n.language)
@@ -1112,24 +1121,70 @@ function AddProviderPanel({
         <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(22rem,26rem)_minmax(0,1fr)]">
           <aside className="min-h-0 overflow-y-auto border-b border-border/70 bg-card/55 px-5 py-5 sm:px-6 xl:border-b-0 xl:border-r">
             <div className="space-y-5">
-              {textIds.length > 0 && (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <p className="control-label">{t('models.textProviders')}</p>
-                    <p className="text-sm text-muted-foreground">{t('models.textProvidersDesc')}</p>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                    {textIds.map((p) => (
-                      <ProviderSelectButton
-                        key={p}
-                        providerId={p}
-                        selected={provider === p}
-                        onSelect={() => selectProvider(p)}
-                      />
-                    ))}
-                  </div>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className="control-label">{t('models.textProviders')}</p>
+                  <p className="text-sm text-muted-foreground">{t('models.textProvidersDesc')}</p>
                 </div>
-              )}
+                {TEXT_PROVIDER_TIERS.map((tier) => {
+                  const visible = tier.members.filter((id) => allIds.includes(id))
+                  const hidden = tier.collapsible
+                    ? tier.collapsible.members.filter((id) => allIds.includes(id))
+                    : []
+                  if (visible.length === 0 && hidden.length === 0) return null
+
+                  const expanded = expandedTiers[tier.id] === true
+                  const rendered = expanded ? [...visible, ...hidden] : visible
+
+                  return (
+                    <div key={tier.id} className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        {t(tier.labelKey)}
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                        {rendered.map((p) => (
+                          <ProviderSelectButton
+                            key={p}
+                            providerId={p}
+                            selected={provider === p}
+                            onSelect={() => selectProvider(p)}
+                          />
+                        ))}
+                      </div>
+                      {hidden.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedTiers((prev) => ({ ...prev, [tier.id]: !expanded }))
+                          }
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          {expanded
+                            ? t('setup.collapse')
+                            : t(tier.collapsible!.labelKey, { count: hidden.length })}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+                {legacyTextIds.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      {t('providers.tierCompatibleAndLocal')}
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                      {sortProviderIds(legacyTextIds).map((p) => (
+                        <ProviderSelectButton
+                          key={p}
+                          providerId={p}
+                          selected={provider === p}
+                          onSelect={() => selectProvider(p)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {imageIds.length > 0 && (
                 <div className="space-y-3">
@@ -1148,16 +1203,6 @@ function AddProviderPanel({
                     ))}
                   </div>
                 </div>
-              )}
-
-              {allIds.length > initialVisibleIds.length && (
-                <button
-                  type="button"
-                  onClick={() => setShowMore(!showMore)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {showMore ? t('setup.collapse') : t('models.showMore', { count: allIds.length - initialVisibleIds.length })}
-                </button>
               )}
             </div>
           </aside>

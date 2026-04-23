@@ -463,8 +463,76 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
   },
 }
 
-/** 首屏展示的提供商（按钮行），其余折叠在"更多"中 */
-export const PRIMARY_PROVIDERS = ['baidu-aistudio', 'openai', 'anthropic', 'deepseek', 'google', 'ollama', 'openrouter'] as const
+export type ProviderTierId = 'sponsors' | 'featured' | 'compatible-and-local'
+
+export interface ProviderTier {
+  id: ProviderTierId
+  /** i18n key for the tier heading */
+  labelKey: string
+  /** provider ids shown by default */
+  members: readonly string[]
+  /** optional collapsible subgroup (e.g. tier-2 "more") */
+  collapsible?: {
+    /** i18n key for the "show more" button label */
+    labelKey: string
+    members: readonly string[]
+  }
+}
+
+/**
+ * Text-provider presentation hierarchy.
+ *
+ * Tier 1 (sponsors): invited partners — Baidu/ERNIE sits here.
+ * Tier 2 (featured): GLM/Chinese providers and OpenRouter visible; OpenAI,
+ *   Anthropic, Google and other global providers tucked under a "更多" toggle
+ *   to keep the first impression focused on the China-first lineup.
+ * Tier 3 (compatible + local): OpenAI-compatible custom endpoints plus local
+ *   runtimes (Ollama). Anthropic-compatible and LM Studio will land here once
+ *   they ship in 0.4.
+ */
+export const TEXT_PROVIDER_TIERS: readonly ProviderTier[] = [
+  {
+    id: 'sponsors',
+    labelKey: 'providers.badgeGoldenSponsor',
+    members: ['baidu-aistudio'],
+  },
+  {
+    id: 'featured',
+    labelKey: 'providers.tierFeatured',
+    members: ['deepseek', 'kimi-coding', 'minimax', 'siliconflow', 'openrouter'],
+    collapsible: {
+      labelKey: 'providers.tierFeaturedMore',
+      members: [
+        'openai',
+        'anthropic',
+        'google',
+        'xai',
+        'mistral',
+        'groq',
+        'cerebras',
+        'amazon-bedrock',
+        'google-vertex',
+        'azure-openai-responses',
+      ],
+    },
+  },
+  {
+    id: 'compatible-and-local',
+    labelKey: 'providers.tierCompatibleAndLocal',
+    members: ['ollama', 'custom-openai-compatible'],
+  },
+] as const
+
+/**
+ * Flat ordering of every text provider from the tier structure. Retained for
+ * consumers that need a simple "which providers are preferred?" list (e.g. the
+ * first-run quick-add grid, which slices the top 4).
+ */
+export const PRIMARY_PROVIDERS = TEXT_PROVIDER_TIERS.flatMap((tier) => [
+  ...tier.members,
+  ...(tier.collapsible?.members ?? []),
+])
+
 export const PRIMARY_IMAGE_PROVIDERS = ['baidu-aistudio-image', 'google-image', 'openai-image'] as const
 
 export const PROVIDER_BADGES: Partial<Record<keyof typeof PROVIDERS, ProviderBadgeTone>> = {

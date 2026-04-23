@@ -105,9 +105,13 @@ describe('ModelsPage', () => {
     expect(within(firstRun).getByText('Connect your first provider')).toBeInTheDocument()
     expect(within(firstRun).getByText('Text providers')).toBeInTheDocument()
     expect(within(firstRun).getByText('Image providers')).toBeInTheDocument()
-    expect(within(firstRun).getByText('OpenAI')).toBeInTheDocument()
-    expect(within(firstRun).getByText('Anthropic')).toBeInTheDocument()
+    // First-run grid surfaces the top 4 providers from PRIMARY_PROVIDERS,
+    // which after the tier reshuffle is: ERNIE LLM API (sponsor) + first
+    // three tier-2 "featured" entries (DeepSeek, Kimi, MiniMax).
     expect(within(firstRun).getByText('ERNIE LLM API')).toBeInTheDocument()
+    expect(within(firstRun).getByText('DeepSeek')).toBeInTheDocument()
+    expect(within(firstRun).getByText('Kimi (Moonshot)')).toBeInTheDocument()
+    expect(within(firstRun).getByText('MiniMax')).toBeInTheDocument()
     expect(within(firstRun).getByText('ERNIE-Image')).toBeInTheDocument()
     expect(within(firstRun).getByText('Gemini Image')).toBeInTheDocument()
     expect(within(firstRun).getByText('GPT Image')).toBeInTheDocument()
@@ -531,7 +535,7 @@ describe('ModelsPage', () => {
     expect(within(picker!).getByRole('button', { name: /GPT-4.1 Mini gpt-4.1-mini/ })).toBeInTheDocument()
   })
 
-  it('does not enter the live catalog flow for custom openai-compatible providers', async () => {
+  it('enables the live catalog flow for custom openai-compatible providers once baseUrl is set', async () => {
     mockGetConfig.mockResolvedValueOnce({
       agents: {
         defaults: {
@@ -553,15 +557,8 @@ describe('ModelsPage', () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Model Configuration' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Refresh Models' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Catalog unavailable')).not.toBeInTheDocument()
-    expect(mockGetProviderModelCatalog).not.toHaveBeenCalled()
-
-    fireEvent.click(within(getProviderCardByLabel('Custom (OpenAI Compatible)')).getByRole('button', { name: 'Choose Model' }))
-    const picker = getElementById('models-provider-picker-custom-openai-compatible')
-    expect(within(picker!).queryByText('Live catalog')).not.toBeInTheDocument()
-    expect(within(picker!).queryByText('Fallback catalog')).not.toBeInTheDocument()
-    expect(within(picker!).getByRole('button', { name: /my-custom-model my-custom-model/i })).toBeInTheDocument()
+    const customCard = getProviderCardByLabel('Custom (OpenAI Compatible)')
+    expect(within(customCard).getByRole('button', { name: 'Refresh Models' })).toBeInTheDocument()
   })
 
   it('sets image generation providers as the image default instead of the text default', async () => {
