@@ -31,6 +31,34 @@ function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '')
 }
 
+function trimSingleTrailingRootSlash(value: string) {
+  return value.replace(/\/(?=$|[?#])/, '')
+}
+
+function stripOpenAiCompatibleCompletionsSuffix(pathname: string) {
+  let value = trimTrailingSlash(pathname)
+  value = value.replace(/\/chat\/completions$/i, '')
+  value = value.replace(/\/completions$/i, '')
+  return trimTrailingSlash(value) || '/'
+}
+
+function normalizeOpenAiCompatibleBaseUrl(raw: string | undefined | null): string {
+  if (!raw) return ''
+  const value = raw.trim()
+  if (!value) return ''
+
+  try {
+    const url = new URL(value)
+    url.pathname = stripOpenAiCompatibleCompletionsSuffix(url.pathname)
+    return trimSingleTrailingRootSlash(url.toString())
+  } catch {
+    const match = value.match(/^([^?#]*)([?#].*)?$/)
+    const base = match?.[1] ?? value
+    const suffix = match?.[2] ?? ''
+    return `${stripOpenAiCompatibleCompletionsSuffix(base)}${suffix}`
+  }
+}
+
 function normalizeUrlPathname(pathname: string) {
   const normalized = trimTrailingSlash(pathname)
   return normalized || '/'
@@ -205,7 +233,7 @@ function buildProviderCatalogRequest(input: {
   }
 
   if (isSupportedOpenAiCompatibleProvider(providerId)) {
-    const root = trimTrailingSlash(baseUrl || OPENAI_COMPATIBLE_PROVIDER_DEFAULTS[providerId] || '')
+    const root = trimTrailingSlash(normalizeOpenAiCompatibleBaseUrl(baseUrl) || OPENAI_COMPATIBLE_PROVIDER_DEFAULTS[providerId] || '')
     if (!root || !apiKey) return null
     const suffix = providerId === 'siliconflow'
       ? '/models?type=text&sub_type=chat'

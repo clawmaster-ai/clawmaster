@@ -284,7 +284,7 @@ export function buildProviderCatalogRequest(input: {
   }
 
   if (isSupportedOpenAiCompatibleProvider(providerId)) {
-    const root = trimTrailingSlash(baseUrl || OPENAI_COMPATIBLE_PROVIDER_DEFAULTS[providerId] || '')
+    const root = trimTrailingSlash(normalizeOpenAiCompatibleBaseUrl(baseUrl) || OPENAI_COMPATIBLE_PROVIDER_DEFAULTS[providerId] || '')
     if (!root || !apiKey) return null
     const suffix = providerId === 'siliconflow'
       ? '/models?type=text&sub_type=chat'
