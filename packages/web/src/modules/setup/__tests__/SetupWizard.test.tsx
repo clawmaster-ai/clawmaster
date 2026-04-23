@@ -465,6 +465,43 @@ describe('SetupWizard', () => {
       expect(screen.queryByRole('button', { name: /Enter ClawMaster/i })).not.toBeInTheDocument()
     })
 
+    it('loads live GLM catalog models for custom OpenAI-compatible endpoints', async () => {
+      mockGetProviderModelCatalogResult.mockResolvedValue({
+        success: true,
+        data: [
+          { id: 'glm-5.1', name: 'glm-5.1' },
+          { id: 'glm-5-turbo', name: 'glm-5-turbo' },
+        ],
+        error: null,
+      })
+
+      render(<SetupWizard onComplete={() => {}} />)
+
+      await screen.findByText('Configure LLM Provider')
+
+      fireEvent.click(screen.getByText(/Custom \(OpenAI Compatible\)/i))
+      fireEvent.change(screen.getByPlaceholderText(/API Base URL/i), {
+        target: { value: 'https://open.bigmodel.cn/api/paas/v4/chat/completions' },
+      })
+      fireEvent.change(screen.getByPlaceholderText(/Enter Custom \(OpenAI Compatible\) API Key/i), {
+        target: { value: 'glm-key' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
+
+      await screen.findByText('Select Default Model')
+
+      await waitFor(() => {
+        expect(screen.getByText('Live')).toBeInTheDocument()
+      })
+      expect(screen.getByDisplayValue('glm-5.1')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('glm-5-turbo')).toBeInTheDocument()
+      expect(mockGetProviderModelCatalogResult).toHaveBeenCalledWith({
+        providerId: 'custom-openai-compatible',
+        apiKey: 'glm-key',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+      })
+    })
+
     it('ignores stale live catalog responses after switching providers', async () => {
       const staleCatalog = deferred<{
         success: boolean

@@ -203,7 +203,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     apiKey: string,
     baseUrl?: string,
   ) => {
-    if (!supportsProviderCatalog(providerId)) {
+    if (!supportsProviderCatalog(providerId, baseUrl ? { baseUrl } : undefined)) {
       setCatalogModels(null)
       setCatalogLoading(false)
       return
@@ -223,15 +223,17 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       if (result.success) {
         const nextCatalogModels = (result.data ?? []).map((m) => ({ id: m.id, name: m.name }))
         const liveModelsById = new Map(nextCatalogModels.map((model) => [model.id, model]))
-        const trustedCatalogModels = staticModels
-          .filter((model) => liveModelsById.has(model.id))
-          .map((model) => {
-            const liveModel = liveModelsById.get(model.id)
-            return {
-              id: model.id,
-              name: liveModel?.name || model.name,
-            }
-          })
+        const trustedCatalogModels = staticModels.length > 0
+          ? staticModels
+              .filter((model) => liveModelsById.has(model.id))
+              .map((model) => {
+                const liveModel = liveModelsById.get(model.id)
+                return {
+                  id: model.id,
+                  name: liveModel?.name || model.name,
+                }
+              })
+          : nextCatalogModels
 
         const effectiveCatalogModels = trustedCatalogModels.length > 0 ? trustedCatalogModels : null
 

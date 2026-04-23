@@ -146,5 +146,15 @@ describe('providerCatalog', () => {
         headers: { Authorization: 'Bearer glm-key' },
       })
     })
+
+    it('buildProviderCatalogRequest normalizes pasted chat completions endpoints for custom', () => {
+      const request = buildProviderCatalogRequest({
+        providerId: 'custom-openai-compatible',
+        apiKey: 'glm-key',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+      })
+
+      expect(request?.url).toBe('https://open.bigmodel.cn/api/paas/v4/models')
+    })
   })
 })
