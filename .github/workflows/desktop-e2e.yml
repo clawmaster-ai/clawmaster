@@ -83,8 +83,42 @@ jobs:
 
       - run: npm ci
 
+      - name: Resolve OpenClaw CLI version
+        id: openclaw-version
+        shell: bash
+        run: |
+          # Pin CLI version to match tests/desktop/harness.mjs so cache keys
+          # invalidate exactly when the harness bumps the dependency.
+          version=$(grep -oE "openclaw@[0-9]+\.[0-9]+\.[0-9]+" tests/desktop/harness.mjs | head -1 | cut -d@ -f2)
+          if [ -z "$version" ]; then
+            echo "Could not parse openclaw version from harness.mjs" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Using openclaw@$version"
+
+      - name: Resolve npm global prefix
+        id: npm-prefix
+        shell: bash
+        run: |
+          prefix="$(npm config get prefix)"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+
+      - name: Cache global OpenClaw CLI install
+        id: openclaw-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.npm-prefix.outputs.prefix }}/lib/node_modules/openclaw
+            ${{ steps.npm-prefix.outputs.prefix }}/bin/openclaw
+            ${{ steps.npm-prefix.outputs.prefix }}/bin/openclaw.cmd
+            ${{ steps.npm-prefix.outputs.prefix }}/node_modules/openclaw
+            ${{ steps.npm-prefix.outputs.prefix }}/openclaw.cmd
+          key: openclaw-cli-${{ runner.os }}-${{ steps.openclaw-version.outputs.version }}
+
       - name: Install OpenClaw CLI
-        run: npm install -g openclaw
+        if: steps.openclaw-cache.outputs.cache-hit != 'true'
+        run: npm install -g openclaw@${{ steps.openclaw-version.outputs.version }}
 
       - name: Add npm global bin to PATH
         if: runner.os != 'Windows'
@@ -99,13 +133,23 @@ jobs:
 
       - name: Install tauri-driver
         if: matrix.smokeMode == 'webdriver'
-        run: cargo install tauri-driver --locked
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: tauri-driver
+          locked: true
 
       - name: Install matching Edge WebDriver
         if: runner.os == 'Windows'
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: msedgedriver-tool
+          git: https://github.com/chippers/msedgedriver-tool
+          locked: true
+
+      - name: Materialize Edge WebDriver binary
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cargo install --git https://github.com/chippers/msedgedriver-tool --locked
           $driverDir = Join-Path $env:RUNNER_TEMP 'msedgedriver'
           $maxAttempts = 3
 
