@@ -167,7 +167,7 @@ You still get provider management, observability, memory tooling, sessions, plug
     </td>
     <td align="center" width="25%">
       <a href="./docs/screenshots/page-channels.png"><img src="./docs/screenshots/page-channels.png" alt="Channels onboarding" /></a><br/>
-      <sub><b>Channels</b> · Feishu · WeChat · Discord · Slack · Telegram · WhatsApp</sub>
+      <sub><b>Channels</b> · Guided onboarding for 6 messaging platforms</sub>
     </td>
   </tr>
   <tr>
