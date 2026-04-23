@@ -2,7 +2,12 @@ name: Desktop Smoke
 
 on:
   push:
-    branches: [main, 'feat/**']
+    # release/** and hotfix/** are included so the desktop-smoke cache gets
+    # populated on the release branch itself after PRs merge. Without this,
+    # the GitHub Actions cache scope for release/0.3.0 stays empty and every
+    # rc PR pays the full cargo-install + npm-install-openclaw cost because
+    # it cannot read caches from the merged PR's feature branch.
+    branches: [main, 'feat/**', 'release/**', 'hotfix/**']
     paths-ignore:
       - '**.md'
       - 'docs/**'
