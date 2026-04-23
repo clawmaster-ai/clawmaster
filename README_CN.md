@@ -149,6 +149,47 @@ ClawMaster 的核心目标，是缩短“安装完成”到“真实产出”之
 - **插件、技能与 MCP** —— 启用 / 禁用能力，安装精选项目，添加 MCP 服务，导入 MCP 定义。
 - **会话、记忆与可观测** —— 查看会话，管理记忆后端，追踪 Token 用量和费用估算。
 
+## 产品功能总览
+
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <a href="./docs/screenshots/wizard-provider.png"><img src="./docs/screenshots/wizard-provider.png" alt="分层展示的引导向导" /></a><br/>
+      <sub><b>引导向导</b> · 两步安装，分层展示供应商</sub>
+    </td>
+    <td align="center" width="25%">
+      <a href="./docs/screenshots/page-dashboard.png"><img src="./docs/screenshots/page-dashboard.png" alt="总览仪表盘" /></a><br/>
+      <sub><b>总览</b> · 运行态健康与下一步任务</sub>
+    </td>
+    <td align="center" width="25%">
+      <a href="./docs/screenshots/page-models.png"><img src="./docs/screenshots/page-models.png" alt="模型与供应商" /></a><br/>
+      <sub><b>模型</b> · 多供应商配置与实时校验</sub>
+    </td>
+    <td align="center" width="25%">
+      <a href="./docs/screenshots/page-channels.png"><img src="./docs/screenshots/page-channels.png" alt="频道接入" /></a><br/>
+      <sub><b>频道</b> · 6 个消息平台的接入向导</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="./docs/screenshots/page-observe.png"><img src="./docs/screenshots/page-observe.png" alt="可观测 · ClawProbe" /></a><br/>
+      <sub><b>可观测</b> · ClawProbe 驱动的成本、Token、会话健康</sub>
+    </td>
+    <td align="center">
+      <a href="./docs/screenshots/page-memory.png"><img src="./docs/screenshots/page-memory.png" alt="记忆工作区" /></a><br/>
+      <sub><b>记忆</b> · PowerMem 驱动的知识工作区</sub>
+    </td>
+    <td align="center">
+      <a href="./docs/screenshots/page-mcp.png"><img src="./docs/screenshots/page-mcp.png" alt="MCP 服务器" /></a><br/>
+      <sub><b>MCP</b> · 服务器、端点与技能定义</sub>
+    </td>
+    <td align="center">
+      <a href="./docs/screenshots/page-skills.png"><img src="./docs/screenshots/page-skills.png" alt="技能市场" /></a><br/>
+      <sub><b>技能</b> · ClawHub 市场，一键安装与审计</sub>
+    </td>
+  </tr>
+</table>
+
 ## 路线图
 
 六大核心能力 —— 每一项都从基础设施走向日常可用：
