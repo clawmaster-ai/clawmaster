@@ -297,6 +297,12 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Custom release-notes script walks the full commit range between
+          # the previous v* tag and the current tag via `git describe` + `git
+          # log`, which needs complete history and tags present.
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/download-artifact@v5
         with:
@@ -365,21 +371,15 @@ jobs:
       - name: Create release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.release_meta.outputs.tag }}
-          TARGET_COMMITISH: ${{ github.sha }}
         run: |
           set -euo pipefail
 
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$REPOSITORY/releases/generate-notes" \
-            -f tag_name="$TAG" \
-            -f target_commitish="$TARGET_COMMITISH" \
-            > generated-release-notes.json
-
-          GENERATED_BODY="$(node -e "const fs=require('fs'); const body=JSON.parse(fs.readFileSync('generated-release-notes.json','utf8')).body || ''; process.stdout.write(body.trim());")"
+          # Custom script groups commits by conventional-commit type into
+          # emoji'd buckets. Beats `gh api .../generate-notes` for git-flow
+          # repos where the tagged branch only sees the release-merge commit.
+          GENERATED_BODY="$(node scripts/release-notes.mjs "$TAG")"
 
           VERSION="${TAG#v}"
           NPM_TAG="latest"
