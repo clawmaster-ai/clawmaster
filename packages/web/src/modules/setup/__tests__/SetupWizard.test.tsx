@@ -258,22 +258,35 @@ describe('SetupWizard', () => {
       expect(within(pills as HTMLElement).getByText('Model')).toBeInTheDocument()
     })
 
-    it('shows primary providers on load', async () => {
+    it('shows tier-1 sponsor and tier-2 featured providers on load', async () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       await screen.findByText('Configure LLM Provider')
-      expect(screen.getByText('OpenAI')).toBeInTheDocument()
-      expect(screen.getByText('Anthropic')).toBeInTheDocument()
+      // Tier 1 — sponsor
+      expect(screen.getByText('ERNIE LLM API')).toBeInTheDocument()
+      // Tier 2 featured (visible by default)
       expect(screen.getByText('DeepSeek')).toBeInTheDocument()
-      expect(screen.getByText('Google Gemini')).toBeInTheDocument()
+      expect(screen.getByText('Kimi (Moonshot)')).toBeInTheDocument()
+      expect(screen.getByText('MiniMax')).toBeInTheDocument()
+      expect(screen.getByText('SiliconFlow')).toBeInTheDocument()
+      expect(screen.getByText('OpenRouter')).toBeInTheDocument()
+      // Tier 3 — compatible + local (visible by default)
+      expect(screen.getByText('Ollama')).toBeInTheDocument()
+      expect(screen.getByText('Custom (OpenAI Compatible)')).toBeInTheDocument()
+      // Tier-2 "more" is collapsed by default
+      expect(screen.queryByText('OpenAI')).not.toBeInTheDocument()
+      expect(screen.queryByText('Anthropic')).not.toBeInTheDocument()
     })
 
-    it('shows more providers when expanding', async () => {
+    it('reveals tier-2 "more" providers when expanded', async () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       await screen.findByText('Configure LLM Provider')
 
       fireEvent.click(screen.getByText(/More providers/i))
+      expect(screen.getByText('DeepSeek')).toBeInTheDocument()
+      expect(screen.getByText('Anthropic')).toBeInTheDocument()
+      expect(screen.getByText('Google Gemini')).toBeInTheDocument()
       expect(screen.getByText('Mistral AI')).toBeInTheDocument()
       expect(screen.getByText('Groq')).toBeInTheDocument()
     })
@@ -283,22 +296,22 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
 
-      fireEvent.click(screen.getByText('OpenAI'))
-      const openaiInput = screen.getByPlaceholderText(/Enter OpenAI API Key/i)
-      fireEvent.change(openaiInput, { target: { value: 'sk-123' } })
+      fireEvent.click(screen.getByText('DeepSeek'))
+      const deepseekInput = screen.getByPlaceholderText(/Enter DeepSeek API Key/i)
+      fireEvent.change(deepseekInput, { target: { value: 'sk-123' } })
 
-      fireEvent.click(screen.getByText('Anthropic'))
-      const anthropicInput = screen.getByPlaceholderText(/Enter Anthropic API Key/i)
-      expect(anthropicInput).toHaveValue('')
+      fireEvent.click(screen.getByText('MiniMax'))
+      const minimaxInput = screen.getByPlaceholderText(/Enter MiniMax API Key/i)
+      expect(minimaxInput).toHaveValue('')
     })
 
     it('shows "Get API Key" link for providers with keyUrl', async () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       await screen.findByText('Configure LLM Provider')
-      fireEvent.click(screen.getByText('OpenAI'))
+      fireEvent.click(screen.getByText('DeepSeek'))
 
-      expect(screen.getByText(/Get OpenAI API Key/i)).toHaveAttribute('href', 'https://platform.openai.com/api-keys')
+      expect(screen.getByText(/Get DeepSeek API Key/i)).toHaveAttribute('href', 'https://platform.deepseek.com/api_keys')
     })
   })
 
@@ -311,7 +324,7 @@ describe('SetupWizard', () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       await screen.findByText('Configure LLM Provider')
-      fireEvent.click(screen.getByText('OpenAI'))
+      fireEvent.click(screen.getByText('DeepSeek'))
 
       const btn = screen.getByRole('button', { name: /Validate & Continue/i })
       expect(btn).toBeDisabled()
@@ -322,17 +335,17 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
 
-      fireEvent.click(screen.getByText('OpenAI'))
-      const input = screen.getByPlaceholderText(/Enter OpenAI API Key/i)
+      fireEvent.click(screen.getByText('DeepSeek'))
+      const input = screen.getByPlaceholderText(/Enter DeepSeek API Key/i)
       fireEvent.change(input, { target: { value: 'sk-test-key' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       await waitFor(() => {
-        expect(mockSetupAdapter.onboarding.testApiKey).toHaveBeenCalledWith('openai', 'sk-test-key', undefined)
+        expect(mockSetupAdapter.onboarding.testApiKey).toHaveBeenCalledWith('deepseek', 'sk-test-key', 'https://api.deepseek.com/v1')
       })
       await waitFor(() => {
         expect(mockSetupAdapter.onboarding.initConfig).toHaveBeenCalledTimes(1)
-        expect(mockSetupAdapter.onboarding.setApiKey).toHaveBeenCalledWith('openai', 'sk-test-key', undefined)
+        expect(mockSetupAdapter.onboarding.setApiKey).toHaveBeenCalledWith('deepseek', 'sk-test-key', 'https://api.deepseek.com/v1')
       })
 
       expect(await screen.findByText('Select Default Model')).toBeInTheDocument()
@@ -345,8 +358,8 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
 
-      fireEvent.click(screen.getByText('OpenAI'))
-      const input = screen.getByPlaceholderText(/Enter OpenAI API Key/i)
+      fireEvent.click(screen.getByText('DeepSeek'))
+      const input = screen.getByPlaceholderText(/Enter DeepSeek API Key/i)
       fireEvent.change(input, { target: { value: 'bad-key' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
@@ -360,8 +373,8 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
 
-      fireEvent.click(screen.getByText('OpenAI'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter OpenAI API Key/i), { target: { value: 'sk-ok' } })
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-ok' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       expect(await screen.findByText('write failed')).toBeInTheDocument()
@@ -374,12 +387,12 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
 
-      fireEvent.click(screen.getByText('OpenAI'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter OpenAI API Key/i), { target: { value: 'sk-openai' } })
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-openai' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       expect(await screen.findByText('Select Default Model')).toBeInTheDocument()
-      expect(mockSetupAdapter.onboarding.setApiKey).toHaveBeenCalledWith('openai', 'sk-openai', undefined)
+      expect(mockSetupAdapter.onboarding.setApiKey).toHaveBeenCalledWith('deepseek', 'sk-openai', 'https://api.deepseek.com/v1')
     })
 
     it('passes baseUrl for DeepSeek provider', async () => {
@@ -405,13 +418,13 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
 
-      fireEvent.click(screen.getByText('OpenAI'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter OpenAI API Key/i), { target: { value: 'sk-old' } })
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-old' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       expect(await screen.findByText('Select Default Model')).toBeInTheDocument()
 
-      fireEvent.change(screen.getByPlaceholderText(/Enter OpenAI API Key/i), { target: { value: 'sk-new' } })
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-new' } })
 
       expect(screen.getByRole('button', { name: /Validate & Continue/i })).toBeInTheDocument()
       expect(screen.queryByText('Select Default Model')).not.toBeInTheDocument()
@@ -450,15 +463,14 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
 
-      fireEvent.click(screen.getByText('OpenAI'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter OpenAI API Key/i), { target: { value: 'sk-openai' } })
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-openai' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       expect(await screen.findByText('Select Default Model')).toBeInTheDocument()
 
-      fireEvent.click(screen.getByText(/More providers/i))
-      fireEvent.click(screen.getByText('Amazon Bedrock'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter Amazon Bedrock API Key/i), { target: { value: 'aws-key' } })
+      fireEvent.click(screen.getByText('MiniMax'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter MiniMax API Key/i), { target: { value: 'mm-key' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       expect(await screen.findByText('Select Default Model')).toBeInTheDocument()
@@ -466,21 +478,24 @@ describe('SetupWizard', () => {
       await act(async () => {
         staleCatalog.resolve({
           success: true,
-          data: [{ id: 'gpt-5-preview', name: 'GPT-5 Preview' }],
+          data: [{ id: 'deepseek-stale-response', name: 'DeepSeek Stale Response' }],
           error: null,
         })
         await staleCatalog.promise
       })
 
-      expect(screen.getByDisplayValue('anthropic.claude-sonnet-4-6')).toBeInTheDocument()
-      expect(screen.queryByDisplayValue('gpt-5-preview')).not.toBeInTheDocument()
-      expect(screen.queryByText('GPT-5 Preview')).not.toBeInTheDocument()
+      expect(screen.getByDisplayValue('MiniMax-M2.7')).toBeInTheDocument()
+      expect(screen.queryByDisplayValue('deepseek-stale-response')).not.toBeInTheDocument()
+      expect(screen.queryByText('DeepSeek Stale Response')).not.toBeInTheDocument()
     })
 
     it('clears the provisional model when the live catalog excludes it', async () => {
+      // Live catalog only advertises deepseek-reasoner — the default
+      // deepseek-chat is not in the live set, so no radio is pre-selected
+      // and the enter button remains disabled until the user picks one.
       mockGetProviderModelCatalogResult.mockResolvedValue({
         success: true,
-        data: [{ id: 'gpt-4.1', name: 'GPT-4.1' }],
+        data: [{ id: 'deepseek-reasoner', name: 'DeepSeek Reasoner (R1)' }],
         error: null,
       })
 
@@ -488,8 +503,8 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
 
-      fireEvent.click(screen.getByText('OpenAI'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter OpenAI API Key/i), { target: { value: 'sk-openai' } })
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-ds' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       const enterButton = await screen.findByRole('button', { name: /Enter ClawMaster/i })
@@ -498,15 +513,17 @@ describe('SetupWizard', () => {
         expect(enterButton).toBeDisabled()
       })
 
-      expect(screen.getByDisplayValue('gpt-4.1')).not.toBeChecked()
+      expect(screen.getByDisplayValue('deepseek-reasoner')).not.toBeChecked()
     })
 
     it('uses the curated/live intersection when the provider catalog is a superset', async () => {
+      // Live catalog includes deepseek-chat (in curated list) plus an extra
+      // variant. The picker should show only the curated-live intersection.
       mockGetProviderModelCatalogResult.mockResolvedValue({
         success: true,
         data: [
-          { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
-          { id: 'gpt-5-preview', name: 'GPT-5 Preview' },
+          { id: 'deepseek-chat', name: 'DeepSeek Chat (V3)' },
+          { id: 'deepseek-experimental', name: 'DeepSeek Experimental' },
         ],
         error: null,
       })
@@ -515,16 +532,15 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
 
-      fireEvent.click(screen.getByText('OpenAI'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter OpenAI API Key/i), { target: { value: 'sk-openai' } })
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-ds' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       await screen.findByText('Select Default Model')
 
-      expect(screen.getByDisplayValue('gpt-4.1-mini')).toBeChecked()
-      expect(screen.queryByDisplayValue('gpt-4.1')).not.toBeInTheDocument()
-      expect(screen.queryByDisplayValue('gpt-4o')).not.toBeInTheDocument()
-      expect(screen.queryByDisplayValue('gpt-5-preview')).not.toBeInTheDocument()
+      expect(screen.getByDisplayValue('deepseek-chat')).toBeChecked()
+      expect(screen.queryByDisplayValue('deepseek-reasoner')).not.toBeInTheDocument()
+      expect(screen.queryByDisplayValue('deepseek-experimental')).not.toBeInTheDocument()
       expect(screen.getByText('Live')).toBeInTheDocument()
     })
 
@@ -561,26 +577,25 @@ describe('SetupWizard', () => {
       const result = render(<SetupWizard onComplete={vi.fn()} />)
 
       await screen.findByText('Configure LLM Provider')
-      fireEvent.click(screen.getByText('OpenAI'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter OpenAI API Key/i), { target: { value: 'sk-x' } })
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-x' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       await screen.findByText('Select Default Model')
       return result
     }
 
-    it('shows model radio buttons for OpenAI', async () => {
+    it('shows model radio buttons for the selected provider', async () => {
       await renderAndAdvanceToModelPicker()
 
-      expect(screen.getByDisplayValue('gpt-4.1')).toBeInTheDocument()
-      expect(screen.getByDisplayValue('gpt-4.1-mini')).toBeInTheDocument()
-      expect(screen.getByDisplayValue('gpt-4o')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('deepseek-chat')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('deepseek-reasoner')).toBeInTheDocument()
     })
 
     it('pre-selects the default model', async () => {
       await renderAndAdvanceToModelPicker()
 
-      const defaultRadio = screen.getByDisplayValue('gpt-4.1-mini')
+      const defaultRadio = screen.getByDisplayValue('deepseek-chat')
       expect(defaultRadio).toBeChecked()
     })
 
@@ -588,14 +603,14 @@ describe('SetupWizard', () => {
       await renderAndAdvanceToModelPicker()
 
       const customInput = screen.getByPlaceholderText(/Enter model ID/i)
-      fireEvent.change(customInput, { target: { value: 'gpt-5-preview' } })
+      fireEvent.change(customInput, { target: { value: 'deepseek-v4-preview' } })
 
-      expect(screen.getByDisplayValue('gpt-4.1-mini')).not.toBeChecked()
+      expect(screen.getByDisplayValue('deepseek-chat')).not.toBeChecked()
 
       fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
 
       await waitFor(() => {
-        expect(mockSetupAdapter.onboarding.setDefaultModel).toHaveBeenCalledWith('openai/gpt-5-preview')
+        expect(mockSetupAdapter.onboarding.setDefaultModel).toHaveBeenCalledWith('deepseek/deepseek-v4-preview')
       })
     })
 
@@ -624,23 +639,23 @@ describe('SetupWizard', () => {
       // Step 1: auto-detects engine → auto-init → advances to provider
       expect(await screen.findByText('Configure LLM Provider')).toBeInTheDocument()
 
-      // Step 2a: pick OpenAI, enter API key
-      fireEvent.click(screen.getByText('OpenAI'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter OpenAI API Key/i), { target: { value: 'sk-prod-key' } })
+      // Step 2a: pick DeepSeek, enter API key
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-prod-key' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       // Step 2b: model picker appears
       await screen.findByText('Select Default Model')
 
       // Step 2c: pick model and confirm
-      fireEvent.click(screen.getByDisplayValue('gpt-4.1-mini'))
+      fireEvent.click(screen.getByDisplayValue('deepseek-chat'))
       fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
 
       // Adapter calls
       await waitFor(() => {
-        expect(mockSetupAdapter.onboarding.testApiKey).toHaveBeenCalledWith('openai', 'sk-prod-key', undefined)
-        expect(mockSetupAdapter.onboarding.setApiKey).toHaveBeenCalledWith('openai', 'sk-prod-key', undefined)
-        expect(mockSetupAdapter.onboarding.setDefaultModel).toHaveBeenCalledWith('openai/gpt-4.1-mini')
+        expect(mockSetupAdapter.onboarding.testApiKey).toHaveBeenCalledWith('deepseek', 'sk-prod-key', 'https://api.deepseek.com/v1')
+        expect(mockSetupAdapter.onboarding.setApiKey).toHaveBeenCalledWith('deepseek', 'sk-prod-key', 'https://api.deepseek.com/v1')
+        expect(mockSetupAdapter.onboarding.setDefaultModel).toHaveBeenCalledWith('deepseek/deepseek-chat')
       })
 
       // Circle reveal triggers onComplete
@@ -671,19 +686,19 @@ describe('SetupWizard', () => {
       // Auto-advances through init to provider
       expect(await screen.findByText('Configure LLM Provider')).toBeInTheDocument()
 
-      // Step 2: pick Anthropic + validate
-      fireEvent.click(screen.getByText('Anthropic'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter Anthropic API Key/i), { target: { value: 'sk-ant-x' } })
+      // Step 2: pick DeepSeek + validate
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-ds-x' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       await screen.findByText('Select Default Model')
 
       // Pick model and finish
-      fireEvent.click(screen.getByDisplayValue('claude-sonnet-4-6'))
+      fireEvent.click(screen.getByDisplayValue('deepseek-chat'))
       fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
 
       await waitFor(() => {
-        expect(mockSetupAdapter.onboarding.setDefaultModel).toHaveBeenCalledWith('anthropic/claude-sonnet-4-6')
+        expect(mockSetupAdapter.onboarding.setDefaultModel).toHaveBeenCalledWith('deepseek/deepseek-chat')
       })
 
       await waitFor(() => {
@@ -732,8 +747,8 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
 
-      fireEvent.click(screen.getByText('OpenAI'))
-      fireEvent.change(screen.getByPlaceholderText(/Enter OpenAI API Key/i), { target: { value: 'sk-openai' } })
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-openai' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
       await screen.findByText('Select Default Model')

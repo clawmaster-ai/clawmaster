@@ -105,9 +105,13 @@ describe('ModelsPage', () => {
     expect(within(firstRun).getByText('Connect your first provider')).toBeInTheDocument()
     expect(within(firstRun).getByText('Text providers')).toBeInTheDocument()
     expect(within(firstRun).getByText('Image providers')).toBeInTheDocument()
-    expect(within(firstRun).getByText('OpenAI')).toBeInTheDocument()
-    expect(within(firstRun).getByText('Anthropic')).toBeInTheDocument()
+    // First-run grid surfaces the top 4 providers from PRIMARY_PROVIDERS,
+    // which after the tier reshuffle is: ERNIE LLM API (sponsor) + first
+    // three tier-2 "featured" entries (DeepSeek, Kimi, MiniMax).
     expect(within(firstRun).getByText('ERNIE LLM API')).toBeInTheDocument()
+    expect(within(firstRun).getByText('DeepSeek')).toBeInTheDocument()
+    expect(within(firstRun).getByText('Kimi (Moonshot)')).toBeInTheDocument()
+    expect(within(firstRun).getByText('MiniMax')).toBeInTheDocument()
     expect(within(firstRun).getByText('ERNIE-Image')).toBeInTheDocument()
     expect(within(firstRun).getByText('Gemini Image')).toBeInTheDocument()
     expect(within(firstRun).getByText('GPT Image')).toBeInTheDocument()

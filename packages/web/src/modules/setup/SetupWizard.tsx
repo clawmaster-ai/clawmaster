@@ -28,8 +28,8 @@ import { getSetupAdapter } from './adapters'
 import { CircleReveal } from './CircleReveal'
 import {
   PROVIDERS,
-  PRIMARY_PROVIDERS,
   PROVIDER_BADGES,
+  TEXT_PROVIDER_TIERS,
   providerSupportsSetup,
   getProviderCredentialLabel,
   getProviderLabel,
@@ -719,20 +719,13 @@ function EngineStep({
 // ─── Step 2 Component: Provider + API Key + Model ───
 
 const allProviderIds = Object.keys(PROVIDERS).filter(providerSupportsSetup)
-const primaryIds = PRIMARY_PROVIDERS as readonly string[]
-const secondaryIds = allProviderIds.filter((id) => !primaryIds.includes(id))
+
+function filterTierMembersForSetup(members: readonly string[]) {
+  return members.filter((id) => allProviderIds.includes(id))
+}
 
 function isGoldenSponsor(providerId: string) {
   return PROVIDER_BADGES[providerId as keyof typeof PROVIDER_BADGES] === 'golden-sponsor'
-}
-
-function sortProviderIds(providerIds: string[]) {
-  return [...providerIds].sort((left, right) => {
-    const leftScore = isGoldenSponsor(left) ? 0 : 1
-    const rightScore = isGoldenSponsor(right) ? 0 : 1
-    if (leftScore !== rightScore) return leftScore - rightScore
-    return left.localeCompare(right)
-  })
 }
 
 function ProviderModelStep({
@@ -763,10 +756,7 @@ function ProviderModelStep({
   onSubmitOllama: (modelId: string) => void
 }) {
   const { t, i18n } = useTranslation()
-  const [showMore, setShowMore] = useState(false)
-  const visibleIds = sortProviderIds(showMore ? allProviderIds : [...primaryIds])
-  const sponsorIds = visibleIds.filter((pid) => isGoldenSponsor(pid))
-  const otherIds = visibleIds.filter((pid) => !isGoldenSponsor(pid))
+  const [expandedTiers, setExpandedTiers] = useState<Record<string, boolean>>({})
   const providerCfg = PROVIDERS[onboard.provider]
   const credentialLabel = getProviderCredentialLabel(onboard.provider, i18n.language)
   const providerLabel = getProviderLabel(onboard.provider, i18n.language)
@@ -793,56 +783,56 @@ function ProviderModelStep({
         </span>
       </div>
 
-      {/* Provider picker */}
+      {/* Provider picker — rendered as 3 tiers */}
       <div className="wizard-card">
-        {sponsorIds.length > 0 && (
-          <div className="mb-3">
-            <p className="wizard-card-kicker">{t('providers.badgeGoldenSponsor')}</p>
-            <div className="flex gap-2 flex-wrap mt-2">
-              {sponsorIds.map((p) => (
-                <ProviderChip
-                  key={p}
-                  providerId={p}
-                  selected={onboard.provider === p}
-                  onSelect={() => {
-                    onProviderSwitch()
-                    updateOnboard({
-                      provider: p, apiKey: '', model: '', customModelId: '',
-                      customBaseUrl: PROVIDERS[p]?.baseUrl ?? '', error: null,
-                    })
-                  }}
-                />
-              ))}
+        {TEXT_PROVIDER_TIERS.map((tier, tierIndex) => {
+          const visible = filterTierMembersForSetup(tier.members)
+          const hidden = tier.collapsible ? filterTierMembersForSetup(tier.collapsible.members) : []
+          if (visible.length === 0 && hidden.length === 0) return null
+
+          const expanded = expandedTiers[tier.id] === true
+          const rendered = expanded ? [...visible, ...hidden] : visible
+
+          const selectProvider = (p: string) => {
+            onProviderSwitch()
+            updateOnboard({
+              provider: p,
+              apiKey: '',
+              model: '',
+              customModelId: '',
+              customBaseUrl: PROVIDERS[p]?.baseUrl ?? '',
+              error: null,
+            })
+          }
+
+          return (
+            <div key={tier.id} className={tierIndex === TEXT_PROVIDER_TIERS.length - 1 ? 'mb-0' : 'mb-3'}>
+              <p className="wizard-card-kicker">{t(tier.labelKey)}</p>
+              <div className="flex gap-2 flex-wrap mt-2">
+                {rendered.map((p) => (
+                  <ProviderChip
+                    key={p}
+                    providerId={p}
+                    selected={onboard.provider === p}
+                    onSelect={() => selectProvider(p)}
+                  />
+                ))}
+              </div>
+              {hidden.length > 0 && (
+                <button
+                  onClick={() =>
+                    setExpandedTiers((prev) => ({ ...prev, [tier.id]: !expanded }))
+                  }
+                  className="w-full text-xs text-muted-foreground hover:text-foreground transition mt-2"
+                >
+                  {expanded
+                    ? t('setup.collapse')
+                    : t(tier.collapsible!.labelKey, { count: hidden.length })}
+                </button>
+              )}
             </div>
-          </div>
-        )}
-        <div className="mb-2">
-          <p className="wizard-card-kicker">{t('models.recommendedProviders')}</p>
-          <div className="flex gap-2 flex-wrap mt-2">
-            {otherIds.map((p) => (
-              <ProviderChip
-                key={p}
-                providerId={p}
-                selected={onboard.provider === p}
-                onSelect={() => {
-                  onProviderSwitch()
-                  updateOnboard({
-                    provider: p, apiKey: '', model: '', customModelId: '',
-                    customBaseUrl: PROVIDERS[p]?.baseUrl ?? '', error: null,
-                  })
-                }}
-              />
-            ))}
-          </div>
-        </div>
-        {secondaryIds.length > 0 && (
-          <button
-            onClick={() => setShowMore(!showMore)}
-            className="w-full text-xs text-muted-foreground hover:text-foreground transition mt-1"
-          >
-            {showMore ? t('setup.collapse') : t('setup.moreProviders', { count: secondaryIds.length })}
-          </button>
-        )}
+          )
+        })}
       </div>
 
       {/* API Key input (or Ollama panel) */}
