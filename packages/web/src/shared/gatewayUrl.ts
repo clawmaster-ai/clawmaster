@@ -9,8 +9,20 @@ interface GatewayConfig {
   gateway?: {
     port?: number
     bind?: string
+    auth?: { mode?: string; token?: string }
     controlUi?: { basePath?: string }
   }
+}
+
+function normalizeGatewayHost(bind?: string): string {
+  const value = bind?.trim()
+  if (!value) return '127.0.0.1'
+
+  if (value === '0.0.0.0' || value === '::' || value === '[::]' || value === 'loopback') {
+    return '127.0.0.1'
+  }
+
+  return value
 }
 
 export function buildGatewayUrl(
@@ -18,12 +30,24 @@ export function buildGatewayUrl(
   options?: { protocol?: 'http' | 'ws'; includeBasePath?: boolean },
 ): string {
   const port = config?.gateway?.port ?? 18789
-  const bind = config?.gateway?.bind ?? '127.0.0.1'
-  // If bound to all interfaces, use loopback for browser access
-  const host = bind === '0.0.0.0' ? '127.0.0.1' : bind
+  const host = normalizeGatewayHost(config?.gateway?.bind)
   const proto = options?.protocol ?? 'http'
   const basePath = options?.includeBasePath
     ? (config?.gateway?.controlUi?.basePath ?? '')
     : ''
   return `${proto}://${host}:${port}${basePath}`
+}
+
+export function buildGatewayWebUiUrl(
+  config: GatewayConfig | null | undefined,
+): string {
+  const url = new URL(buildGatewayUrl(config, { includeBasePath: true }))
+  const authMode = config?.gateway?.auth?.mode?.trim()
+  const token = config?.gateway?.auth?.token?.trim()
+
+  if (authMode === 'token' && token) {
+    url.searchParams.set('token', token)
+  }
+
+  return url.toString()
 }
