@@ -268,14 +268,15 @@ export default function MemoryPage() {
     const trackedFiles =
       filesPayload?.files.length ?? statusEntries.reduce((sum, entry) => sum + entry.totalFiles, 0)
     const backends = Array.from(new Set(statusEntries.map((entry) => entry.backend))).filter(Boolean)
+    const managedBackend = managedStats?.engine ?? managedStatus?.engine ?? managedStatus?.implementation
     const dirty = statusEntries.some((entry) => entry.dirty)
     return {
       agents,
       trackedFiles,
-      backend: backends[0] ?? 'unknown',
+      backend: backends[0] ?? managedBackend ?? 'unknown',
       dirty,
     }
-  }, [filesPayload?.files.length, statusEntries])
+  }, [filesPayload?.files.length, managedStats?.engine, managedStatus?.engine, managedStatus?.implementation, statusEntries])
 
   const visibleStatusWarning = useMemo(() => {
     const stderr = statusPayload?.stderr?.trim()
@@ -315,6 +316,52 @@ export default function MemoryPage() {
       ? t('memory.managedProofUnavailableValue')
       : t('memory.managedProofPending')
   const comparisonDelta = comparisonManagedCount - comparisonLegacyCount
+  const managedProofCards = [
+    {
+      title: t('memory.managedProofCoverageTitle'),
+      value: managedCoverageValue,
+      description:
+        managedAvailableSourceCount > 0
+          ? t('memory.managedProofCoverageReady', {
+              imported: managedImportedCount,
+              available: managedAvailableSourceCount,
+              tracked: managedTrackedSourceCount,
+            })
+          : t('memory.managedProofCoverageIdle'),
+      className: 'border-amber-500/20 bg-amber-500/5',
+    },
+    {
+      title: t('memory.managedProofDirectTitle'),
+      value: String(managedOnlyCount),
+      description:
+        managedOnlyCount > 0
+          ? t('memory.managedProofDirectReady', { count: managedOnlyCount })
+          : t('memory.managedProofDirectIdle'),
+      className: 'border-emerald-500/20 bg-emerald-500/5',
+    },
+    {
+      title: t('memory.managedProofRecallTitle'),
+      value: comparisonValue,
+      description: legacyMemoryUnsupported
+        ? t('memory.managedProofRecallUnavailable')
+        : comparisonReady
+          ? comparisonDelta > 0
+            ? t('memory.managedProofRecallAhead', {
+                managed: comparisonManagedCount,
+                legacy: comparisonLegacyCount,
+              })
+            : comparisonDelta < 0
+              ? t('memory.managedProofRecallBehind', {
+                  managed: comparisonManagedCount,
+                  legacy: comparisonLegacyCount,
+                })
+              : t('memory.managedProofRecallEven', {
+                  managed: comparisonManagedCount,
+                })
+          : t('memory.managedProofRecallPending'),
+      className: 'border-sky-500/20 bg-sky-500/5',
+    },
+  ]
 
   async function handleReindex() {
     setReindexLoading(true)
@@ -597,8 +644,262 @@ export default function MemoryPage() {
         ? t('memory.searchModeUnsupportedHelp')
       : t('memory.searchModeNativeHelp')
 
+  const statusOverviewCard = (
+    <div className="surface-card space-y-4">
+      <div className="section-heading">
+        <div>
+          <h3 className="section-title">{t('memory.sectionStatusOverview')}</h3>
+          <p className="text-sm text-muted-foreground">{t('memory.openclawHelp')}</p>
+        </div>
+      </div>
+
+      {statusLoading ? (
+        <p className="text-sm text-muted-foreground">{t('memory.statusLoading')}</p>
+      ) : legacyMemoryUnsupported ? (
+        <div className="rounded-[1rem] border border-border/70 bg-muted/30 px-4 py-3">
+          <p className="text-sm text-muted-foreground">{t('memory.openclawUnavailableHelp')}</p>
+          {searchCapability?.detail ? (
+            <p className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">{searchCapability.detail}</p>
+          ) : null}
+        </div>
+      ) : statusErr ? (
+        <div className="space-y-2">
+          <p className="text-sm text-red-500">{statusErr}</p>
+          <button type="button" onClick={() => void refetchStatus()} className="button-secondary px-3 py-1.5 text-sm">
+            {t('memory.retry')}
+          </button>
+        </div>
+      ) : (
+        <>
+          {statusEntries.length > 0 ? (
+            <div className="grid gap-3">
+              {statusEntries.map((entry) => (
+                <div key={entry.agentId} className="list-card bg-background/70">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                      {entry.agentId}
+                    </span>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                      {entry.backend}
+                    </span>
+                    <span className={`rounded-full px-2.5 py-1 text-xs ${entry.dirty ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'}`}>
+                      {entry.dirty ? t('memory.stateNeedsAttention') : t('memory.stateClean')}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                    <div>
+                      <p className="text-muted-foreground">{t('memory.workspaceDir')}</p>
+                      <p className="break-all font-mono text-xs">{entry.workspaceDir || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">{t('memory.dbPath')}</p>
+                      <p className="break-all font-mono text-xs">{entry.dbPath || '—'}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t('memory.noStatusEntries')}</p>
+          )}
+          {visibleStatusWarning ? (
+            <p className="text-xs whitespace-pre-wrap text-amber-600 dark:text-amber-500">{visibleStatusWarning}</p>
+          ) : null}
+        </>
+      )}
+    </div>
+  )
+
+  const legacySearchCard = (
+    <div className="surface-card space-y-4">
+      <div className="section-heading">
+        <div>
+          <h3 className="section-title">{t('memory.openclawSearchLabel')}</h3>
+          <p className="text-sm text-muted-foreground">{t('memory.openclawSearchHelp')}</p>
+        </div>
+      </div>
+
+      <div className={`rounded-[1.15rem] border px-4 py-3 ${searchModePanelClass}`}>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                {t('memory.searchModeLabel')}
+              </span>
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${searchModeBadgeClass}`}>
+                <SearchModeIcon className={`h-3.5 w-3.5 ${searchCapabilityLoading ? 'animate-spin' : ''}`} />
+                <span>{searchModeLabel}</span>
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">{searchModeHelp}</p>
+          </div>
+          <button
+            type="button"
+            disabled={reindexLoading || legacyMemoryUnsupported}
+            onClick={() => void handleReindex()}
+            className="button-secondary shrink-0 disabled:opacity-50"
+          >
+            <Wrench className="h-4 w-4" />
+            <span>{reindexLoading ? t('memory.reindexing') : t('memory.reindex')}</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        <input
+          type="text"
+          placeholder={t('memory.agentPlaceholder')}
+          value={agentFilter}
+          onChange={(event) => setAgentFilter(event.target.value)}
+          disabled={legacyMemoryUnsupported}
+          className="control-input"
+        />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="text"
+            placeholder={t('memory.openclawSearchPlaceholder')}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            disabled={legacyMemoryUnsupported}
+            className="control-input flex-1"
+          />
+          <button
+            type="button"
+            disabled={searchLoading || legacyMemoryUnsupported}
+            onClick={() => void runSearch()}
+            className="button-primary shrink-0 disabled:opacity-50"
+          >
+            {searchLoading ? t('memory.searching') : t('memory.search')}
+          </button>
+        </div>
+      </div>
+
+      {searchErr ? <p className="text-sm text-red-500">{searchErr}</p> : null}
+      {hits && hits.length > 0 ? (
+        <ul className="space-y-3">
+          {hits.map((hit) => (
+            <li key={hit.id} className="list-card bg-background/70 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                {hit.score !== undefined && Number.isFinite(hit.score) ? (
+                  <span className="rounded-full bg-primary/10 px-2 py-1 text-xs text-primary">
+                    score: {hit.score.toFixed(3)}
+                  </span>
+                ) : null}
+                {hit.path ? (
+                  <span className="break-all font-mono text-[11px] text-muted-foreground">{hit.path}</span>
+                ) : null}
+              </div>
+              <p className="mt-2 whitespace-pre-wrap">{hit.content}</p>
+            </li>
+          ))}
+        </ul>
+      ) : hits && hits.length === 0 && query.trim() ? (
+        <p className="text-sm text-muted-foreground">{t('memory.noHits')}</p>
+      ) : null}
+    </div>
+  )
+
+  const storageFilesCard = (
+    <div className="surface-card space-y-4">
+      <div className="section-heading">
+        <div>
+          <h3 className="section-title">{t('memory.sectionFiles')}</h3>
+          <p className="text-sm text-muted-foreground">{t('memory.sectionFilesHint')}</p>
+        </div>
+      </div>
+
+      <div className="inline-note space-y-2">
+        <p className="text-xs text-muted-foreground">
+          {t('memory.storageRoot')}: <span className="font-mono break-all">{filesPayload?.root ?? '—'}</span>
+        </p>
+      </div>
+
+      {filesLoading ? (
+        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+      ) : filesErr ? (
+        <div className="space-y-2">
+          <p className="text-sm text-red-500">{filesErr}</p>
+          <button type="button" onClick={() => void refetchFiles()} className="button-secondary px-3 py-1.5 text-sm">
+            {t('memory.retry')}
+          </button>
+        </div>
+      ) : filesPayload && filesPayload.files.length > 0 ? (
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {filesPayload.files.map((entry) => {
+              const selected = selectedFile?.relativePath === entry.relativePath
+              const hint = getFileHint(entry, t)
+              const Icon = entry.kind === 'json' ? FileJson : entry.kind === 'text' ? FileText : Database
+              return (
+                <div
+                  key={entry.relativePath}
+                  className={`list-card flex items-start justify-between gap-3 ${selected ? 'border-primary/30 bg-primary/5' : 'bg-background/70'}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFilePath(entry.relativePath)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      <span className="truncate font-medium text-foreground">{entry.relativePath}</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span>{getFileKindLabel(entry, t)}</span>
+                      <span>{formatBytes(entry.size)}</span>
+                      <span>{new Date(entry.modifiedAtMs).toLocaleString()}</span>
+                    </div>
+                    {hint ? <p className="mt-2 text-xs text-muted-foreground">{hint}</p> : null}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingDeletePath(entry.relativePath)}
+                    className="button-danger shrink-0 px-2 py-1 text-xs"
+                    aria-label={`${t('common.delete')} ${entry.relativePath}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+
+          {selectedFile ? (
+            <div className="section-subcard space-y-2">
+              <div className="flex items-center gap-2">
+                <HardDrive className="h-4 w-4 text-muted-foreground" />
+                <h4 className="text-sm font-medium text-foreground">{t('memory.fileDetails')}</h4>
+              </div>
+              <p className="break-all font-mono text-xs text-muted-foreground">{selectedFile.absolutePath}</p>
+              <div className="grid gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-muted-foreground">{t('memory.fileUpdated')}</p>
+                  <p>{new Date(selectedFile.modifiedAtMs).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">{t('memory.fileExtension')}</p>
+                  <p>{selectedFile.extension || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">{t('memory.summaryFiles')}</p>
+                  <p>{formatBytes(selectedFile.size)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">{t('memory.summaryBackend')}</p>
+                  <p>{getFileKindLabel(selectedFile, t)}</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t('memory.sectionFilesEmpty')}</p>
+      )}
+    </div>
+  )
+
   return (
-    <div className="page-shell page-shell-wide">
+    <div className="page-shell page-shell-bleed">
       {feedback ? <ActionBanner tone={feedback.tone} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
 
       <div className="page-header">
@@ -635,7 +936,7 @@ export default function MemoryPage() {
         })}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(22rem,1fr)]">
+      <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.28fr)_minmax(24rem,0.92fr)]">
         <div className="space-y-4">
           <div className="surface-card space-y-4" id="memory-managed">
             <div className="section-heading">
@@ -918,60 +1219,16 @@ export default function MemoryPage() {
                     <p className="mt-1 text-sm text-muted-foreground">{t('memory.managedProofHelp')}</p>
                   </div>
 
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-[1rem] border border-border/70 bg-background/70 px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                        {t('memory.managedProofCoverageTitle')}
-                      </p>
-                      <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{managedCoverageValue}</p>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {managedAvailableSourceCount > 0
-                          ? t('memory.managedProofCoverageReady', {
-                              imported: managedImportedCount,
-                              available: managedAvailableSourceCount,
-                              tracked: managedTrackedSourceCount,
-                            })
-                          : t('memory.managedProofCoverageIdle')}
-                      </p>
-                    </div>
-
-                    <div className="rounded-[1rem] border border-border/70 bg-background/70 px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                        {t('memory.managedProofDirectTitle')}
-                      </p>
-                      <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{managedOnlyCount}</p>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {managedOnlyCount > 0
-                          ? t('memory.managedProofDirectReady', { count: managedOnlyCount })
-                          : t('memory.managedProofDirectIdle')}
-                      </p>
-                    </div>
-
-                    <div className="rounded-[1rem] border border-border/70 bg-background/70 px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                        {t('memory.managedProofRecallTitle')}
-                      </p>
-                      <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{comparisonValue}</p>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {legacyMemoryUnsupported
-                          ? t('memory.managedProofRecallUnavailable')
-                          : comparisonReady
-                          ? comparisonDelta > 0
-                            ? t('memory.managedProofRecallAhead', {
-                                managed: comparisonManagedCount,
-                                legacy: comparisonLegacyCount,
-                              })
-                            : comparisonDelta < 0
-                              ? t('memory.managedProofRecallBehind', {
-                                  managed: comparisonManagedCount,
-                                  legacy: comparisonLegacyCount,
-                                })
-                              : t('memory.managedProofRecallEven', {
-                                  managed: comparisonManagedCount,
-                                })
-                          : t('memory.managedProofRecallPending')}
-                      </p>
-                    </div>
+                  <div className="grid gap-3 xl:grid-cols-3">
+                    {managedProofCards.map((card) => (
+                      <div key={card.title} className={`rounded-[1rem] border px-4 py-4 ${card.className}`}>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          {card.title}
+                        </p>
+                        <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{card.value}</p>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{card.description}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -1186,256 +1443,12 @@ export default function MemoryPage() {
               </>
             ) : null}
           </div>
-
-          <div className="surface-card space-y-4">
-            <div className="section-heading">
-              <div>
-                <h3 className="section-title">{t('memory.sectionStatusOverview')}</h3>
-                <p className="text-sm text-muted-foreground">{t('memory.openclawHelp')}</p>
-              </div>
-            </div>
-
-            {statusLoading ? (
-              <p className="text-sm text-muted-foreground">{t('memory.statusLoading')}</p>
-            ) : statusErr ? (
-              <div className="space-y-2">
-                <p className="text-sm text-red-500">{statusErr}</p>
-                <button type="button" onClick={() => void refetchStatus()} className="button-secondary px-3 py-1.5 text-sm">
-                  {t('memory.retry')}
-                </button>
-              </div>
-            ) : (
-              <>
-                {legacyMemoryUnsupported ? (
-                  <div className="rounded-[1rem] border border-border/70 bg-muted/30 px-4 py-3">
-                    <p className="text-sm text-muted-foreground">{t('memory.openclawUnavailableHelp')}</p>
-                    {searchCapability?.detail ? (
-                      <p className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">{searchCapability.detail}</p>
-                    ) : null}
-                  </div>
-                ) : statusEntries.length > 0 ? (
-                  <div className="grid gap-3">
-                    {statusEntries.map((entry) => (
-                      <div key={entry.agentId} className="list-card bg-background/70">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-                            {entry.agentId}
-                          </span>
-                          <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                            {entry.backend}
-                          </span>
-                          <span className={`rounded-full px-2.5 py-1 text-xs ${entry.dirty ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'}`}>
-                            {entry.dirty ? t('memory.stateNeedsAttention') : t('memory.stateClean')}
-                          </span>
-                        </div>
-                        <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
-                          <div>
-                            <p className="text-muted-foreground">{t('memory.workspaceDir')}</p>
-                            <p className="break-all font-mono text-xs">{entry.workspaceDir || '—'}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">{t('memory.dbPath')}</p>
-                            <p className="break-all font-mono text-xs">{entry.dbPath || '—'}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">{t('memory.noStatusEntries')}</p>
-                )}
-                {visibleStatusWarning ? (
-                  <p className="text-xs whitespace-pre-wrap text-amber-600 dark:text-amber-500">{visibleStatusWarning}</p>
-                ) : null}
-              </>
-            )}
-          </div>
-
-          <div className="surface-card space-y-4">
-            <div className="section-heading">
-              <div>
-                <h3 className="section-title">{t('memory.openclawSearchLabel')}</h3>
-                <p className="text-sm text-muted-foreground">{t('memory.openclawSearchHelp')}</p>
-              </div>
-            </div>
-
-            <div className={`rounded-[1.15rem] border px-4 py-3 ${searchModePanelClass}`}>
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      {t('memory.searchModeLabel')}
-                    </span>
-                    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${searchModeBadgeClass}`}>
-                      <SearchModeIcon className={`h-3.5 w-3.5 ${searchCapabilityLoading ? 'animate-spin' : ''}`} />
-                      <span>{searchModeLabel}</span>
-                    </span>
-                  </div>
-                  <p className="max-w-2xl text-sm text-muted-foreground">{searchModeHelp}</p>
-                </div>
-                <button
-                  type="button"
-                  disabled={reindexLoading || legacyMemoryUnsupported}
-                  onClick={() => void handleReindex()}
-                  className="button-secondary shrink-0 disabled:opacity-50"
-                >
-                  <Wrench className="h-4 w-4" />
-                  <span>{reindexLoading ? t('memory.reindexing') : t('memory.reindex')}</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <input
-                type="text"
-                placeholder={t('memory.agentPlaceholder')}
-                value={agentFilter}
-                onChange={(event) => setAgentFilter(event.target.value)}
-                disabled={legacyMemoryUnsupported}
-                className="control-input"
-              />
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  type="text"
-                  placeholder={t('memory.openclawSearchPlaceholder')}
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  disabled={legacyMemoryUnsupported}
-                  className="control-input flex-1"
-                />
-                <button
-                  type="button"
-                  disabled={searchLoading || legacyMemoryUnsupported}
-                  onClick={() => void runSearch()}
-                  className="button-primary shrink-0 disabled:opacity-50"
-                >
-                  {searchLoading ? t('memory.searching') : t('memory.search')}
-                </button>
-              </div>
-            </div>
-
-            {searchErr ? <p className="text-sm text-red-500">{searchErr}</p> : null}
-            {hits && hits.length > 0 ? (
-              <ul className="space-y-3">
-                {hits.map((hit) => (
-                  <li key={hit.id} className="list-card bg-background/70 text-sm">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {hit.score !== undefined && Number.isFinite(hit.score) ? (
-                        <span className="rounded-full bg-primary/10 px-2 py-1 text-xs text-primary">
-                          score: {hit.score.toFixed(3)}
-                        </span>
-                      ) : null}
-                      {hit.path ? (
-                        <span className="break-all font-mono text-[11px] text-muted-foreground">{hit.path}</span>
-                      ) : null}
-                    </div>
-                    <p className="mt-2 whitespace-pre-wrap">{hit.content}</p>
-                  </li>
-                ))}
-              </ul>
-            ) : hits && hits.length === 0 && query.trim() ? (
-              <p className="text-sm text-muted-foreground">{t('memory.noHits')}</p>
-            ) : null}
-          </div>
         </div>
 
         <div className="space-y-4">
-          <div className="surface-card space-y-4">
-            <div className="section-heading">
-              <div>
-                <h3 className="section-title">{t('memory.sectionFiles')}</h3>
-                <p className="text-sm text-muted-foreground">{t('memory.sectionFilesHint')}</p>
-              </div>
-            </div>
-
-            <div className="inline-note space-y-2">
-              <p className="text-xs text-muted-foreground">
-                {t('memory.storageRoot')}: <span className="font-mono break-all">{filesPayload?.root ?? '—'}</span>
-              </p>
-            </div>
-
-            {filesLoading ? (
-              <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
-            ) : filesErr ? (
-              <div className="space-y-2">
-                <p className="text-sm text-red-500">{filesErr}</p>
-                <button type="button" onClick={() => void refetchFiles()} className="button-secondary px-3 py-1.5 text-sm">
-                  {t('memory.retry')}
-                </button>
-              </div>
-            ) : filesPayload && filesPayload.files.length > 0 ? (
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  {filesPayload.files.map((entry) => {
-                    const selected = selectedFile?.relativePath === entry.relativePath
-                    const hint = getFileHint(entry, t)
-                    const Icon = entry.kind === 'json' ? FileJson : entry.kind === 'text' ? FileText : Database
-                    return (
-                      <div
-                        key={entry.relativePath}
-                        className={`list-card flex items-start justify-between gap-3 ${selected ? 'border-primary/30 bg-primary/5' : 'bg-background/70'}`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setSelectedFilePath(entry.relativePath)}
-                          className="min-w-0 flex-1 text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Icon className="h-4 w-4 text-muted-foreground" />
-                            <span className="truncate font-medium text-foreground">{entry.relativePath}</span>
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                            <span>{getFileKindLabel(entry, t)}</span>
-                            <span>{formatBytes(entry.size)}</span>
-                            <span>{new Date(entry.modifiedAtMs).toLocaleString()}</span>
-                          </div>
-                          {hint ? <p className="mt-2 text-xs text-muted-foreground">{hint}</p> : null}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPendingDeletePath(entry.relativePath)}
-                          className="button-danger shrink-0 px-2 py-1 text-xs"
-                          aria-label={`${t('common.delete')} ${entry.relativePath}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {selectedFile ? (
-                  <div className="section-subcard space-y-2">
-                    <div className="flex items-center gap-2">
-                      <HardDrive className="h-4 w-4 text-muted-foreground" />
-                      <h4 className="text-sm font-medium text-foreground">{t('memory.fileDetails')}</h4>
-                    </div>
-                    <p className="break-all font-mono text-xs text-muted-foreground">{selectedFile.absolutePath}</p>
-                    <div className="grid gap-3 text-sm sm:grid-cols-2">
-                      <div>
-                        <p className="text-muted-foreground">{t('memory.fileUpdated')}</p>
-                        <p>{new Date(selectedFile.modifiedAtMs).toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">{t('memory.fileExtension')}</p>
-                        <p>{selectedFile.extension || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">{t('memory.summaryFiles')}</p>
-                        <p>{formatBytes(selectedFile.size)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">{t('memory.summaryBackend')}</p>
-                        <p>{getFileKindLabel(selectedFile, t)}</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">{t('memory.sectionFilesEmpty')}</p>
-            )}
-          </div>
+          {storageFilesCard}
+          {statusOverviewCard}
+          {legacySearchCard}
         </div>
       </div>
 

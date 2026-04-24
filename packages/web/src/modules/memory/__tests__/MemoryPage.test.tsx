@@ -376,11 +376,11 @@ describe('MemoryPage', () => {
     expect(screen.getByText('Recent gateway captures')).toBeInTheDocument()
     expect(screen.getAllByText('gateway powermem smoke test 2026-04-24').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Gateway capture').length).toBeGreaterThan(0)
-    expect(screen.getByText('Why managed memory is better')).toBeInTheDocument()
+    expect(screen.getByText('Why PowerMem helps')).toBeInTheDocument()
     expect(screen.getByText('Legacy memory import')).toBeInTheDocument()
     expect(screen.getByText('1 / 2')).toBeInTheDocument()
-    expect(screen.getByText('Once you add a managed memory here, it stays queryable without touching workspace markdown files.')).toBeInTheDocument()
-    expect(screen.getByText('Run compare')).toBeInTheDocument()
+    expect(screen.getByText('New facts and preferences added here stay searchable in PowerMem.')).toBeInTheDocument()
+    expect(screen.getByText('Compare now')).toBeInTheDocument()
     expect(screen.getByText('Alice prefers espresso after lunch.')).toBeInTheDocument()
     expect(screen.getByText('Imported workspace')).toBeInTheDocument()
     expect(await screen.findByText('Memory Overview')).toBeInTheDocument()
@@ -624,7 +624,7 @@ describe('MemoryPage', () => {
     expect(await screen.findByText('Managed memory keeps the imported espresso preference.')).toBeInTheDocument()
     expect(screen.getByText('Legacy markdown note mentions espresso.')).toBeInTheDocument()
     expect(screen.getByText('1 · 1')).toBeInTheDocument()
-    expect(screen.getByText('Managed and legacy memory both returned 1 hits on the last comparison query.')).toBeInTheDocument()
+    expect(screen.getByText('On the last comparison query, both PowerMem and legacy memory returned 1 results.')).toBeInTheDocument()
   })
 
   it('retries after a status failure', async () => {
@@ -733,6 +733,32 @@ describe('MemoryPage', () => {
     expect(screen.getByPlaceholderText('Agent ID (optional)')).toBeDisabled()
     expect(screen.getByPlaceholderText('Search memories...')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Reindex memory' })).toBeDisabled()
+  })
+
+  it('falls back to managed backend metadata when legacy status is unavailable', async () => {
+    mockOpenclawMemoryStatus.mockResolvedValueOnce({
+      success: true,
+      data: {
+        exitCode: 1,
+        data: [],
+        stderr: "error: unknown command 'memory'",
+      },
+    })
+    mockOpenclawMemorySearchCapability.mockResolvedValueOnce({
+      success: true,
+      data: {
+        mode: 'unsupported',
+        reason: 'command_unavailable',
+        detail: "error: unknown command 'memory'",
+      },
+    })
+
+    render(<MemoryPage />)
+
+    expect(await screen.findByText('Memory Overview')).toBeInTheDocument()
+    expect(screen.getAllByText('powermem-sqlite').length).toBeGreaterThan(0)
+    expect(screen.queryAllByText('unknown')).toHaveLength(0)
+    expect(screen.getByText(/does not currently expose the legacy memory CLI/i)).toBeInTheDocument()
   })
 
   it('confirms and deletes a native memory file', async () => {
