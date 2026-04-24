@@ -5933,6 +5933,16 @@ fn bundled_skill_env_key(skill_id: &str) -> Option<&'static str> {
     }
 }
 
+fn bundled_skill_ids() -> [&'static str; 5] {
+    [
+        "content-draft",
+        "clawprobe-cost-digest",
+        "ernie-image",
+        "models-dev",
+        "paddleocr-doc-parsing",
+    ]
+}
+
 fn repo_bundled_skill_root(skill_id: &str) -> Option<PathBuf> {
     let dir_name = bundled_skill_dir_name(skill_id)?;
     Some(repo_root_path().join("bundled-skills").join(dir_name))
@@ -6027,8 +6037,29 @@ fn install_bundled_skill(skill_id: String) -> Result<(), String> {
         .join("workspace")
         .join("skills")
         .join(dir_name);
+    let _ = fs::remove_dir_all(&target_dir);
     copy_dir_all(&source_path, &target_dir)?;
     Ok(())
+}
+
+fn sync_installed_bundled_skills() -> Result<Vec<String>, String> {
+    let config_resolution = get_config_resolution();
+    let workspace_skills_root = config_resolution.data_dir.join("workspace").join("skills");
+    let mut synced = Vec::new();
+
+    for skill_id in bundled_skill_ids() {
+        let Some(dir_name) = bundled_skill_dir_name(skill_id) else {
+            continue;
+        };
+        let install_dir = workspace_skills_root.join(dir_name);
+        if !install_dir.exists() {
+            continue;
+        }
+        install_bundled_skill(skill_id.to_string())?;
+        synced.push(skill_id.to_string());
+    }
+
+    Ok(synced)
 }
 
 #[tauri::command]
@@ -8683,6 +8714,9 @@ pub fn run() {
                         "CLAWMASTER_BUNDLED_PADDLEOCR_DOC_PARSING_SKILL_ROOT",
                         paddleocr_skill_root.to_string_lossy().to_string(),
                     );
+                }
+                if let Err(error) = sync_installed_bundled_skills() {
+                    eprintln!("ClawMaster skipped bundled skill refresh: {error}");
                 }
             }
             if cfg!(debug_assertions) {

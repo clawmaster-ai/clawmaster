@@ -42,6 +42,8 @@ type BundledSkillInstallOptions = {
   runWslScript?: (distro: string, script: string) => { code: number; stdout: string; stderr: string }
 }
 
+type BundledSkillSpec = (typeof BUNDLED_SKILLS)[BundledSkillSlug]
+
 function normalizeSkillSlug(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -123,6 +125,10 @@ export function installBundledSkill(
     copyBundledSkillIntoWsl(sourceRoot, installDir, options)
   } else {
     fs.mkdirSync(workspaceSkillsRoot, { recursive: true })
+    fs.rmSync(installDir, {
+      recursive: true,
+      force: true,
+    })
     fs.cpSync(sourceRoot, installDir, {
       recursive: true,
       force: true,
@@ -133,4 +139,30 @@ export function installBundledSkill(
     slug: normalizedSlug,
     installDir,
   }
+}
+
+function resolveBundledSkillInstallDir(
+  spec: BundledSkillSpec,
+  options: BundledSkillInstallOptions = {},
+): string {
+  const dataDir = options.dataDir ?? getOpenclawDataDir()
+  const useWslInstall = shouldInstallBundledSkillThroughWsl(dataDir, options)
+  const pathModule = useWslInstall ? path.posix : path
+  return pathModule.join(dataDir, 'workspace', 'skills', spec.dirName)
+}
+
+export function syncInstalledBundledSkills(
+  options: BundledSkillInstallOptions = {},
+): BundledSkillSlug[] {
+  const synced: BundledSkillSlug[] = []
+
+  for (const slug of Object.keys(BUNDLED_SKILLS) as BundledSkillSlug[]) {
+    const spec = BUNDLED_SKILLS[slug]
+    const installDir = resolveBundledSkillInstallDir(spec, options)
+    if (!fs.existsSync(installDir)) continue
+    installBundledSkill(slug, options)
+    synced.push(slug)
+  }
+
+  return synced
 }

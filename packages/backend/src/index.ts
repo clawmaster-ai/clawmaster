@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import express from 'express'
 import { registerDomainRoutes, registerDomainJsonRoutes, attachLogsStreamServer } from './routes/index.js'
 import { requireServiceAuth } from './serviceAuth.js'
+import { syncInstalledBundledSkills } from './services/bundledSkills.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const CLAWPROBE_COST_DIGEST_SKILL_ROOT = path.resolve(__dirname, '../../../bundled-skills/clawprobe-cost-digest')
@@ -69,6 +70,17 @@ export function createApp() {
 }
 
 export function startServer() {
+  try {
+    const syncedSkills = syncInstalledBundledSkills()
+    if (syncedSkills.length > 0) {
+      console.log(`ClawMaster refreshed bundled skills: ${syncedSkills.join(', ')}`)
+    }
+  } catch (error) {
+    console.warn(
+      `ClawMaster skipped bundled skill refresh: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+
   const app = createApp()
   const port = Number.parseInt(process.env.BACKEND_PORT ?? process.env.PORT ?? '16224', 10)
   const host = process.env.BACKEND_HOST ?? '127.0.0.1'

@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { installBundledSkill, isBundledSkillSlug } from './bundledSkills.js'
+import { installBundledSkill, isBundledSkillSlug, syncInstalledBundledSkills } from './bundledSkills.js'
 
 test('isBundledSkillSlug recognizes bundled skill ids case-insensitively', () => {
   assert.equal(isBundledSkillSlug('content-draft'), true)
@@ -217,6 +217,44 @@ test('installBundledSkill uses WSL copy commands for Linux runtime data dirs on 
   assert.match(wslScripts[0]?.script ?? '', /mkdir -p/)
   assert.match(wslScripts[0]?.script ?? '', /cp -a/)
   assert.match(wslScripts[0]?.script ?? '', /\/home\/tester\/\.openclaw-dev\/workspace\/skills\/models-dev/)
+})
+
+test('syncInstalledBundledSkills refreshes already-installed bundled skills with a clean replace', () => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-sync-src-'))
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-sync-data-'))
+  const installDir = path.join(dataDir, 'workspace', 'skills', 'content-draft')
+
+  fs.mkdirSync(path.join(sourceRoot, 'scripts'), { recursive: true })
+  fs.writeFileSync(path.join(sourceRoot, 'SKILL.md'), '# Content Draft v2\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, '_meta.json'), '{"slug":"content-draft","version":"0.3.0","bundled":true}\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, 'scripts', 'save-draft-artifacts.mjs'), 'console.log("new-save")\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, 'scripts', 'link-generated-images.mjs'), 'console.log("link")\n', 'utf8')
+
+  fs.mkdirSync(path.join(installDir, 'scripts'), { recursive: true })
+  fs.writeFileSync(path.join(installDir, 'SKILL.md'), '# Content Draft v1\n', 'utf8')
+  fs.writeFileSync(path.join(installDir, '_meta.json'), '{"slug":"content-draft","version":"0.3.0","bundled":true}\n', 'utf8')
+  fs.writeFileSync(path.join(installDir, 'scripts', 'save-draft-artifacts.mjs'), 'console.log("old-save")\n', 'utf8')
+  fs.writeFileSync(path.join(installDir, 'scripts', 'stale-script.mjs'), 'console.log("stale")\n', 'utf8')
+
+  const synced = syncInstalledBundledSkills({
+    dataDir,
+    env: {
+      ...process.env,
+      CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT: sourceRoot,
+    },
+  })
+
+  assert.deepEqual(synced, ['content-draft'])
+  assert.equal(fs.readFileSync(path.join(installDir, 'SKILL.md'), 'utf8'), '# Content Draft v2\n')
+  assert.equal(
+    fs.readFileSync(path.join(installDir, 'scripts', 'save-draft-artifacts.mjs'), 'utf8'),
+    'console.log("new-save")\n',
+  )
+  assert.equal(
+    fs.readFileSync(path.join(installDir, 'scripts', 'link-generated-images.mjs'), 'utf8'),
+    'console.log("link")\n',
+  )
+  assert.equal(fs.existsSync(path.join(installDir, 'scripts', 'stale-script.mjs')), false)
 })
 
 test('bundled clawprobe cost digest skill explicitly instructs agents to read the skill and exec the script', () => {
