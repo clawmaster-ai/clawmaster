@@ -2,6 +2,7 @@ import type express from 'express'
 import { requireDangerousServiceAuth } from '../serviceAuth.js'
 import {
   backupOpenclaw,
+  getClawmasterNpmProxy,
   getClawmasterRuntime,
   getBackupDefaults,
   listOpenclawBackups,
@@ -9,6 +10,7 @@ import {
   resetConfig,
   resetOpenclawProfile,
   restoreOpenclawBackup,
+  saveClawmasterNpmProxy,
   saveClawmasterRuntime,
   saveOpenclawProfile,
   uninstallOpenclaw,
@@ -28,6 +30,20 @@ export function registerSettingsRoutes(app: express.Express): void {
         autoStartBackend?: boolean
       }
       res.json(saveClawmasterRuntime(body))
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error)
+      res.status(400).type('text').send(msg)
+    }
+  })
+
+  app.get('/api/settings/npm-proxy', (_req, res) => {
+    res.json(getClawmasterNpmProxy())
+  })
+
+  app.post('/api/settings/npm-proxy', (req, res) => {
+    try {
+      const body = req.body as { enabled?: boolean }
+      res.json(saveClawmasterNpmProxy(body))
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       res.status(400).type('text').send(msg)

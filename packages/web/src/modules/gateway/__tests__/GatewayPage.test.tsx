@@ -86,5 +86,11 @@ describe('GatewayPage', () => {
     expect(await screen.findByRole('dialog', { name: 'Recent Gateway Logs' })).toBeInTheDocument()
     expect(screen.getByText(/\[gateway\] listening on ws:\/\/127\.0\.0\.1:18789/)).toBeInTheDocument()
     expect(screen.queryByText(/webchat disconnected code=1001/)).not.toBeInTheDocument()
+
+    const webUiLinks = screen.getAllByRole('link', { name: 'Open OpenClaw WebUI' })
+    expect(webUiLinks.length).toBeGreaterThan(0)
+    webUiLinks.forEach((link) => {
+      expect(link).toHaveAttribute('href', 'http://127.0.0.1:18789/?token=secret-token')
+    })
   })
 })

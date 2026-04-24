@@ -106,6 +106,38 @@ describe('system adapters', () => {
     })
   })
 
+  it('loads the npm proxy setting in web mode', async () => {
+    const { webFetchJson } = await import('../webHttp')
+    const { getClawmasterNpmProxyResult } = await import('../system')
+    vi.mocked(webFetchJson).mockResolvedValue({
+      success: true,
+      data: { enabled: true, registryUrl: 'https://registry.npmmirror.com' },
+      error: null,
+    })
+
+    await getClawmasterNpmProxyResult()
+
+    expect(webFetchJson).toHaveBeenCalledWith('/api/settings/npm-proxy')
+  })
+
+  it('posts the npm proxy setting in web mode', async () => {
+    const { webFetchJson } = await import('../webHttp')
+    const { saveClawmasterNpmProxyResult } = await import('../system')
+    vi.mocked(webFetchJson).mockResolvedValue({
+      success: true,
+      data: { enabled: true, registryUrl: 'https://registry.npmmirror.com' },
+      error: null,
+    })
+
+    await saveClawmasterNpmProxyResult({ enabled: true })
+
+    expect(webFetchJson).toHaveBeenCalledWith('/api/settings/npm-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    })
+  })
+
   it('posts an HTTP probe in web mode', async () => {
     const { webFetchJson } = await import('../webHttp')
     const { probeHttpStatusResult } = await import('../system')

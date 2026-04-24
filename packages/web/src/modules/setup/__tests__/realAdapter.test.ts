@@ -138,6 +138,29 @@ describe('realSetupAdapter', () => {
     })
   })
 
+  it('passes the configured registry flag to npm capability installs', async () => {
+    const progress: InstallProgress[] = []
+
+    await expect(
+      realSetupAdapter.installCapabilities(
+        ['observe'],
+        (item) => {
+          progress.push({ ...item })
+        },
+        { registryUrl: 'https://registry.npmmirror.com' },
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(execCommand).toHaveBeenCalledWith('npm', [
+      'install',
+      '-g',
+      'clawprobe',
+      '--registry',
+      'https://registry.npmmirror.com',
+    ])
+    expect(progress.find((item) => item.log?.includes('--registry https://registry.npmmirror.com'))).toBeTruthy()
+  })
+
   it('detects memory capability from the native OpenClaw runtime', async () => {
     vi.mocked(execCommand).mockImplementation(async (cmd, args) => {
       if (cmd === 'openclaw' && args.join(' ') === '--version') return 'OpenClaw 2026.3.11'

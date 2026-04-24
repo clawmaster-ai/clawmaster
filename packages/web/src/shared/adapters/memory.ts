@@ -112,6 +112,14 @@ function hasFtsUnavailableError(message: string): boolean {
   return lower.includes('fts5') && lower.includes('no such module')
 }
 
+function isLegacyOpenclawMemoryUnsupported(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes("unknown command 'memory'") ||
+    (lower.includes('requires node >=') && lower.includes('upgrade node and re-run openclaw'))
+  )
+}
+
 interface TauriCapturedCommandResult {
   code: number
   stdout: string
@@ -218,10 +226,18 @@ async function tauriOpenclawMemoryStatus(): Promise<OpenclawMemoryStatusPayload>
     'run_openclaw_command_captured',
     { args: ['memory', 'status', '--json'] },
   )
+  const stderr = out.stderr?.trim() || undefined
+  if (stderr && isLegacyOpenclawMemoryUnsupported(stderr)) {
+    return {
+      exitCode: out.code,
+      data: [],
+      stderr,
+    }
+  }
   return {
     exitCode: out.code,
     data: parseStdoutJsonLoose(out.stdout),
-    stderr: out.stderr?.trim() || undefined,
+    stderr,
   }
 }
 

@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { execNpmInstallGlobalFile, execShellCommand } from './execOpenclaw.js'
+import { execNpmCommand, execNpmInstallGlobalFile, execShellCommand } from './execOpenclaw.js'
 import { expandUserPath } from './paths.js'
 
 /** Block npm arg injection; allow typical semver / dist-tag characters only */
@@ -101,9 +101,7 @@ export async function npmInstallOpenclawGlobal(versionSpec: string): Promise<{
     assertSafeOpenclawVersionSpec(s)
     pkgArg = `openclaw@${s}`
   }
-  const { code, stdout, stderr } = await execShellCommand(
-    `npm install -g ${pkgArg}`
-  )
+  const { code, stdout, stderr } = await execNpmCommand(['install', '-g', pkgArg])
   return {
     ok: code === 0,
     code,

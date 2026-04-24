@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { installBundledSkill, isBundledSkillSlug } from './bundledSkills.js'
+import { installBundledSkill, isBundledSkillSlug, syncInstalledBundledSkills } from './bundledSkills.js'
 
 test('isBundledSkillSlug recognizes bundled skill ids case-insensitively', () => {
   assert.equal(isBundledSkillSlug('content-draft'), true)
@@ -219,6 +219,120 @@ test('installBundledSkill uses WSL copy commands for Linux runtime data dirs on 
   assert.match(wslScripts[0]?.script ?? '', /\/home\/tester\/\.openclaw-dev\/workspace\/skills\/models-dev/)
 })
 
+test('syncInstalledBundledSkills refreshes already-installed bundled skills with a clean replace', () => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-sync-src-'))
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-sync-data-'))
+  const installDir = path.join(dataDir, 'workspace', 'skills', 'content-draft')
+
+  fs.mkdirSync(path.join(sourceRoot, 'scripts'), { recursive: true })
+  fs.writeFileSync(path.join(sourceRoot, 'SKILL.md'), '# Content Draft v2\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, '_meta.json'), '{"slug":"content-draft","version":"0.3.0","bundled":true}\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, 'scripts', 'save-draft-artifacts.mjs'), 'console.log("new-save")\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, 'scripts', 'link-generated-images.mjs'), 'console.log("link")\n', 'utf8')
+
+  fs.mkdirSync(path.join(installDir, 'scripts'), { recursive: true })
+  fs.writeFileSync(path.join(installDir, 'SKILL.md'), '# Content Draft v1\n', 'utf8')
+  fs.writeFileSync(path.join(installDir, '_meta.json'), '{"slug":"content-draft","version":"0.3.0","bundled":true}\n', 'utf8')
+  fs.writeFileSync(path.join(installDir, 'scripts', 'save-draft-artifacts.mjs'), 'console.log("old-save")\n', 'utf8')
+  fs.writeFileSync(path.join(installDir, 'scripts', 'stale-script.mjs'), 'console.log("stale")\n', 'utf8')
+
+  const synced = syncInstalledBundledSkills({
+    dataDir,
+    env: {
+      ...process.env,
+      CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT: sourceRoot,
+    },
+  })
+
+  assert.deepEqual(synced, ['content-draft'])
+  assert.equal(fs.readFileSync(path.join(installDir, 'SKILL.md'), 'utf8'), '# Content Draft v2\n')
+  assert.equal(
+    fs.readFileSync(path.join(installDir, 'scripts', 'save-draft-artifacts.mjs'), 'utf8'),
+    'console.log("new-save")\n',
+  )
+  assert.equal(
+    fs.readFileSync(path.join(installDir, 'scripts', 'link-generated-images.mjs'), 'utf8'),
+    'console.log("link")\n',
+  )
+  assert.equal(fs.existsSync(path.join(installDir, 'scripts', 'stale-script.mjs')), false)
+})
+
+test('syncInstalledBundledSkills skips matching skill dirs that are not marked as bundled', () => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-sync-src-'))
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-sync-data-'))
+  const installDir = path.join(dataDir, 'workspace', 'skills', 'content-draft')
+
+  fs.mkdirSync(path.join(sourceRoot, 'scripts'), { recursive: true })
+  fs.writeFileSync(path.join(sourceRoot, 'SKILL.md'), '# Content Draft v2\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, '_meta.json'), '{"slug":"content-draft","version":"0.3.0","bundled":true}\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, 'scripts', 'save-draft-artifacts.mjs'), 'console.log("new-save")\n', 'utf8')
+
+  fs.mkdirSync(path.join(installDir, 'scripts'), { recursive: true })
+  fs.writeFileSync(path.join(installDir, 'SKILL.md'), '# Custom Content Draft\n', 'utf8')
+  fs.writeFileSync(path.join(installDir, '_meta.json'), '{"slug":"content-draft","version":"9.9.9","bundled":false}\n', 'utf8')
+  fs.writeFileSync(path.join(installDir, 'scripts', 'save-draft-artifacts.mjs'), 'console.log("custom-save")\n', 'utf8')
+
+  const synced = syncInstalledBundledSkills({
+    dataDir,
+    env: {
+      ...process.env,
+      CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT: sourceRoot,
+    },
+  })
+
+  assert.deepEqual(synced, [])
+  assert.equal(fs.readFileSync(path.join(installDir, 'SKILL.md'), 'utf8'), '# Custom Content Draft\n')
+  assert.equal(
+    fs.readFileSync(path.join(installDir, 'scripts', 'save-draft-artifacts.mjs'), 'utf8'),
+    'console.log("custom-save")\n',
+  )
+})
+
+test('syncInstalledBundledSkills refreshes WSL-installed bundled skills with a WSL existence check', () => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-sync-src-'))
+  const wslScripts: Array<{ distro: string; script: string }> = []
+
+  fs.mkdirSync(path.join(sourceRoot, 'scripts'), { recursive: true })
+  fs.writeFileSync(path.join(sourceRoot, 'SKILL.md'), '# Content Draft v2\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, '_meta.json'), '{"slug":"content-draft","version":"0.3.0","bundled":true}\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, 'scripts', 'save-draft-artifacts.mjs'), 'console.log("new-save")\n', 'utf8')
+
+  const synced = syncInstalledBundledSkills({
+    dataDir: '/home/tester/.openclaw-dev',
+    env: {
+      ...process.env,
+      CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT: sourceRoot,
+    },
+    platform: 'win32',
+    wslRuntime: true,
+    wslDistro: 'Ubuntu',
+    runWslScript: (distro, script) => {
+      wslScripts.push({ distro, script })
+      if (script.startsWith('test -e ')) {
+        if (script.includes('/workspace/skills/content-draft')) {
+          return { code: 0, stdout: '', stderr: '' }
+        }
+        return { code: 1, stdout: '', stderr: '' }
+      }
+      if (script.startsWith('cat ')) {
+        if (script.includes('/workspace/skills/content-draft/_meta.json')) {
+          return { code: 0, stdout: '{"slug":"content-draft","version":"0.3.0","bundled":true}\n', stderr: '' }
+        }
+        return { code: 1, stdout: '', stderr: '' }
+      }
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  })
+
+  assert.deepEqual(synced, ['content-draft'])
+  assert.equal(wslScripts.filter(({ script }) => script.startsWith('test -e ')).length, 5)
+  assert.equal(wslScripts.filter(({ script }) => script.startsWith('cat ')).length, 1)
+  const copyScript = wslScripts.find(({ script }) => /cp -a/.test(script))
+  assert.ok(copyScript)
+  assert.equal(copyScript?.distro, 'Ubuntu')
+  assert.match(copyScript?.script ?? '', /\/home\/tester\/\.openclaw-dev\/workspace\/skills\/content-draft/)
+})
+
 test('bundled clawprobe cost digest skill explicitly instructs agents to read the skill and exec the script', () => {
   const skillPath = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -268,6 +382,9 @@ test('bundled Content Draft skill explicitly keeps article drafting on the repo-
   assert.match(skillBody, /node \$\{SKILL_DIR\}\/scripts\/fetch-url-markdown\.mjs/)
   assert.match(skillBody, /node \$\{SKILL_DIR\}\/scripts\/build-chat-response\.mjs/)
   assert.match(skillBody, /runtime's built-in image generation capability/i)
+  assert.match(skillBody, /Every generated image should map to the article's actual subject, section, or example/i)
+  assert.match(skillBody, /revise the markdown so generated images are embedded inline wherever they strengthen the reading flow/i)
+  assert.match(skillBody, /If an image does not clearly support the article context, either regenerate it or omit it/i)
   assert.match(skillBody, /Return the full final draft body plus the generated images in the same reply\./)
 })
 
@@ -471,4 +588,55 @@ test('bundled Content Draft chat-response helper rewrites local image refs and a
   assert.match(payload.markdown, /\*Hero\*\n\nMEDIA:.*cover\.png/)
   assert.match(payload.markdown, /## Generated Images/)
   assert.match(payload.markdown, /MEDIA:.*extra\.webp/)
+})
+
+test('bundled Content Draft chat-response helper falls back to legacy manifest imageFiles', () => {
+  const scriptPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../../bundled-skills/content-draft/scripts/build-chat-response.mjs',
+  )
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-content-draft-chat-legacy-'))
+  const markdownPath = path.join(tempRoot, 'draft.md')
+  const imagesDir = path.join(tempRoot, 'images')
+  const manifestPath = path.join(tempRoot, 'manifest.json')
+
+  fs.mkdirSync(imagesDir, { recursive: true })
+  fs.writeFileSync(
+    markdownPath,
+    [
+      '# Weekly digest',
+      '',
+      '![Hero](images/cover.png)',
+      '',
+    ].join('\n'),
+    'utf8',
+  )
+  fs.writeFileSync(path.join(imagesDir, 'cover.png'), 'png', 'utf8')
+  fs.writeFileSync(
+    manifestPath,
+    `${JSON.stringify({
+      draftPath: markdownPath,
+      imagesDir,
+      imageFiles: ['cover.png'],
+    }, null, 2)}\n`,
+    'utf8',
+  )
+
+  const raw = execFileSync(
+    process.execPath,
+    [scriptPath, '--markdown-file', markdownPath, '--manifest-file', manifestPath, '--json'],
+    { encoding: 'utf8' },
+  )
+
+  const payload = JSON.parse(raw) as {
+    markdown: string
+    embeddedImageCount: number
+    appendedImageCount: number
+    totalImageCount: number
+  }
+
+  assert.equal(payload.embeddedImageCount, 1)
+  assert.equal(payload.appendedImageCount, 0)
+  assert.equal(payload.totalImageCount, 1)
+  assert.match(payload.markdown, /\*Hero\*\n\nMEDIA:.*cover\.png/)
 })

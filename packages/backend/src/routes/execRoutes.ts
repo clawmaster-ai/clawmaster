@@ -6,6 +6,7 @@ import path from 'path'
 import { getClawmasterRuntimeSelection } from '../clawmasterSettings.js'
 import { execOpenclaw, resolveExecFileCommand, needsShellOnWindows, clearOpenclawBinCache } from '../execOpenclaw.js'
 import { runClawprobeCommand } from '../execClawprobe.js'
+import { applyConfiguredNpmRegistryArgs } from '../npmProxy.js'
 import { execWslCommand, resolveSelectedWslDistroSync, shouldUseWslRuntime } from '../wslRuntime.js'
 
 const execFileAsync = promisify(execFile)
@@ -74,8 +75,12 @@ export function registerExecRoutes(app: Express): void {
       const runtimeSelection = getClawmasterRuntimeSelection()
       const useWslRuntime = shouldUseWslRuntime(runtimeSelection)
       const normalized = normalizeExecRequest(cmd, args, { useWslRuntime })
+      const effectiveArgs =
+        normalized.cmd === 'npm'
+          ? applyConfiguredNpmRegistryArgs(normalized.args)
+          : normalized.args
       if (normalized.cmd === 'openclaw') {
-        const result = await execOpenclaw(normalized.args)
+        const result = await execOpenclaw(effectiveArgs)
         res.json({
           ok: result.code === 0,
           stdout: result.stdout.trim(),
@@ -86,7 +91,7 @@ export function registerExecRoutes(app: Express): void {
         return
       }
       if (normalized.cmd === 'clawprobe') {
-        const result = await runClawprobeCommand(normalized.args)
+        const result = await runClawprobeCommand(effectiveArgs)
         res.json({
           ok: result.ok,
           stdout: result.stdout.trim(),
@@ -108,7 +113,7 @@ export function registerExecRoutes(app: Express): void {
           })
           return
         }
-        const result = await execWslCommand(distro, normalized.cmd, normalized.args)
+        const result = await execWslCommand(distro, normalized.cmd, effectiveArgs)
         res.json({
           ok: result.code === 0,
           stdout: result.stdout.trim(),
@@ -119,10 +124,10 @@ export function registerExecRoutes(app: Express): void {
         return
       }
       const resolvedCmd = resolveExecFileCommand(normalized.cmd)
-      const { stdout, stderr } = await execFileAsync(resolvedCmd, normalized.args, {
+      const { stdout, stderr } = await execFileAsync(resolvedCmd, effectiveArgs, {
         shell: needsShellOnWindows(normalized.cmd),
       })
-      if (normalized.cmd === 'npm' && normalized.args.some((a) => a === 'openclaw')) {
+      if (normalized.cmd === 'npm' && effectiveArgs.some((a) => a === 'openclaw')) {
         clearOpenclawBinCache()
       }
       res.json({ ok: true, stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0 })

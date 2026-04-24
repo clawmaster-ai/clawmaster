@@ -172,6 +172,7 @@ pub struct BootstrapAfterInstallDto {
 static OPENCLAW_EXE: OnceLock<PathBuf> = OnceLock::new();
 static CLAWPROBE_EXE: OnceLock<PathBuf> = OnceLock::new();
 static SYSTEM_CMD_EXE: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
+const DEFAULT_NPM_PROXY_REGISTRY_URL: &str = "https://registry.npmmirror.com";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -188,6 +189,8 @@ struct ClawmasterSettings {
     openclaw_profile: Option<OpenclawProfileSelection>,
     #[serde(skip_serializing_if = "Option::is_none")]
     runtime: Option<ClawmasterRuntimeSelection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    npm_proxy: Option<ClawmasterNpmProxySelection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -200,6 +203,19 @@ struct ClawmasterRuntimeSelection {
     backend_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     auto_start_backend: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ClawmasterNpmProxySelection {
+    enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClawmasterNpmProxyInfo {
+    enabled: bool,
+    registry_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -318,6 +334,77 @@ fn set_clawmaster_runtime_selection(
     }
     write_clawmaster_settings(&settings)?;
     Ok(normalized)
+}
+
+fn normalize_clawmaster_npm_proxy_selection(enabled: Option<bool>) -> ClawmasterNpmProxySelection {
+    ClawmasterNpmProxySelection {
+        enabled: enabled.unwrap_or(false),
+    }
+}
+
+fn get_clawmaster_npm_proxy_selection() -> ClawmasterNpmProxySelection {
+    let settings = read_clawmaster_settings();
+    normalize_clawmaster_npm_proxy_selection(settings.npm_proxy.as_ref().map(|item| item.enabled))
+}
+
+fn set_clawmaster_npm_proxy_selection(
+    enabled: Option<bool>,
+) -> Result<ClawmasterNpmProxySelection, String> {
+    let normalized = normalize_clawmaster_npm_proxy_selection(enabled);
+    let mut settings = read_clawmaster_settings();
+    if normalized.enabled {
+        settings.npm_proxy = Some(normalized.clone());
+    } else {
+        settings.npm_proxy = None;
+    }
+    write_clawmaster_settings(&settings)?;
+    Ok(normalized)
+}
+
+fn get_clawmaster_npm_proxy_registry_url() -> Option<String> {
+    if get_clawmaster_npm_proxy_selection().enabled {
+        Some(DEFAULT_NPM_PROXY_REGISTRY_URL.to_string())
+    } else {
+        None
+    }
+}
+
+fn clawmaster_npm_proxy_info_from_selection(
+    selection: ClawmasterNpmProxySelection,
+) -> ClawmasterNpmProxyInfo {
+    ClawmasterNpmProxyInfo {
+        enabled: selection.enabled,
+        registry_url: if selection.enabled {
+            Some(DEFAULT_NPM_PROXY_REGISTRY_URL.to_string())
+        } else {
+            None
+        },
+    }
+}
+
+fn should_apply_npm_registry_proxy(args: &[String]) -> bool {
+    let Some(subcommand) = args.first().map(|item| item.trim().to_ascii_lowercase()) else {
+        return false;
+    };
+    if subcommand != "install" && subcommand != "i" {
+        return false;
+    }
+    !args
+        .iter()
+        .any(|arg| arg == "--registry" || arg.starts_with("--registry="))
+}
+
+fn with_configured_npm_registry_args(args: &[String]) -> Vec<String> {
+    let mut normalized = args.to_vec();
+    let Some(registry_url) = get_clawmaster_npm_proxy_registry_url() else {
+        return normalized;
+    };
+    if !should_apply_npm_registry_proxy(&normalized) {
+        return normalized;
+    }
+    normalized.push("--registry".to_string());
+    normalized.push(registry_url);
+    normalized
 }
 
 fn sanitize_profile_name(input: &str) -> Result<String, String> {
@@ -1614,8 +1701,9 @@ fn encode_base64_standard(input: &[u8]) -> String {
 fn decode_base64_standard(input: &str) -> Result<Vec<u8>, String> {
     const INVALID: u8 = 0xFF;
     let mut table = [INVALID; 256];
-    for (index, &ch) in
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".iter().enumerate()
+    for (index, &ch) in b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        .iter()
+        .enumerate()
     {
         table[ch as usize] = index as u8;
     }
@@ -4388,7 +4476,8 @@ mod tests {
         parse_http_status_output, parse_json_lenient, parse_models_dev_fetched_at,
         parse_node_major, parse_wsl_list_verbose, repo_bundled_skill_root, repo_plugin_root,
         resolve_config_path_from_candidates, resolve_local_data_status, resolve_plugin_root,
-        resolve_selected_wsl_distro_from_list, supports_seekdb_embedded, OpenclawProfileSelection,
+        resolve_selected_wsl_distro_from_list, supports_seekdb_embedded,
+        sync_installed_bundled_skills, OpenclawProfileSelection,
     };
     use std::fs;
     use std::path::Path;
@@ -4427,7 +4516,10 @@ mod tests {
         // (0x0A, 0x0D) must survive the base64 round-trip verbatim.
         let binary: Vec<u8> = (0u8..=255u8).collect();
         let encoded = encode_base64_standard(&binary);
-        assert_eq!(decode_base64_standard(&encoded).expect("round trip"), binary);
+        assert_eq!(
+            decode_base64_standard(&encoded).expect("round trip"),
+            binary
+        );
         // Whitespace from `tr -d '\n'` remnants or stdout framing is tolerated.
         assert_eq!(
             decode_base64_standard("aGVsbG8=\n").expect("trailing newline"),
@@ -5232,6 +5324,85 @@ mod tests {
     }
 
     #[test]
+    fn sync_installed_bundled_skills_skips_matching_dirs_without_bundled_meta() {
+        let _guard = lock_test_env();
+        let previous_skill_root = std::env::var_os("CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT");
+        let previous_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_home = std::env::var_os("HOME");
+        let temp_root = unique_test_dir("bundled-skill-sync-skip-custom");
+        let source_root = temp_root.join("bundled-source");
+        let install_dir = temp_root
+            .join(".openclaw")
+            .join("workspace")
+            .join("skills")
+            .join("content-draft");
+
+        fs::create_dir_all(source_root.join("scripts")).expect("should create bundled source");
+        fs::write(source_root.join("SKILL.md"), "# Bundled Content Draft\n")
+            .expect("should write bundled skill");
+        fs::write(
+            source_root.join("_meta.json"),
+            "{\"slug\":\"content-draft\",\"bundled\":true}\n",
+        )
+        .expect("should write bundled meta");
+        fs::write(
+            source_root.join("scripts").join("save-draft-artifacts.mjs"),
+            "console.log('bundled')\n",
+        )
+        .expect("should write bundled script");
+
+        fs::create_dir_all(install_dir.join("scripts")).expect("should create installed dir");
+        fs::write(install_dir.join("SKILL.md"), "# Custom Content Draft\n")
+            .expect("should write custom skill");
+        fs::write(
+            install_dir.join("_meta.json"),
+            "{\"slug\":\"content-draft\",\"bundled\":false}\n",
+        )
+        .expect("should write custom meta");
+        fs::write(
+            install_dir.join("scripts").join("save-draft-artifacts.mjs"),
+            "console.log('custom')\n",
+        )
+        .expect("should write custom script");
+
+        std::env::set_var("CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT", &source_root);
+        std::env::set_var("XDG_CONFIG_HOME", &temp_root);
+        std::env::set_var("HOME", &temp_root);
+
+        let sync_result = sync_installed_bundled_skills();
+
+        if let Some(value) = previous_skill_root {
+            std::env::set_var("CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT", value);
+        } else {
+            std::env::remove_var("CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT");
+        }
+        if let Some(value) = previous_xdg_config_home {
+            std::env::set_var("XDG_CONFIG_HOME", value);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+        if let Some(value) = previous_home {
+            std::env::set_var("HOME", value);
+        } else {
+            std::env::remove_var("HOME");
+        }
+
+        let synced = sync_result.expect("sync should succeed");
+        assert!(synced.is_empty());
+        assert_eq!(
+            fs::read_to_string(install_dir.join("SKILL.md")).expect("should keep custom skill"),
+            "# Custom Content Draft\n"
+        );
+        assert_eq!(
+            fs::read_to_string(install_dir.join("scripts").join("save-draft-artifacts.mjs"))
+                .expect("should keep custom script"),
+            "console.log('custom')\n"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn models_dev_catalog_maps_reseller_aliases_for_clawprobe_pricing() {
         let catalog = serde_json::json!({
             "deepseek": {
@@ -5841,9 +6012,24 @@ fn bundled_skill_env_key(skill_id: &str) -> Option<&'static str> {
     }
 }
 
+fn bundled_skill_ids() -> [&'static str; 5] {
+    [
+        "content-draft",
+        "clawprobe-cost-digest",
+        "ernie-image",
+        "models-dev",
+        "paddleocr-doc-parsing",
+    ]
+}
+
 fn repo_bundled_skill_root(skill_id: &str) -> Option<PathBuf> {
     let dir_name = bundled_skill_dir_name(skill_id)?;
     Some(repo_root_path().join("bundled-skills").join(dir_name))
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct BundledSkillInstallMeta {
+    bundled: Option<bool>,
 }
 
 #[cfg(target_os = "windows")]
@@ -5889,6 +6075,52 @@ fn copy_bundled_skill_into_wsl(
     }
 }
 
+fn bundled_skill_install_dir(
+    config_resolution: &OpenclawConfigResolution,
+    dir_name: &str,
+) -> PathBuf {
+    #[cfg(target_os = "windows")]
+    if active_wsl_distro().is_some() {
+        return PathBuf::from(join_posix(
+            &join_posix(&config_resolution.data_dir.to_string_lossy(), "workspace"),
+            &join_posix("skills", dir_name),
+        ));
+    }
+
+    config_resolution
+        .data_dir
+        .join("workspace")
+        .join("skills")
+        .join(dir_name)
+}
+
+fn bundled_skill_install_dir_exists(install_dir: &Path) -> bool {
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        return wsl_is_dir(&distro, &install_dir.to_string_lossy());
+    }
+
+    install_dir.exists()
+}
+
+fn read_bundled_skill_install_meta(install_dir: &Path) -> Option<BundledSkillInstallMeta> {
+    #[cfg(target_os = "windows")]
+    if let Some(distro) = active_wsl_distro() {
+        let meta_path = join_posix(&install_dir.to_string_lossy(), "_meta.json");
+        let raw = read_text_file_in_wsl(&distro, &meta_path).ok().flatten()?;
+        return serde_json::from_str(&raw).ok();
+    }
+
+    let raw = fs::read_to_string(install_dir.join("_meta.json")).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+fn is_safe_bundled_skill_refresh_install(install_dir: &Path) -> bool {
+    read_bundled_skill_install_meta(install_dir)
+        .and_then(|meta| meta.bundled)
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 fn install_bundled_skill(skill_id: String) -> Result<(), String> {
     let normalized = skill_id.trim().to_ascii_lowercase();
@@ -5923,20 +6155,38 @@ fn install_bundled_skill(skill_id: String) -> Result<(), String> {
     let config_resolution = get_config_resolution();
     #[cfg(target_os = "windows")]
     if let Some(distro) = active_wsl_distro() {
-        let target_dir = join_posix(
-            &join_posix(&config_resolution.data_dir.to_string_lossy(), "workspace"),
-            &join_posix("skills", dir_name),
-        );
+        let target_dir = bundled_skill_install_dir(&config_resolution, dir_name)
+            .to_string_lossy()
+            .to_string();
         return copy_bundled_skill_into_wsl(&distro, &source_path, &target_dir);
     }
 
-    let target_dir = config_resolution
-        .data_dir
-        .join("workspace")
-        .join("skills")
-        .join(dir_name);
+    let target_dir = bundled_skill_install_dir(&config_resolution, dir_name);
+    let _ = fs::remove_dir_all(&target_dir);
     copy_dir_all(&source_path, &target_dir)?;
     Ok(())
+}
+
+fn sync_installed_bundled_skills() -> Result<Vec<String>, String> {
+    let config_resolution = get_config_resolution();
+    let mut synced = Vec::new();
+
+    for skill_id in bundled_skill_ids() {
+        let Some(dir_name) = bundled_skill_dir_name(skill_id) else {
+            continue;
+        };
+        let install_dir = bundled_skill_install_dir(&config_resolution, dir_name);
+        if !bundled_skill_install_dir_exists(&install_dir) {
+            continue;
+        }
+        if !is_safe_bundled_skill_refresh_install(&install_dir) {
+            continue;
+        }
+        install_bundled_skill(skill_id.to_string())?;
+        synced.push(skill_id.to_string());
+    }
+
+    Ok(synced)
 }
 
 #[tauri::command]
@@ -6084,6 +6334,18 @@ fn save_clawmaster_runtime(
     auto_start_backend: Option<bool>,
 ) -> Result<(), String> {
     set_clawmaster_runtime_selection(mode, wsl_distro, backend_port, auto_start_backend).map(|_| ())
+}
+
+#[tauri::command]
+fn get_clawmaster_npm_proxy() -> Result<ClawmasterNpmProxyInfo, String> {
+    Ok(clawmaster_npm_proxy_info_from_selection(
+        get_clawmaster_npm_proxy_selection(),
+    ))
+}
+
+#[tauri::command]
+fn save_clawmaster_npm_proxy(enabled: Option<bool>) -> Result<ClawmasterNpmProxyInfo, String> {
+    set_clawmaster_npm_proxy_selection(enabled).map(clawmaster_npm_proxy_info_from_selection)
 }
 
 fn npm_root_g() -> Result<String, String> {
@@ -6317,8 +6579,10 @@ fn run_npm_install_openclaw_global(spec: &str) -> Result<NpmUninstallOutput, Str
     } else {
         format!("openclaw@{}", spec)
     };
+    let args =
+        with_configured_npm_registry_args(&["install".to_string(), "-g".to_string(), pkg.clone()]);
     let output = Command::new("npm")
-        .args(["install", "-g", &pkg])
+        .args(&args)
         .output()
         .map_err(|e| cmd_err_d("NPM_SPAWN_FAILED", e))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -6360,8 +6624,10 @@ fn npm_install_openclaw_from_file(file_path: String) -> Result<NpmUninstallOutpu
     }
     let canon = fs::canonicalize(&p).map_err(|e| cmd_err_d("PATH_CANONICALIZE_FAILED", e))?;
     let s = canon.to_string_lossy().to_string();
+    let args =
+        with_configured_npm_registry_args(&["install".to_string(), "-g".to_string(), s.clone()]);
     let output = Command::new("npm")
-        .args(["install", "-g", &s])
+        .args(&args)
         .output()
         .map_err(|e| cmd_err_d("NPM_SPAWN_FAILED", e))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -8052,7 +8318,12 @@ fn run_system_command(cmd: String, args: Vec<String>) -> Result<String, String> 
     }
 
     let program = resolve_system_command_path(trimmed);
-    let normalized_args: Vec<String> = args.iter().map(|arg| expand_exec_arg_home(arg)).collect();
+    let expanded_args: Vec<String> = args.iter().map(|arg| expand_exec_arg_home(arg)).collect();
+    let normalized_args = if trimmed == "npm" {
+        with_configured_npm_registry_args(&expanded_args)
+    } else {
+        expanded_args
+    };
 
     #[cfg(target_os = "windows")]
     if let Some(distro) = active_wsl_distro() {
@@ -8460,6 +8731,8 @@ pub fn run() {
             save_openclaw_profile,
             clear_openclaw_profile,
             save_clawmaster_runtime,
+            get_clawmaster_npm_proxy,
+            save_clawmaster_npm_proxy,
             uninstall_openclaw_cli,
             list_openclaw_npm_versions,
             npm_install_openclaw_global,
@@ -8562,6 +8835,9 @@ pub fn run() {
                         "CLAWMASTER_BUNDLED_PADDLEOCR_DOC_PARSING_SKILL_ROOT",
                         paddleocr_skill_root.to_string_lossy().to_string(),
                     );
+                }
+                if let Err(error) = sync_installed_bundled_skills() {
+                    eprintln!("ClawMaster skipped bundled skill refresh: {error}");
                 }
             }
             if cfg!(debug_assertions) {

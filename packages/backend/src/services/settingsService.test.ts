@@ -5,8 +5,8 @@ import path from 'node:path'
 import test from 'node:test'
 
 import { getOpenclawProfileSelection } from '../openclawProfile.js'
-import { getClawmasterRuntimeSelection } from '../clawmasterSettings.js'
-import { saveClawmasterRuntime, saveOpenclawProfile } from './settingsService.js'
+import { getClawmasterNpmProxySelection, getClawmasterRuntimeSelection } from '../clawmasterSettings.js'
+import { saveClawmasterNpmProxy, saveClawmasterRuntime, saveOpenclawProfile } from './settingsService.js'
 
 function makeTempHome(label: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `clawmaster-${label}-`))
@@ -106,5 +106,23 @@ test('saveClawmasterRuntime persists WSL2 runtime selection', () => {
     wslDistro: 'Ubuntu-24.04',
     backendPort: 3101,
     autoStartBackend: true,
+  })
+})
+
+test('saveClawmasterNpmProxy persists the npm proxy toggle', () => {
+  const homeDir = makeTempHome('npm-proxy')
+  const context = {
+    homeDir,
+    settingsPath: path.join(homeDir, '.clawmaster', 'settings.json'),
+  }
+
+  const result = saveClawmasterNpmProxy({ enabled: true }, context)
+
+  assert.deepEqual(result, {
+    enabled: true,
+    registryUrl: 'https://registry.npmmirror.com',
+  })
+  assert.deepEqual(getClawmasterNpmProxySelection(context), {
+    enabled: true,
   })
 })

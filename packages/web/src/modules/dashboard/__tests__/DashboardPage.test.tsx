@@ -103,7 +103,7 @@ describe('DashboardPage', () => {
     })
     mockGetGatewayStatus.mockResolvedValue({ running: true, port: 3010 })
     mockGetConfig.mockResolvedValue({
-      gateway: { port: 3010, bind: '0.0.0.0', auth: { mode: 'token' } },
+      gateway: { port: 3010, bind: '0.0.0.0', auth: { mode: 'token', token: 'secret-token' } },
       channels: {
         feishu: { enabled: true, accounts: { prod: {} } },
         slack: { enabled: true, accounts: { prod: {}, qa: {} } },
@@ -174,10 +174,11 @@ describe('DashboardPage', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
 
-    expect(screen.getByRole('link', { name: '打开控制台' })).toHaveAttribute(
-      'href',
-      'http://127.0.0.1:3010',
-    )
+    const webUiLinks = screen.getAllByRole('link', { name: '打开 OpenClaw WebUI' })
+    expect(webUiLinks.length).toBeGreaterThanOrEqual(2)
+    webUiLinks.forEach((link) => {
+      expect(link).toHaveAttribute('href', 'http://127.0.0.1:3010/?token=secret-token')
+    })
     expect(screen.getByRole('link', { name: '查看日志' })).toHaveAttribute('href', '/gateway')
     expect(screen.getByRole('link', { name: '编辑配置' })).toHaveAttribute('href', '/config')
 

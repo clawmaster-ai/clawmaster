@@ -34,7 +34,7 @@ import {
   getEnabledPluginCount,
   getEnabledSkillCount,
 } from '@/shared/capabilitySummary'
-import { buildGatewayUrl } from '@/shared/gatewayUrl'
+import { buildGatewayUrl, buildGatewayWebUiUrl } from '@/shared/gatewayUrl'
 import { CapabilitiesBanner } from './CapabilitiesBanner'
 
 export default function Dashboard() {
@@ -386,7 +386,7 @@ export default function Dashboard() {
         </div>
         <div className="flex flex-wrap gap-2">
           <a
-            href={buildGatewayUrl(config)}
+            href={buildGatewayWebUiUrl(config)}
             target="_blank"
             rel="noopener noreferrer"
             className="button-primary"
@@ -623,7 +623,7 @@ export default function Dashboard() {
         </div>
         <div className="flex flex-wrap gap-3">
           <a
-            href={buildGatewayUrl(config)}
+            href={buildGatewayWebUiUrl(config)}
             target="_blank"
             rel="noopener noreferrer"
             className="button-primary"

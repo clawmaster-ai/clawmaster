@@ -12,6 +12,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { getClawmasterRuntimeSelection } from './clawmasterSettings.js'
+import { applyConfiguredNpmRegistryArgs } from './npmProxy.js'
 import { getOpenclawProfileArgs } from './openclawProfile.js'
 import {
   execWslCommand,
@@ -531,6 +532,60 @@ export function resolveNpmExecFileCommand(): string {
   return resolveExecFileCommand('npm')
 }
 
+export function execNpmCommand(args: string[]): Promise<{
+  code: number
+  stdout: string
+  stderr: string
+}> {
+  const normalizedArgs = applyConfiguredNpmRegistryArgs(args)
+  const runtimeSelection = getClawmasterRuntimeSelection()
+  if (shouldUseWslRuntime(runtimeSelection)) {
+    try {
+      const distro = requireSelectedWslDistroSync(runtimeSelection)
+      return execWslCommand(distro, 'npm', normalizedArgs).then((result) => ({
+        code: result.code,
+        stdout: result.stdout.trim(),
+        stderr: result.stderr.trim(),
+      }))
+    } catch (error: unknown) {
+      return Promise.resolve({
+        code: 1,
+        stdout: '',
+        stderr: error instanceof Error ? error.message : getWslRuntimeUnavailableMessage(),
+      })
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    execFile(
+      resolveNpmExecFileCommand(),
+      normalizedArgs,
+      {
+        maxBuffer: 20 * 1024 * 1024,
+        env: process.env,
+        shell: process.platform === 'win32',
+      },
+      (error: ExecFileException | null, stdout: string, stderr: string) => {
+        if (error && error.message?.includes('maxBuffer')) {
+          reject(error)
+          return
+        }
+        const code =
+          error && typeof error.code === 'number'
+            ? error.code
+            : error
+              ? 1
+              : 0
+        resolve({
+          code,
+          stdout: String(stdout ?? '').trim(),
+          stderr: String(stderr ?? '').trim(),
+        })
+      }
+    )
+  })
+}
+
 /** `npm install -g <absolute path>` via execFile (no shell) to avoid special chars in path */
 export function execNpmInstallGlobalFile(absolutePath: string): Promise<{
   code: number
@@ -546,10 +601,12 @@ export function execNpmInstallGlobalFile(absolutePath: string): Promise<{
     })
   }
 
+  const normalizedArgs = applyConfiguredNpmRegistryArgs(['install', '-g', absolutePath])
+
   return new Promise((resolve, reject) => {
     execFile(
       resolveNpmExecFileCommand(),
-      ['install', '-g', absolutePath],
+      normalizedArgs,
       { maxBuffer: 20 * 1024 * 1024, env: process.env, shell: process.platform === 'win32' },
       (error: ExecFileException | null, stdout: string, stderr: string) => {
         if (error && error.message?.includes('maxBuffer')) {
