@@ -174,10 +174,11 @@ describe('DashboardPage', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
 
-    expect(screen.getByRole('link', { name: '打开控制台' })).toHaveAttribute(
-      'href',
-      'http://127.0.0.1:3010',
-    )
+    const webUiLinks = screen.getAllByRole('link', { name: '打开 OpenClaw WebUI' })
+    expect(webUiLinks.length).toBeGreaterThanOrEqual(2)
+    webUiLinks.forEach((link) => {
+      expect(link).toHaveAttribute('href', 'http://127.0.0.1:3010')
+    })
     expect(screen.getByRole('link', { name: '查看日志' })).toHaveAttribute('href', '/gateway')
     expect(screen.getByRole('link', { name: '编辑配置' })).toHaveAttribute('href', '/config')
 
