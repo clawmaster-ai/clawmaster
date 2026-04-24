@@ -57,29 +57,29 @@ test('saveDraftArtifacts preserves semantic image linkage through slots and meta
           sourcePath: heroPath,
         },
       ],
-      images: [],
+      images: [architecturePath],
       imagesDir: null,
       imageMetaFile: metaPath,
     })
 
     assert.equal(result.imageFiles.length, 2)
     assert.deepEqual(result.imageFiles, [
+      '01-architecture-three-layer-architecture.png',
       'hero.png',
-      '02-architecture-three-layer-architecture.png',
     ])
-    assert.equal(result.images[0].role, 'hero')
-    assert.equal(result.images[1].anchor, 'three-layer-architecture')
+    assert.equal(result.images[0].anchor, 'three-layer-architecture')
+    assert.equal(result.images[1].role, 'hero')
     assert.equal(result.imageLinking.linkedCount, 2)
 
     const savedDraft = fs.readFileSync(result.draftPath, 'utf8')
     assert.match(savedDraft, /images\/hero\.png/)
-    assert.match(savedDraft, /images\/02-architecture-three-layer-architecture\.png/)
+    assert.match(savedDraft, /images\/01-architecture-three-layer-architecture\.png/)
 
     const savedManifest = JSON.parse(fs.readFileSync(result.manifestPath, 'utf8'))
-    assert.equal(savedManifest.images[0].originalFileName, 'hero---123.png')
-    assert.equal(savedManifest.images[1].section, 'Three-layer architecture')
+    assert.equal(savedManifest.images[0].section, 'Three-layer architecture')
+    assert.equal(savedManifest.images[1].originalFileName, 'hero---123.png')
     assert.ok(fs.existsSync(path.join(result.imagesDir, 'hero.png')))
-    assert.ok(fs.existsSync(path.join(result.imagesDir, '02-architecture-three-layer-architecture.png')))
+    assert.ok(fs.existsSync(path.join(result.imagesDir, '01-architecture-three-layer-architecture.png')))
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
@@ -197,6 +197,80 @@ test('saveDraftArtifacts rewrites unmatched inline refs in slot order', () => {
     assert.doesNotMatch(savedDraft, /01-hero-agent-framework\.png/)
     assert.doesNotMatch(savedDraft, /02-architecture-filesystem\.png/)
     assert.doesNotMatch(savedDraft, /03-decision-when-to-use\.png/)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('saveDraftArtifacts uses section metadata to remap same-role guessed refs', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'content-draft-save-'))
+  const draftPath = path.join(root, 'draft.md')
+  const metaPath = path.join(root, 'image-meta.json')
+  const sourceDir = path.join(root, 'tool-image-generation')
+  const signupPath = path.join(sourceDir, 'workflow-step-signup---aaa111.png')
+  const billingPath = path.join(sourceDir, 'workflow-step-billing---bbb222.png')
+
+  try {
+    fs.mkdirSync(sourceDir, { recursive: true })
+    fs.writeFileSync(
+      draftPath,
+      [
+        '# Example',
+        '',
+        '![Billing flow](02-workflow-step-billing.png)',
+        '',
+        '![Signup flow](01-workflow-step-signup.png)',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    fs.writeFileSync(signupPath, 'signup', 'utf8')
+    fs.writeFileSync(billingPath, 'billing', 'utf8')
+    fs.writeFileSync(
+      metaPath,
+      `${JSON.stringify({
+        images: [
+          {
+            sourcePath: signupPath,
+            role: 'workflow-step',
+            section: 'Signup',
+            anchor: 'signup',
+          },
+          {
+            sourcePath: billingPath,
+            role: 'workflow-step',
+            section: 'Billing',
+            anchor: 'billing',
+          },
+        ],
+      }, null, 2)}\n`,
+      'utf8',
+    )
+
+    const result = saveDraftArtifacts({
+      platform: 'wechat',
+      title: 'Checkout Flow',
+      slug: 'checkout-flow',
+      root,
+      markdownFile: draftPath,
+      imageSlots: [
+        {
+          role: 'workflow-step',
+          sourcePath: signupPath,
+        },
+        {
+          role: 'workflow-step',
+          sourcePath: billingPath,
+        },
+      ],
+      images: [],
+      imagesDir: null,
+      imageMetaFile: metaPath,
+    })
+
+    const savedDraft = fs.readFileSync(result.draftPath, 'utf8')
+    assert.match(savedDraft, /!\[Billing flow]\(images\/workflow-step-2\.png\)/)
+    assert.match(savedDraft, /!\[Signup flow]\(images\/workflow-step\.png\)/)
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
@@ -349,6 +423,65 @@ test('saveDraftArtifacts rewrites mixed html and markdown slot refs in document 
     const savedDraft = fs.readFileSync(result.draftPath, 'utf8')
     assert.match(savedDraft, /<img src="images\/architecture\.png" alt="Architecture" \/>/)
     assert.match(savedDraft, /!\[Decision]\(images\/decision\.png\)/)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('saveDraftArtifacts treats image metadata as additive and ignores stale extra source paths', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'content-draft-save-'))
+  const draftPath = path.join(root, 'draft.md')
+  const heroPath = path.join(root, 'hero---123.png')
+  const unusedPath = path.join(root, 'unused-extra.png')
+  const metaPath = path.join(root, 'image-meta.json')
+
+  try {
+    fs.writeFileSync(
+      draftPath,
+      [
+        '# Example',
+        '',
+        `![Lead](images/${path.basename(heroPath)})`,
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    fs.writeFileSync(heroPath, 'hero', 'utf8')
+    fs.writeFileSync(
+      metaPath,
+      `${JSON.stringify({
+        images: [
+          {
+            sourcePath: heroPath,
+            role: 'hero',
+            caption: 'Lead image',
+          },
+          {
+            sourcePath: unusedPath,
+            role: 'unused',
+            caption: 'Unused image',
+          },
+        ],
+      }, null, 2)}\n`,
+      'utf8',
+    )
+
+    const result = saveDraftArtifacts({
+      platform: 'wechat',
+      title: 'Metadata Additive Example',
+      slug: 'metadata-additive-example',
+      root,
+      markdownFile: draftPath,
+      images: [heroPath],
+      imageSlots: [],
+      imagesDir: null,
+      imageMetaFile: metaPath,
+    })
+
+    assert.deepEqual(result.imageFiles, ['01-hero-lead-image.png'])
+    assert.equal(result.images.length, 1)
+    assert.equal(result.images[0].role, 'hero')
+    assert.equal(fs.existsSync(path.join(result.imagesDir, 'unused-extra.png')), false)
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }

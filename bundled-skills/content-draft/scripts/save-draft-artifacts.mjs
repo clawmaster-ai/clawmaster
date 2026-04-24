@@ -242,11 +242,6 @@ function collectImageSpecs(args) {
     }
   }
 
-  for (const metaEntry of metaEntries) {
-    if (!metaEntry || typeof metaEntry !== 'object' || typeof metaEntry.sourcePath !== 'string') continue
-    pushSpec(metaEntry.sourcePath)
-  }
-
   return specs
 }
 
@@ -340,18 +335,53 @@ function tokenizeRefBaseName(target) {
   return tokens
 }
 
-function slotRefLooksLikeGuess(target, entry) {
+function buildSlotGuessTokens(entry) {
   const roleTokens = slugifyOptional(entry.role).split('-').filter(Boolean)
+  const contextTokens = [
+    slugifyOptional(entry.anchor),
+    slugifyOptional(entry.section),
+    slugifyOptional(entry.caption),
+  ]
+    .filter(Boolean)
+    .flatMap((value) => value.split('-').filter(Boolean))
+
+  return {
+    roleTokens,
+    contextTokens,
+  }
+}
+
+function slotRefGuessScore(target, entry) {
+  const { roleTokens, contextTokens } = buildSlotGuessTokens(entry)
   if (roleTokens.length === 0) {
-    return false
+    return -1
   }
 
   const refTokens = tokenizeRefBaseName(target)
   if (refTokens.length < roleTokens.length) {
-    return false
+    return -1
   }
 
-  return roleTokens.every((token, index) => refTokens[index] === token)
+  if (!roleTokens.every((token, index) => refTokens[index] === token)) {
+    return -1
+  }
+
+  if (contextTokens.length === 0) {
+    return roleTokens.length
+  }
+
+  const remainingRefTokens = refTokens.slice(roleTokens.length)
+  const remainingContextTokens = contextTokens.filter((token) => !roleTokens.includes(token))
+  if (remainingRefTokens.length === 0 || remainingContextTokens.length === 0) {
+    return roleTokens.length
+  }
+
+  const contextTokenSet = new Set(remainingContextTokens)
+  const contextMatches = remainingRefTokens.reduce((count, token) => (
+    count + (contextTokenSet.has(token) ? 1 : 0)
+  ), 0)
+
+  return roleTokens.length + contextMatches
 }
 
 function renderInlineImageRef(ref, fileName) {
@@ -436,14 +466,32 @@ function rewriteUnmatchedSlotRefs(markdown, savedSlotEntries) {
   }
 
   const remainingRefs = [...unmatchedRefs]
+  const remainingEntries = [...unresolvedSlotEntries]
   const replacements = []
 
-  for (const entry of unresolvedSlotEntries) {
-    const matchIndex = remainingRefs.findIndex((ref) => slotRefLooksLikeGuess(ref.target, entry))
-    if (matchIndex < 0) {
-      continue
+  while (remainingRefs.length > 0 && remainingEntries.length > 0) {
+    let bestEntryIndex = -1
+    let bestRefIndex = -1
+    let bestScore = -1
+
+    for (const [entryIndex, entry] of remainingEntries.entries()) {
+      for (const [refIndex, ref] of remainingRefs.entries()) {
+        const score = slotRefGuessScore(ref.target, entry)
+        if (score < 0) continue
+        if (score > bestScore) {
+          bestScore = score
+          bestEntryIndex = entryIndex
+          bestRefIndex = refIndex
+        }
+      }
     }
-    const [ref] = remainingRefs.splice(matchIndex, 1)
+
+    if (bestEntryIndex < 0 || bestRefIndex < 0) {
+      break
+    }
+
+    const [entry] = remainingEntries.splice(bestEntryIndex, 1)
+    const [ref] = remainingRefs.splice(bestRefIndex, 1)
     replacements.push({
       ref,
       fileName: entry.fileName,
@@ -531,6 +579,9 @@ export function saveDraftArtifacts(options) {
         role: matchingSlot.role,
         fileName,
         sourcePath: spec.sourcePath,
+        section: typeof spec.section === 'string' ? spec.section : null,
+        anchor: typeof spec.anchor === 'string' ? spec.anchor : null,
+        caption: typeof spec.caption === 'string' ? spec.caption : null,
       })
     }
     imageFiles.push(fileName)

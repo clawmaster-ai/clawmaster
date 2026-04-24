@@ -90,11 +90,14 @@ function normalizeMatchCandidates(entry) {
     .map((value) => String(value).trim())
 }
 
-function findLinkEntry(fileName, linkEntries) {
+function findLinkEntry(fileNames, linkEntries) {
+  const expectedNames = Array.isArray(fileNames)
+    ? fileNames.filter((value) => typeof value === 'string' && value.trim())
+    : [fileNames].filter((value) => typeof value === 'string' && value.trim())
   for (const entry of linkEntries) {
     if (!entry || typeof entry !== 'object') continue
     const candidates = normalizeMatchCandidates(entry)
-    if (candidates.includes(fileName)) {
+    if (expectedNames.some((value) => candidates.includes(value))) {
       return entry
     }
   }
@@ -148,18 +151,56 @@ function replaceDraftRefs(markdown, oldName, newName) {
   return next
 }
 
-function buildImageMetadata(fileName, targetFileName, linkEntry) {
+function buildImageMetadata(fileName, targetFileName, linkEntry, previousMetadata) {
   return {
     fileName: targetFileName,
-    originalFileName: fileName,
-    role: typeof linkEntry?.role === 'string' ? linkEntry.role : null,
-    section: typeof linkEntry?.section === 'string' ? linkEntry.section : null,
-    anchor: typeof linkEntry?.anchor === 'string' ? linkEntry.anchor : null,
-    caption: typeof linkEntry?.caption === 'string' ? linkEntry.caption : null,
-    prompt: typeof linkEntry?.prompt === 'string' ? linkEntry.prompt : null,
-    generator: typeof linkEntry?.generator === 'string' ? linkEntry.generator : null,
-    sourcePath: typeof linkEntry?.sourcePath === 'string' ? linkEntry.sourcePath : null,
-    linked: Boolean(linkEntry),
+    originalFileName:
+      typeof previousMetadata?.originalFileName === 'string' && previousMetadata.originalFileName.trim()
+        ? previousMetadata.originalFileName
+        : fileName,
+    role:
+      typeof linkEntry?.role === 'string'
+        ? linkEntry.role
+        : typeof previousMetadata?.role === 'string'
+          ? previousMetadata.role
+          : null,
+    section:
+      typeof linkEntry?.section === 'string'
+        ? linkEntry.section
+        : typeof previousMetadata?.section === 'string'
+          ? previousMetadata.section
+          : null,
+    anchor:
+      typeof linkEntry?.anchor === 'string'
+        ? linkEntry.anchor
+        : typeof previousMetadata?.anchor === 'string'
+          ? previousMetadata.anchor
+          : null,
+    caption:
+      typeof linkEntry?.caption === 'string'
+        ? linkEntry.caption
+        : typeof previousMetadata?.caption === 'string'
+          ? previousMetadata.caption
+          : null,
+    prompt:
+      typeof linkEntry?.prompt === 'string'
+        ? linkEntry.prompt
+        : typeof previousMetadata?.prompt === 'string'
+          ? previousMetadata.prompt
+          : null,
+    generator:
+      typeof linkEntry?.generator === 'string'
+        ? linkEntry.generator
+        : typeof previousMetadata?.generator === 'string'
+          ? previousMetadata.generator
+          : null,
+    sourcePath:
+      typeof linkEntry?.sourcePath === 'string'
+        ? linkEntry.sourcePath
+        : typeof previousMetadata?.sourcePath === 'string'
+          ? previousMetadata.sourcePath
+          : null,
+    linked: Boolean(linkEntry || previousMetadata?.linked),
   }
 }
 
@@ -181,6 +222,13 @@ export function linkGeneratedImages({
   const imagesDir = path.resolve(manifest.imagesDir || path.join(path.dirname(resolvedManifestPath), 'images'))
   const draftPath = path.resolve(manifest.draftPath || path.join(path.dirname(resolvedManifestPath), 'draft.md'))
   const imageFiles = Array.isArray(manifest.imageFiles) ? manifest.imageFiles.map((item) => String(item)) : []
+  const previousMetadataByFileName = new Map(
+    Array.isArray(manifest.images)
+      ? manifest.images
+          .filter((item) => item && typeof item === 'object' && typeof item.fileName === 'string' && item.fileName.trim())
+          .map((item) => [String(item.fileName), item])
+      : [],
+  )
 
   if (!fs.existsSync(imagesDir) || !fs.statSync(imagesDir).isDirectory()) {
     fail(`Images directory not found: ${imagesDir}`)
@@ -200,11 +248,20 @@ export function linkGeneratedImages({
     const currentPath = path.join(imagesDir, fileName)
     if (!fs.existsSync(currentPath)) continue
 
-    const linkEntry = findLinkEntry(fileName, linkEntries)
+    const previousMetadata = previousMetadataByFileName.get(fileName) ?? null
+    const linkEntry = findLinkEntry([
+      fileName,
+      previousMetadata?.originalFileName,
+      previousMetadata?.sourcePath ? path.basename(previousMetadata.sourcePath) : undefined,
+    ], linkEntries)
     const targetFileName = linkEntry
       ? allocateTargetFileName(imagesDir, fileName, linkEntry, usedNames, index, inheritedArticleSlug)
-      : allocateTargetFileName(imagesDir, fileName, null, usedNames, index, inheritedArticleSlug)
+      : fileName
     const targetPath = path.join(imagesDir, targetFileName)
+
+    if (!linkEntry) {
+      usedNames.add(targetFileName)
+    }
 
     if (fileName !== targetFileName) {
       fs.renameSync(currentPath, targetPath)
@@ -213,7 +270,7 @@ export function linkGeneratedImages({
     }
 
     nextImageFiles.push(targetFileName)
-    imageMetadata.push(buildImageMetadata(fileName, targetFileName, linkEntry))
+    imageMetadata.push(buildImageMetadata(fileName, targetFileName, linkEntry, previousMetadata))
   }
 
   fs.writeFileSync(draftPath, markdown.endsWith('\n') ? markdown : `${markdown}\n`, 'utf8')
