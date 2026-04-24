@@ -258,3 +258,98 @@ test('saveDraftArtifacts fails when a declared slot is still unreferenced', () =
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('saveDraftArtifacts does not remap unrelated local images to unresolved slots', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'content-draft-save-'))
+  const draftPath = path.join(root, 'draft.md')
+  const sourceDir = path.join(root, 'tool-image-generation')
+  const heroPath = path.join(sourceDir, 'hero-deep-agents-architecture---5e2051cd.png')
+
+  try {
+    fs.mkdirSync(sourceDir, { recursive: true })
+    fs.writeFileSync(
+      draftPath,
+      [
+        '# Example',
+        '',
+        '![Manual](manual.png)',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    fs.writeFileSync(heroPath, 'hero', 'utf8')
+
+    assert.throws(
+      () => saveDraftArtifacts({
+        platform: 'wechat',
+        title: 'Manual Image Example',
+        slug: 'manual-image-example',
+        root,
+        markdownFile: draftPath,
+        imageSlots: [
+          {
+            role: 'hero',
+            sourcePath: heroPath,
+          },
+        ],
+        images: [],
+        imagesDir: null,
+      }),
+      /Unreferenced image slots: hero/,
+    )
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('saveDraftArtifacts rewrites mixed html and markdown slot refs in document order', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'content-draft-save-'))
+  const draftPath = path.join(root, 'draft.md')
+  const sourceDir = path.join(root, 'tool-image-generation')
+  const architecturePath = path.join(sourceDir, 'architecture-filesystem---f93ab411.png')
+  const decisionPath = path.join(sourceDir, 'decision-when-to-use---ab12cd34.png')
+
+  try {
+    fs.mkdirSync(sourceDir, { recursive: true })
+    fs.writeFileSync(
+      draftPath,
+      [
+        '# Example',
+        '',
+        '<img src="02-architecture-filesystem.png" alt="Architecture" />',
+        '',
+        '![Decision](03-decision-when-to-use.png)',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    fs.writeFileSync(architecturePath, 'architecture', 'utf8')
+    fs.writeFileSync(decisionPath, 'decision', 'utf8')
+
+    const result = saveDraftArtifacts({
+      platform: 'wechat',
+      title: 'Mixed Markup Draft',
+      slug: 'mixed-markup-draft',
+      root,
+      markdownFile: draftPath,
+      imageSlots: [
+        {
+          role: 'architecture',
+          sourcePath: architecturePath,
+        },
+        {
+          role: 'decision',
+          sourcePath: decisionPath,
+        },
+      ],
+      images: [],
+      imagesDir: null,
+    })
+
+    const savedDraft = fs.readFileSync(result.draftPath, 'utf8')
+    assert.match(savedDraft, /<img src="images\/architecture\.png" alt="Architecture" \/>/)
+    assert.match(savedDraft, /!\[Decision]\(images\/decision\.png\)/)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})

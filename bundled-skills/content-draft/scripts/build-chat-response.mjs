@@ -127,8 +127,15 @@ function mergeManifestImageLookup(lookup, manifestFile) {
     fail(`Manifest file not found: ${resolvedManifest}`)
   }
   const manifest = JSON.parse(fs.readFileSync(resolvedManifest, 'utf8'))
-  const images = Array.isArray(manifest.images) ? manifest.images : []
   const imagesDir = manifest.imagesDir ? path.resolve(manifest.imagesDir) : path.dirname(resolvedManifest)
+  const images = Array.isArray(manifest.images) && manifest.images.length > 0
+    ? manifest.images
+    : (Array.isArray(manifest.imageFiles)
+        ? manifest.imageFiles.map((fileName) => ({
+            fileName: String(fileName),
+            originalFileName: String(fileName),
+          }))
+        : [])
 
   for (const item of images) {
     if (!item || typeof item !== 'object' || typeof item.fileName !== 'string') continue

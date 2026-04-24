@@ -327,6 +327,60 @@ function collectInlineImageRefs(markdown) {
   return refs
 }
 
+function tokenizeRefBaseName(target) {
+  const normalized = normalizeRef(target)
+  const parsed = path.parse(normalized)
+  const baseName = slugifyOptional(parsed.name)
+  if (!baseName) return []
+
+  const tokens = baseName.split('-').filter(Boolean)
+  if (tokens.length > 0 && /^\d+$/.test(tokens[0])) {
+    return tokens.slice(1)
+  }
+  return tokens
+}
+
+function slotRefLooksLikeGuess(target, entry) {
+  const roleTokens = slugifyOptional(entry.role).split('-').filter(Boolean)
+  if (roleTokens.length === 0) {
+    return false
+  }
+
+  const refTokens = tokenizeRefBaseName(target)
+  if (refTokens.length < roleTokens.length) {
+    return false
+  }
+
+  return roleTokens.every((token, index) => refTokens[index] === token)
+}
+
+function renderInlineImageRef(ref, fileName) {
+  if (ref.kind === 'markdown') {
+    return ref.full.replace(/\]\(([^)]+)\)/, `](images/${fileName})`)
+  }
+
+  return ref.full.replace(
+    /(<img\b[^>]*src=(['"]))(.*?)(\2[^>]*>)/i,
+    `$1images/${fileName}$4`,
+  )
+}
+
+function replaceInlineImageRefs(markdown, replacements) {
+  if (replacements.length === 0) {
+    return markdown
+  }
+
+  let next = markdown
+  const ordered = [...replacements].sort((left, right) => right.ref.offset - left.ref.offset)
+  for (const replacement of ordered) {
+    const start = replacement.ref.offset
+    const end = start + replacement.ref.full.length
+    next = `${next.slice(0, start)}${renderInlineImageRef(replacement.ref, replacement.fileName)}${next.slice(end)}`
+  }
+
+  return next
+}
+
 function replaceDraftRefs(markdown, sourcePath, newName) {
   const replacements = [
     path.basename(sourcePath),
@@ -352,11 +406,11 @@ function replaceDraftRefs(markdown, sourcePath, newName) {
   return next
 }
 
-function rewriteUnmatchedSlotRefs(markdown, savedSlotFileNames) {
-  if (savedSlotFileNames.length === 0) return markdown
+function rewriteUnmatchedSlotRefs(markdown, savedSlotEntries) {
+  if (savedSlotEntries.length === 0) return markdown
 
   const allRefs = collectInlineImageRefs(markdown)
-  const unresolvedSlotFileNames = savedSlotFileNames.filter((fileName) => {
+  const unresolvedSlotEntries = savedSlotEntries.filter(({ fileName }) => {
     const normalizedFileName = normalizeRef(fileName)
     const normalizedSavedRef = normalizeRef(`images/${fileName}`)
     return !allRefs.some((ref) => {
@@ -364,14 +418,14 @@ function rewriteUnmatchedSlotRefs(markdown, savedSlotFileNames) {
       return normalized === normalizedSavedRef || normalized === normalizedFileName
     })
   })
-  if (unresolvedSlotFileNames.length === 0) {
+  if (unresolvedSlotEntries.length === 0) {
     return markdown
   }
 
   const unmatchedRefs = allRefs.filter((ref) => {
     if (isRemoteRef(ref.target)) return false
     const normalized = normalizeRef(ref.target)
-    return !savedSlotFileNames.some((fileName) => {
+    return !savedSlotEntries.some(({ fileName }) => {
       const savedRef = normalizeRef(`images/${fileName}`)
       return normalized === savedRef || normalized === normalizeRef(fileName)
     })
@@ -381,31 +435,26 @@ function rewriteUnmatchedSlotRefs(markdown, savedSlotFileNames) {
     return markdown
   }
 
-  const replacements = unmatchedRefs.slice(0, unresolvedSlotFileNames.length).map((ref, index) => ({
-    ref,
-    fileName: unresolvedSlotFileNames[index],
-  }))
-  let replacementIndex = 0
+  const remainingRefs = [...unmatchedRefs]
+  const replacements = []
 
-  let next = markdown.replace(/!\[([^\]]*)]\(([^)]+)\)/g, (full, alt, target) => {
-    const replacement = replacements[replacementIndex]
-    if (!replacement || replacement.ref.kind !== 'markdown' || replacement.ref.target !== target) {
-      return full
+  for (const entry of unresolvedSlotEntries) {
+    const matchIndex = remainingRefs.findIndex((ref) => slotRefLooksLikeGuess(ref.target, entry))
+    if (matchIndex < 0) {
+      continue
     }
-    replacementIndex += 1
-    return `![${alt}](images/${replacement.fileName})`
-  })
+    const [ref] = remainingRefs.splice(matchIndex, 1)
+    replacements.push({
+      ref,
+      fileName: entry.fileName,
+    })
+  }
 
-  next = next.replace(/<img\b([^>]*)src=(['"])(.*?)\2([^>]*)>/gi, (full, before, quote, target, after) => {
-    const replacement = replacements[replacementIndex]
-    if (!replacement || replacement.ref.kind !== 'html' || replacement.ref.target !== target) {
-      return full
-    }
-    replacementIndex += 1
-    return `<img${before}src=${quote}images/${replacement.fileName}${quote}${after}>`
-  })
+  if (replacements.length === 0) {
+    return markdown
+  }
 
-  return next
+  return replaceInlineImageRefs(markdown, replacements)
 }
 
 function findOrphanedSlotEntries(markdown, savedSlotEntries) {
@@ -470,7 +519,6 @@ export function saveDraftArtifacts(options) {
   const imageFiles = []
   const images = []
   const usedImageFileNames = new Set()
-  const savedSlotFileNames = []
   const savedSlotEntries = []
 
   for (const [index, spec] of collectImageSpecs(args).entries()) {
@@ -479,17 +527,17 @@ export function saveDraftArtifacts(options) {
     markdown = replaceDraftRefs(markdown, spec.sourcePath, fileName)
     const matchingSlot = args.imageSlots.find((slot) => path.resolve(slot.sourcePath) === spec.sourcePath)
     if (matchingSlot) {
-      savedSlotFileNames.push(fileName)
       savedSlotEntries.push({
         role: matchingSlot.role,
         fileName,
+        sourcePath: spec.sourcePath,
       })
     }
     imageFiles.push(fileName)
     images.push(buildManifestImageEntry(spec, fileName))
   }
 
-  markdown = rewriteUnmatchedSlotRefs(markdown, savedSlotFileNames)
+  markdown = rewriteUnmatchedSlotRefs(markdown, savedSlotEntries)
   assertNoOrphanedSlotEntries(markdown, savedSlotEntries)
 
   fs.writeFileSync(draftPath, markdown.endsWith('\n') ? markdown : `${markdown}\n`, 'utf8')

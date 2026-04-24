@@ -106,3 +106,70 @@ test('linkGeneratedImages renames saved images, rewrites draft refs, and stores 
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('linkGeneratedImages keeps already-correct filenames stable on rerun', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'content-draft-image-link-'))
+  const platformDir = path.join(root, 'wechat')
+  const imagesDir = path.join(platformDir, 'images')
+  fs.mkdirSync(imagesDir, { recursive: true })
+
+  const draftPath = path.join(platformDir, 'draft.md')
+  const manifestPath = path.join(platformDir, 'manifest.json')
+  const fileName = '01-hero-problem-background.png'
+
+  try {
+    fs.writeFileSync(path.join(imagesDir, fileName), 'hero', 'utf8')
+    fs.writeFileSync(
+      draftPath,
+      [
+        '# Example',
+        '',
+        `![Lead image](images/${fileName})`,
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    fs.writeFileSync(
+      manifestPath,
+      `${JSON.stringify({
+        runId: '20260425-example',
+        platform: 'wechat',
+        title: 'Example',
+        slug: 'example',
+        draftPath,
+        imagesDir,
+        imageFiles: [fileName],
+      }, null, 2)}\n`,
+      'utf8',
+    )
+
+    const linksPath = path.join(root, 'links.json')
+    fs.writeFileSync(
+      linksPath,
+      `${JSON.stringify({
+        articleSlug: 'deep-agents',
+        images: [
+          {
+            match: fileName,
+            role: 'hero',
+            section: 'Problem Background',
+            anchor: 'problem-background',
+          },
+        ],
+      }, null, 2)}\n`,
+      'utf8',
+    )
+
+    const summary = linkGeneratedImages({
+      manifestFile: manifestPath,
+      linksFile: linksPath,
+    })
+
+    assert.deepEqual(summary.imageFiles, [fileName])
+    assert.deepEqual(summary.renamed, [])
+    assert.ok(fs.existsSync(path.join(imagesDir, fileName)))
+    assert.ok(!fs.existsSync(path.join(imagesDir, '01-hero-problem-background-2.png')))
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})

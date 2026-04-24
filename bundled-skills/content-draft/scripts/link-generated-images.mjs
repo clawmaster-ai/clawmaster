@@ -118,7 +118,10 @@ function allocateTargetFileName(imagesDir, originalFileName, linkEntry, usedName
 
   let candidate = `${preferred}${extension}`
   let collisionIndex = 2
-  while (usedNames.has(candidate) || fs.existsSync(path.join(imagesDir, candidate))) {
+  while (
+    usedNames.has(candidate)
+    || (candidate !== originalFileName && fs.existsSync(path.join(imagesDir, candidate)))
+  ) {
     candidate = `${preferred}-${collisionIndex}${extension}`
     collisionIndex += 1
   }
