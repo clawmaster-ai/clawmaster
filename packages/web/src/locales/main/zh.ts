@@ -302,6 +302,7 @@ export default {
   "workflowModel.examplesOnly": "这里只是示例。任何工具调用能力足够强的文本模型都可以胜任。",
   "workflowModel.openModels": "打开模型页",
   "providers.badgeGoldenSponsor": "金牌赞助",
+  "providers.tierInvitedSponsors": "特邀支持厂商",
   "providers.tierFeatured": "推荐提供商",
   "providers.tierFeaturedMore": "其他提供商（{{count}}）",
   "providers.tierCompatibleAndLocal": "兼容端点 · 本地",

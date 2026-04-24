@@ -29,7 +29,6 @@ import { getSetupAdapter } from './adapters'
 import { CircleReveal } from './CircleReveal'
 import {
   PROVIDERS,
-  PROVIDER_BADGES,
   TEXT_PROVIDER_TIERS,
   providerSupportsSetup,
   getProviderCredentialLabel,
@@ -803,10 +802,6 @@ function filterTierMembersForSetup(members: readonly string[]) {
   return members.filter((id) => allProviderIds.includes(id))
 }
 
-function isGoldenSponsor(providerId: string) {
-  return PROVIDER_BADGES[providerId as keyof typeof PROVIDER_BADGES] === 'golden-sponsor'
-}
-
 function ProviderModelStep({
   onboard,
   updateOnboard,
@@ -1088,7 +1083,6 @@ function ProviderChip({
   onSelect: () => void
 }) {
   const { i18n } = useTranslation()
-  const isSponsor = isGoldenSponsor(providerId)
 
   return (
     <button
@@ -1096,11 +1090,6 @@ function ProviderChip({
       className={`wizard-provider-chip ${selected ? 'wizard-provider-chip-active' : ''}`}
     >
       <span>{getProviderLabel(providerId, i18n.language)}</span>
-      {isSponsor && (
-        <span className="wizard-sponsor-tag">
-          <Sparkles className="h-3 w-3" />
-        </span>
-      )}
     </button>
   )
 }

@@ -317,10 +317,11 @@ describe('SetupWizard', () => {
   // ──────────────────────────────────────────────────────
 
   describe('Step 2: Provider selection', () => {
-    it('shows golden sponsor badge for ERNIE', async () => {
+    it('shows ERNIE under the invited sponsors tier', async () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       await screen.findByText('Configure LLM Provider')
+      expect(screen.getByText('Invited Sponsors')).toBeInTheDocument()
       expect(screen.getByText('ERNIE LLM API')).toBeInTheDocument()
     })
 
@@ -333,13 +334,16 @@ describe('SetupWizard', () => {
       expect(within(pills as HTMLElement).getByText('Model')).toBeInTheDocument()
     })
 
-    it('shows tier-1 sponsor and tier-2 featured providers on load', async () => {
+    it('shows invited sponsors and the default global providers on load', async () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       await screen.findByText('Configure LLM Provider')
-      // Tier 1 — sponsor
+      // Tier 1 — invited sponsors
       expect(screen.getByText('ERNIE LLM API')).toBeInTheDocument()
       // Tier 2 featured (visible by default)
+      expect(screen.getByText('OpenAI')).toBeInTheDocument()
+      expect(screen.getByText('Anthropic')).toBeInTheDocument()
+      expect(screen.getByText('Google Gemini')).toBeInTheDocument()
       expect(screen.getByText('DeepSeek')).toBeInTheDocument()
       expect(screen.getByText('Kimi (Moonshot)')).toBeInTheDocument()
       expect(screen.getByText('MiniMax')).toBeInTheDocument()
@@ -349,8 +353,8 @@ describe('SetupWizard', () => {
       expect(screen.getByText('Ollama')).toBeInTheDocument()
       expect(screen.getByText('Custom (OpenAI Compatible)')).toBeInTheDocument()
       // Tier-2 "more" is collapsed by default
-      expect(screen.queryByText('OpenAI')).not.toBeInTheDocument()
-      expect(screen.queryByText('Anthropic')).not.toBeInTheDocument()
+      expect(screen.queryByText('Mistral AI')).not.toBeInTheDocument()
+      expect(screen.queryByText('Groq')).not.toBeInTheDocument()
     })
 
     it('reveals tier-2 "more" providers when expanded', async () => {
@@ -359,9 +363,10 @@ describe('SetupWizard', () => {
       await screen.findByText('Configure LLM Provider')
 
       fireEvent.click(screen.getByText(/More providers/i))
-      expect(screen.getByText('DeepSeek')).toBeInTheDocument()
+      expect(screen.getByText('OpenAI')).toBeInTheDocument()
       expect(screen.getByText('Anthropic')).toBeInTheDocument()
       expect(screen.getByText('Google Gemini')).toBeInTheDocument()
+      expect(screen.getByText('DeepSeek')).toBeInTheDocument()
       expect(screen.getByText('Mistral AI')).toBeInTheDocument()
       expect(screen.getByText('Groq')).toBeInTheDocument()
     })
@@ -372,11 +377,11 @@ describe('SetupWizard', () => {
       await screen.findByText('Configure LLM Provider')
 
       fireEvent.click(screen.getByText(/More providers/i))
-      fireEvent.click(screen.getByRole('button', { name: 'OpenAI' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Mistral AI' }))
       fireEvent.click(screen.getByRole('button', { name: /Collapse/i }))
 
-      expect(screen.getByRole('button', { name: 'OpenAI' })).toBeInTheDocument()
-      expect(screen.getByPlaceholderText(/Enter OpenAI API Key/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Mistral AI' })).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Enter Mistral AI API Key/i)).toBeInTheDocument()
       expect(screen.getByText(/More providers/i)).toBeInTheDocument()
     })
 

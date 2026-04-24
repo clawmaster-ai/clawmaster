@@ -482,10 +482,10 @@ export interface ProviderTier {
 /**
  * Text-provider presentation hierarchy.
  *
- * Tier 1 (sponsors): invited partners — Baidu/ERNIE sits here.
- * Tier 2 (featured): GLM/Chinese providers and OpenRouter visible; OpenAI,
- *   Anthropic, Google and other global providers tucked under a "更多" toggle
- *   to keep the first impression focused on the China-first lineup.
+ * Tier 1 (invited sponsors): special partner placements.
+ * Tier 2 (featured): the default global trio stays visible on first load
+ *   alongside the existing commonly used providers; the remaining long tail
+ *   expands from the "more" toggle.
  * Tier 3 (compatible + local): OpenAI-compatible custom endpoints plus local
  *   runtimes (Ollama). Anthropic-compatible and LM Studio will land here once
  *   they ship in 0.4.
@@ -493,19 +493,25 @@ export interface ProviderTier {
 export const TEXT_PROVIDER_TIERS: readonly ProviderTier[] = [
   {
     id: 'sponsors',
-    labelKey: 'providers.badgeGoldenSponsor',
+    labelKey: 'providers.tierInvitedSponsors',
     members: ['baidu-aistudio'],
   },
   {
     id: 'featured',
     labelKey: 'providers.tierFeatured',
-    members: ['deepseek', 'kimi-coding', 'minimax', 'siliconflow', 'openrouter'],
+    members: [
+      'openai',
+      'anthropic',
+      'google',
+      'deepseek',
+      'kimi-coding',
+      'minimax',
+      'siliconflow',
+      'openrouter',
+    ],
     collapsible: {
       labelKey: 'providers.tierFeaturedMore',
       members: [
-        'openai',
-        'anthropic',
-        'google',
         'xai',
         'mistral',
         'groq',

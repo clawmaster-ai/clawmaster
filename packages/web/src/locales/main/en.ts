@@ -302,6 +302,7 @@ export default {
   "workflowModel.examplesOnly": "Examples only. Any text model with strong tool-use reliability can work here.",
   "workflowModel.openModels": "Open Models",
   "providers.badgeGoldenSponsor": "Golden Sponsor",
+  "providers.tierInvitedSponsors": "Invited Sponsors",
   "providers.tierFeatured": "Featured providers",
   "providers.tierFeaturedMore": "More providers ({{count}})",
   "providers.tierCompatibleAndLocal": "Compatible & local",

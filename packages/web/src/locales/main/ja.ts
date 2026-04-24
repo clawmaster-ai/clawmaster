@@ -302,6 +302,7 @@ export default {
   "workflowModel.examplesOnly": "これはあくまで例です。十分に強いツール利用能力を持つテキストモデルなら利用できます。",
   "workflowModel.openModels": "モデルページを開く",
   "providers.badgeGoldenSponsor": "ゴールデンスポンサー",
+  "providers.tierInvitedSponsors": "特別協力プロバイダー",
   "providers.tierFeatured": "おすすめプロバイダー",
   "providers.tierFeaturedMore": "他のプロバイダー（{{count}}）",
   "providers.tierCompatibleAndLocal": "互換エンドポイント・ローカル",
