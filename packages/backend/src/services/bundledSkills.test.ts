@@ -257,6 +257,44 @@ test('syncInstalledBundledSkills refreshes already-installed bundled skills with
   assert.equal(fs.existsSync(path.join(installDir, 'scripts', 'stale-script.mjs')), false)
 })
 
+test('syncInstalledBundledSkills refreshes WSL-installed bundled skills with a WSL existence check', () => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-bundled-skill-sync-src-'))
+  const wslScripts: Array<{ distro: string; script: string }> = []
+
+  fs.mkdirSync(path.join(sourceRoot, 'scripts'), { recursive: true })
+  fs.writeFileSync(path.join(sourceRoot, 'SKILL.md'), '# Content Draft v2\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, '_meta.json'), '{"slug":"content-draft","version":"0.3.0","bundled":true}\n', 'utf8')
+  fs.writeFileSync(path.join(sourceRoot, 'scripts', 'save-draft-artifacts.mjs'), 'console.log("new-save")\n', 'utf8')
+
+  const synced = syncInstalledBundledSkills({
+    dataDir: '/home/tester/.openclaw-dev',
+    env: {
+      ...process.env,
+      CLAWMASTER_BUNDLED_CONTENT_DRAFT_SKILL_ROOT: sourceRoot,
+    },
+    platform: 'win32',
+    wslRuntime: true,
+    wslDistro: 'Ubuntu',
+    runWslScript: (distro, script) => {
+      wslScripts.push({ distro, script })
+      if (script.startsWith('test -e ')) {
+        if (script.includes('/workspace/skills/content-draft')) {
+          return { code: 0, stdout: '', stderr: '' }
+        }
+        return { code: 1, stdout: '', stderr: '' }
+      }
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  })
+
+  assert.deepEqual(synced, ['content-draft'])
+  assert.equal(wslScripts.filter(({ script }) => script.startsWith('test -e ')).length, 5)
+  const copyScript = wslScripts.find(({ script }) => /cp -a/.test(script))
+  assert.ok(copyScript)
+  assert.equal(copyScript?.distro, 'Ubuntu')
+  assert.match(copyScript?.script ?? '', /\/home\/tester\/\.openclaw-dev\/workspace\/skills\/content-draft/)
+})
+
 test('bundled clawprobe cost digest skill explicitly instructs agents to read the skill and exec the script', () => {
   const skillPath = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -512,4 +550,55 @@ test('bundled Content Draft chat-response helper rewrites local image refs and a
   assert.match(payload.markdown, /\*Hero\*\n\nMEDIA:.*cover\.png/)
   assert.match(payload.markdown, /## Generated Images/)
   assert.match(payload.markdown, /MEDIA:.*extra\.webp/)
+})
+
+test('bundled Content Draft chat-response helper falls back to legacy manifest imageFiles', () => {
+  const scriptPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../../bundled-skills/content-draft/scripts/build-chat-response.mjs',
+  )
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawmaster-content-draft-chat-legacy-'))
+  const markdownPath = path.join(tempRoot, 'draft.md')
+  const imagesDir = path.join(tempRoot, 'images')
+  const manifestPath = path.join(tempRoot, 'manifest.json')
+
+  fs.mkdirSync(imagesDir, { recursive: true })
+  fs.writeFileSync(
+    markdownPath,
+    [
+      '# Weekly digest',
+      '',
+      '![Hero](images/cover.png)',
+      '',
+    ].join('\n'),
+    'utf8',
+  )
+  fs.writeFileSync(path.join(imagesDir, 'cover.png'), 'png', 'utf8')
+  fs.writeFileSync(
+    manifestPath,
+    `${JSON.stringify({
+      draftPath: markdownPath,
+      imagesDir,
+      imageFiles: ['cover.png'],
+    }, null, 2)}\n`,
+    'utf8',
+  )
+
+  const raw = execFileSync(
+    process.execPath,
+    [scriptPath, '--markdown-file', markdownPath, '--manifest-file', manifestPath, '--json'],
+    { encoding: 'utf8' },
+  )
+
+  const payload = JSON.parse(raw) as {
+    markdown: string
+    embeddedImageCount: number
+    appendedImageCount: number
+    totalImageCount: number
+  }
+
+  assert.equal(payload.embeddedImageCount, 1)
+  assert.equal(payload.appendedImageCount, 0)
+  assert.equal(payload.totalImageCount, 1)
+  assert.match(payload.markdown, /\*Hero\*\n\nMEDIA:.*cover\.png/)
 })

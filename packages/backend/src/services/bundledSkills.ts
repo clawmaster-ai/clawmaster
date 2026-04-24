@@ -151,6 +151,21 @@ function resolveBundledSkillInstallDir(
   return pathModule.join(dataDir, 'workspace', 'skills', spec.dirName)
 }
 
+function bundledSkillInstallDirExists(
+  installDir: string,
+  options: BundledSkillInstallOptions = {},
+): boolean {
+  const dataDir = options.dataDir ?? getOpenclawDataDir()
+  if (!shouldInstallBundledSkillThroughWsl(dataDir, options)) {
+    return fs.existsSync(installDir)
+  }
+
+  const distro = options.wslDistro ?? requireSelectedWslDistroSync()
+  const runWslScript = options.runWslScript ?? runWslShellSync
+  const result = runWslScript(distro, `test -e ${shellEscapePosixArg(installDir)}`)
+  return result.code === 0
+}
+
 export function syncInstalledBundledSkills(
   options: BundledSkillInstallOptions = {},
 ): BundledSkillSlug[] {
@@ -159,7 +174,7 @@ export function syncInstalledBundledSkills(
   for (const slug of Object.keys(BUNDLED_SKILLS) as BundledSkillSlug[]) {
     const spec = BUNDLED_SKILLS[slug]
     const installDir = resolveBundledSkillInstallDir(spec, options)
-    if (!fs.existsSync(installDir)) continue
+    if (!bundledSkillInstallDirExists(installDir, options)) continue
     installBundledSkill(slug, options)
     synced.push(slug)
   }
