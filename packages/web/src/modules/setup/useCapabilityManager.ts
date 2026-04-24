@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { getSetupAdapter, type SetupAdapter } from './adapters'
+import { getSetupAdapter, type InstallOptions, type SetupAdapter } from './adapters'
 import {
   type CapabilityId,
   type CapabilityStatus,
@@ -15,7 +15,7 @@ export interface UseCapabilityManagerResult {
   detect: (
     onUpdate?: (status: CapabilityStatus, latest: Map<CapabilityId, CapabilityStatus>) => void,
   ) => Promise<CapabilityStatus[]>
-  install: (ids: CapabilityId[]) => Promise<void>
+  install: (ids: CapabilityId[], options?: InstallOptions) => Promise<void>
   resetError: () => void
 }
 
@@ -67,7 +67,7 @@ export function useCapabilityManager(adapter?: SetupAdapter): UseCapabilityManag
   )
 
   const install = useCallback<UseCapabilityManagerResult['install']>(
-    async (ids) => {
+    async (ids, options) => {
       if (ids.length === 0) return
       setInstalling(true)
       setError(null)
@@ -84,7 +84,7 @@ export function useCapabilityManager(adapter?: SetupAdapter): UseCapabilityManag
               prev.map((c) => (c.id === progress.id ? { ...c, status: 'installed' } : c)),
             )
           }
-        })
+        }, options)
         setInstalling(false)
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))

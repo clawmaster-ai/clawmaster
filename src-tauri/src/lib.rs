@@ -172,6 +172,7 @@ pub struct BootstrapAfterInstallDto {
 static OPENCLAW_EXE: OnceLock<PathBuf> = OnceLock::new();
 static CLAWPROBE_EXE: OnceLock<PathBuf> = OnceLock::new();
 static SYSTEM_CMD_EXE: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
+const DEFAULT_NPM_PROXY_REGISTRY_URL: &str = "https://registry.npmmirror.com";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -188,6 +189,8 @@ struct ClawmasterSettings {
     openclaw_profile: Option<OpenclawProfileSelection>,
     #[serde(skip_serializing_if = "Option::is_none")]
     runtime: Option<ClawmasterRuntimeSelection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    npm_proxy: Option<ClawmasterNpmProxySelection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -200,6 +203,19 @@ struct ClawmasterRuntimeSelection {
     backend_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     auto_start_backend: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ClawmasterNpmProxySelection {
+    enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClawmasterNpmProxyInfo {
+    enabled: bool,
+    registry_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -318,6 +334,82 @@ fn set_clawmaster_runtime_selection(
     }
     write_clawmaster_settings(&settings)?;
     Ok(normalized)
+}
+
+fn normalize_clawmaster_npm_proxy_selection(
+    enabled: Option<bool>,
+) -> ClawmasterNpmProxySelection {
+    ClawmasterNpmProxySelection {
+        enabled: enabled.unwrap_or(false),
+    }
+}
+
+fn get_clawmaster_npm_proxy_selection() -> ClawmasterNpmProxySelection {
+    let settings = read_clawmaster_settings();
+    normalize_clawmaster_npm_proxy_selection(
+        settings
+            .npm_proxy
+            .as_ref()
+            .map(|item| item.enabled),
+    )
+}
+
+fn set_clawmaster_npm_proxy_selection(
+    enabled: Option<bool>,
+) -> Result<ClawmasterNpmProxySelection, String> {
+    let normalized = normalize_clawmaster_npm_proxy_selection(enabled);
+    let mut settings = read_clawmaster_settings();
+    if normalized.enabled {
+        settings.npm_proxy = Some(normalized.clone());
+    } else {
+        settings.npm_proxy = None;
+    }
+    write_clawmaster_settings(&settings)?;
+    Ok(normalized)
+}
+
+fn get_clawmaster_npm_proxy_registry_url() -> Option<String> {
+    if get_clawmaster_npm_proxy_selection().enabled {
+        Some(DEFAULT_NPM_PROXY_REGISTRY_URL.to_string())
+    } else {
+        None
+    }
+}
+
+fn clawmaster_npm_proxy_info_from_selection(
+    selection: ClawmasterNpmProxySelection,
+) -> ClawmasterNpmProxyInfo {
+    ClawmasterNpmProxyInfo {
+        enabled: selection.enabled,
+        registry_url: if selection.enabled {
+            Some(DEFAULT_NPM_PROXY_REGISTRY_URL.to_string())
+        } else {
+            None
+        },
+    }
+}
+
+fn should_apply_npm_registry_proxy(args: &[String]) -> bool {
+    let Some(subcommand) = args.first().map(|item| item.trim().to_ascii_lowercase()) else {
+        return false;
+    };
+    if subcommand != "install" && subcommand != "i" {
+        return false;
+    }
+    !args.iter().any(|arg| arg == "--registry" || arg.starts_with("--registry="))
+}
+
+fn with_configured_npm_registry_args(args: &[String]) -> Vec<String> {
+    let mut normalized = args.to_vec();
+    let Some(registry_url) = get_clawmaster_npm_proxy_registry_url() else {
+        return normalized;
+    };
+    if !should_apply_npm_registry_proxy(&normalized) {
+        return normalized;
+    }
+    normalized.push("--registry".to_string());
+    normalized.push(registry_url);
+    normalized
 }
 
 fn sanitize_profile_name(input: &str) -> Result<String, String> {
@@ -6086,6 +6178,18 @@ fn save_clawmaster_runtime(
     set_clawmaster_runtime_selection(mode, wsl_distro, backend_port, auto_start_backend).map(|_| ())
 }
 
+#[tauri::command]
+fn get_clawmaster_npm_proxy() -> Result<ClawmasterNpmProxyInfo, String> {
+    Ok(clawmaster_npm_proxy_info_from_selection(
+        get_clawmaster_npm_proxy_selection(),
+    ))
+}
+
+#[tauri::command]
+fn save_clawmaster_npm_proxy(enabled: Option<bool>) -> Result<ClawmasterNpmProxyInfo, String> {
+    set_clawmaster_npm_proxy_selection(enabled).map(clawmaster_npm_proxy_info_from_selection)
+}
+
 fn npm_root_g() -> Result<String, String> {
     let output = Command::new("npm")
         .args(["root", "-g"])
@@ -6317,8 +6421,13 @@ fn run_npm_install_openclaw_global(spec: &str) -> Result<NpmUninstallOutput, Str
     } else {
         format!("openclaw@{}", spec)
     };
+    let args = with_configured_npm_registry_args(&[
+        "install".to_string(),
+        "-g".to_string(),
+        pkg.clone(),
+    ]);
     let output = Command::new("npm")
-        .args(["install", "-g", &pkg])
+        .args(&args)
         .output()
         .map_err(|e| cmd_err_d("NPM_SPAWN_FAILED", e))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -6360,8 +6469,13 @@ fn npm_install_openclaw_from_file(file_path: String) -> Result<NpmUninstallOutpu
     }
     let canon = fs::canonicalize(&p).map_err(|e| cmd_err_d("PATH_CANONICALIZE_FAILED", e))?;
     let s = canon.to_string_lossy().to_string();
+    let args = with_configured_npm_registry_args(&[
+        "install".to_string(),
+        "-g".to_string(),
+        s.clone(),
+    ]);
     let output = Command::new("npm")
-        .args(["install", "-g", &s])
+        .args(&args)
         .output()
         .map_err(|e| cmd_err_d("NPM_SPAWN_FAILED", e))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -8052,7 +8166,12 @@ fn run_system_command(cmd: String, args: Vec<String>) -> Result<String, String> 
     }
 
     let program = resolve_system_command_path(trimmed);
-    let normalized_args: Vec<String> = args.iter().map(|arg| expand_exec_arg_home(arg)).collect();
+    let expanded_args: Vec<String> = args.iter().map(|arg| expand_exec_arg_home(arg)).collect();
+    let normalized_args = if trimmed == "npm" {
+        with_configured_npm_registry_args(&expanded_args)
+    } else {
+        expanded_args
+    };
 
     #[cfg(target_os = "windows")]
     if let Some(distro) = active_wsl_distro() {
@@ -8460,6 +8579,8 @@ pub fn run() {
             save_openclaw_profile,
             clear_openclaw_profile,
             save_clawmaster_runtime,
+            get_clawmaster_npm_proxy,
+            save_clawmaster_npm_proxy,
             uninstall_openclaw_cli,
             list_openclaw_npm_versions,
             npm_install_openclaw_global,

@@ -23,6 +23,7 @@ import {
 } from '@/shared/adapters/ollama'
 import { changeLanguage } from '@/i18n'
 import { getProviderModelCatalogResult } from '@/shared/adapters/openclaw'
+import { getClawmasterNpmProxyResult, saveClawmasterNpmProxyResult } from '@/shared/adapters/system'
 import { supportsProviderCatalog } from '@/shared/providerCatalog'
 import { getSetupAdapter } from './adapters'
 import { CircleReveal } from './CircleReveal'
@@ -59,6 +60,7 @@ const INSTALL_STATE_KEY = 'clawmaster-wizard-install'
 const INSTALL_STALE_MS = 10 * 60 * 1000
 const INSTALL_RECOVERY_POLL_MS = 2000
 const INSTALL_RECOVERY_GRACE_MS = 60 * 1000
+const NPM_MIRROR_REGISTRY_URL = 'https://registry.npmmirror.com'
 
 type PersistedInstallState = {
   phase: 'installing' | 'installed'
@@ -174,6 +176,11 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const configInitializedRef = useRef(false)
   const recoveryDetectInFlightRef = useRef(false)
   const recoveryStartedAtRef = useRef<number | null>(null)
+  const mirrorTouchedRef = useRef(false)
+  const mirrorSavePromiseRef = useRef<Promise<void> | null>(null)
+  const mirrorPersistedEnabledRef = useRef(false)
+  const mirrorRequestedEnabledRef = useRef(false)
+  const [mirrorSaving, setMirrorSaving] = useState(false)
 
   // Provider / model state
   const [onboard, setOnboard] = useState<OnboardingState>(DEFAULT_ONBOARDING_STATE)
@@ -379,6 +386,21 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   }, [detectEngine])
 
   useEffect(() => {
+    let cancelled = false
+
+    void getClawmasterNpmProxyResult().then((result) => {
+      if (cancelled || mirrorTouchedRef.current || !result.success || !result.data) return
+      mirrorPersistedEnabledRef.current = result.data.enabled
+      mirrorRequestedEnabledRef.current = result.data.enabled
+      setUseMirror(result.data.enabled)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (!recoveringInstall) return
     const intervalId = window.setInterval(() => {
       if (recoveryDetectInFlightRef.current) return
@@ -396,6 +418,14 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   // ─── Step 1b: Install OpenClaw ───
 
   const startInstall = useCallback(async () => {
+    try {
+      await mirrorSavePromiseRef.current
+    } catch (error) {
+      setInstallError(error instanceof Error ? error.message : String(error))
+      setPhase('install_error')
+      return
+    }
+
     recoveryStartedAtRef.current = null
     setRecoveringInstall(false)
     setPhase('installing')
@@ -404,7 +434,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     saveInstallState({ phase: 'installing', startedAt: Date.now() })
 
     const installOptions = useMirror
-      ? { registryUrl: 'https://registry.npmmirror.com' }
+      ? { registryUrl: NPM_MIRROR_REGISTRY_URL }
       : undefined
 
     try {
@@ -424,6 +454,49 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       setPhase('install_error')
     }
   }, [adapter, simProgress, useMirror])
+
+  const handleMirrorChange = useCallback((checked: boolean) => {
+    mirrorTouchedRef.current = true
+    mirrorRequestedEnabledRef.current = checked
+    setUseMirror(checked)
+    setMirrorSaving(true)
+
+    if (mirrorSavePromiseRef.current) {
+      return
+    }
+
+    const savePromise = (async () => {
+      while (mirrorPersistedEnabledRef.current !== mirrorRequestedEnabledRef.current) {
+        const requestedEnabled = mirrorRequestedEnabledRef.current
+        const result = await saveClawmasterNpmProxyResult({ enabled: requestedEnabled })
+
+        if (!result.success || !result.data) {
+          if (mirrorRequestedEnabledRef.current !== requestedEnabled) {
+            continue
+          }
+
+          mirrorRequestedEnabledRef.current = mirrorPersistedEnabledRef.current
+          setUseMirror(mirrorPersistedEnabledRef.current)
+          throw new Error(result.error ?? t('common.unknownError'))
+        }
+
+        mirrorPersistedEnabledRef.current = result.data.enabled
+        if (mirrorRequestedEnabledRef.current === requestedEnabled) {
+          mirrorRequestedEnabledRef.current = result.data.enabled
+          setUseMirror(result.data.enabled)
+        }
+      }
+    })()
+
+    const trackedSavePromise = savePromise.finally(() => {
+      if (mirrorSavePromiseRef.current === trackedSavePromise) {
+        mirrorSavePromiseRef.current = null
+        setMirrorSaving(false)
+      }
+    })
+    mirrorSavePromiseRef.current = trackedSavePromise
+    void mirrorSavePromiseRef.current.catch(() => {})
+  }, [t])
 
   // ─── Step 2: Set API Key ───
 
@@ -553,8 +626,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             installError={installError}
             simProgress={simProgress}
             isDemo={isDemo}
+            mirrorSaving={mirrorSaving}
             useMirror={useMirror}
-            onMirrorChange={setUseMirror}
+            onMirrorChange={handleMirrorChange}
             onInstall={startInstall}
             onRetry={detectEngine}
           />
@@ -590,6 +664,7 @@ function EngineStep({
   installError,
   simProgress,
   isDemo,
+  mirrorSaving,
   useMirror,
   onMirrorChange,
   onInstall,
@@ -600,6 +675,7 @@ function EngineStep({
   installError: string | null
   simProgress: ReturnType<typeof useSimulatedProgress>
   isDemo: boolean
+  mirrorSaving: boolean
   useMirror: boolean
   onMirrorChange: (value: boolean) => void
   onInstall: () => void
@@ -681,6 +757,7 @@ function EngineStep({
           <input
             type="checkbox"
             checked={useMirror}
+            disabled={mirrorSaving}
             onChange={(e) => onMirrorChange(e.target.checked)}
             className="accent-primary"
           />
@@ -691,14 +768,14 @@ function EngineStep({
       {/* Action buttons */}
       <div className="wizard-actions">
         {phase === 'not_installed' && (
-          <button onClick={onInstall} className="wizard-btn-primary">
+          <button onClick={onInstall} disabled={mirrorSaving} className="wizard-btn-primary">
             <Download className="h-4 w-4" />
             {t('setup.installCore')}
           </button>
         )}
         {phase === 'install_error' && (
           <>
-            <button onClick={onInstall} className="wizard-btn-primary">
+            <button onClick={onInstall} disabled={mirrorSaving} className="wizard-btn-primary">
               <Download className="h-4 w-4" />
               {t('common.retry')}
             </button>

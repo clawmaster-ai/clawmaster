@@ -13,14 +13,19 @@ const mockDetect = vi.fn<
   Promise<CapabilityStatus[]>
 >()
 const mockInstall = vi.fn<
-  [CapabilityId[], ((progress: InstallProgress) => void) | undefined],
+  [CapabilityId[], ((progress: InstallProgress) => void) | undefined, { registryUrl?: string } | undefined],
   Promise<void>
 >()
+const mockGetNpmProxy = vi.fn()
+const mockSaveNpmProxy = vi.fn()
 
 const stubAdapter = {
   detectCapabilities: (cb?: (status: CapabilityStatus) => void) => mockDetect(cb),
-  installCapabilities: (ids: CapabilityId[], cb?: (p: InstallProgress) => void) =>
-    mockInstall(ids, cb),
+  installCapabilities: (
+    ids: CapabilityId[],
+    cb?: (p: InstallProgress) => void,
+    options?: { registryUrl?: string },
+  ) => mockInstall(ids, cb, options),
   onboarding: {},
   gateway: {},
   channel: {},
@@ -28,6 +33,13 @@ const stubAdapter = {
 
 vi.mock('@/modules/setup/adapters', () => ({
   getSetupAdapter: () => stubAdapter,
+}))
+
+vi.mock('@/shared/adapters/platformResults', () => ({
+  platformResults: {
+    getClawmasterNpmProxy: (...args: any[]) => mockGetNpmProxy(...args),
+    saveClawmasterNpmProxy: (...args: any[]) => mockSaveNpmProxy(...args),
+  },
 }))
 
 import { CapabilitiesSection } from '../CapabilitiesSection'
@@ -44,6 +56,14 @@ function checkingCapability(id: CapabilityId): CapabilityStatus {
   return { id, name: `capability.${id}`, status: 'checking' }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 function renderSection() {
   return render(
     <MemoryRouter>
@@ -56,6 +76,16 @@ describe('CapabilitiesSection', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     await changeLanguage('en')
+    mockGetNpmProxy.mockResolvedValue({
+      success: true,
+      data: { enabled: true, registryUrl: 'https://registry.npmmirror.com' },
+      error: null,
+    })
+    mockSaveNpmProxy.mockResolvedValue({
+      success: true,
+      data: { enabled: true, registryUrl: 'https://registry.npmmirror.com' },
+      error: null,
+    })
   })
 
   it('renders capability rows using live detection output', async () => {
@@ -94,7 +124,11 @@ describe('CapabilitiesSection', () => {
       fireEvent.click(installBtn)
     })
 
-    expect(mockInstall).toHaveBeenCalledWith(['observe'], expect.any(Function))
+    expect(mockInstall).toHaveBeenCalledWith(
+      ['observe'],
+      expect.any(Function),
+      { registryUrl: 'https://registry.npmmirror.com' },
+    )
   })
 
   it('requires confirmation before reinstalling an installed capability', async () => {
@@ -130,7 +164,11 @@ describe('CapabilitiesSection', () => {
       fireEvent.click(confirmBtns[confirmBtns.length - 1])
     })
 
-    expect(mockInstall).toHaveBeenCalledWith(['engine'], expect.any(Function))
+    expect(mockInstall).toHaveBeenCalledWith(
+      ['engine'],
+      expect.any(Function),
+      { registryUrl: 'https://registry.npmmirror.com' },
+    )
   })
 
   it('uses detect output (not systemInfo) for status — a checking state is rendered as checking', async () => {
@@ -146,4 +184,92 @@ describe('CapabilitiesSection', () => {
       expect(screen.getAllByText('Checking...').length).toBeGreaterThan(0)
     })
   })
+
+  it('shows the npm proxy toggle for English users', async () => {
+    mockDetect.mockResolvedValue([])
+
+    renderSection()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Manage capabilities' })).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Use npm mirror')).toBeInTheDocument()
+    expect(mockGetNpmProxy).toHaveBeenCalled()
+  })
+
+  it('shows the npm proxy toggle for Chinese users and passes the registry override to installs', async () => {
+    await changeLanguage('zh')
+    mockDetect.mockImplementation(async (cb) => {
+      const r = missingObserve()
+      cb?.(r, new Map([[r.id, r]]))
+      return [r]
+    })
+    mockInstall.mockResolvedValue(undefined)
+
+    renderSection()
+
+    await screen.findByText('使用 npm 镜像')
+    const installBtn = await screen.findByRole('button', { name: '安装' })
+
+    await act(async () => {
+      fireEvent.click(installBtn)
+    })
+
+    expect(mockGetNpmProxy).toHaveBeenCalled()
+    expect(mockInstall).toHaveBeenCalledWith(
+      ['observe'],
+      expect.any(Function),
+      { registryUrl: 'https://registry.npmmirror.com' },
+    )
+  })
+
+  it('waits for the npm proxy preference to persist before installing', async () => {
+    await changeLanguage('zh')
+    mockGetNpmProxy.mockResolvedValue({
+      success: true,
+      data: { enabled: true, registryUrl: 'https://registry.npmmirror.com' },
+      error: null,
+    })
+    mockDetect.mockImplementation(async (cb) => {
+      const r = missingObserve()
+      cb?.(r, new Map([[r.id, r]]))
+      return [r]
+    })
+    mockInstall.mockResolvedValue(undefined)
+
+    let resolveSave!: (value: { success: boolean; data: { enabled: boolean; registryUrl: null }; error: null }) => void
+    mockSaveNpmProxy.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSave = resolve
+      })
+    )
+
+    renderSection()
+
+    const checkbox = await screen.findByRole('checkbox')
+    await waitFor(() => {
+      expect(checkbox).toBeChecked()
+    })
+
+    fireEvent.click(checkbox)
+    fireEvent.click(screen.getByRole('button', { name: '安装' }))
+
+    expect(mockInstall).not.toHaveBeenCalled()
+
+    resolveSave({
+      success: true,
+      data: { enabled: false, registryUrl: null },
+      error: null,
+    })
+
+    await waitFor(() => {
+      expect(mockInstall).toHaveBeenCalledWith(
+        ['observe'],
+        expect.any(Function),
+        undefined,
+      )
+    })
+  })
+
 })

@@ -6,6 +6,8 @@ import SetupWizard from '../SetupWizard'
 const mockDetectCapabilities = vi.fn()
 const mockInstallCapabilities = vi.fn()
 const mockGetProviderModelCatalogResult = vi.fn()
+const mockGetNpmProxy = vi.fn()
+const mockSaveNpmProxy = vi.fn()
 const mockSetupAdapter = {
   detectCapabilities: (...args: any[]) => mockDetectCapabilities(...args),
   installCapabilities: (...args: any[]) => mockInstallCapabilities(...args),
@@ -28,6 +30,11 @@ vi.mock('../adapters', () => ({
 
 vi.mock('@/shared/adapters/openclaw', () => ({
   getProviderModelCatalogResult: (...args: any[]) => mockGetProviderModelCatalogResult(...args),
+}))
+
+vi.mock('@/shared/adapters/system', () => ({
+  getClawmasterNpmProxyResult: (...args: any[]) => mockGetNpmProxy(...args),
+  saveClawmasterNpmProxyResult: (...args: any[]) => mockSaveNpmProxy(...args),
 }))
 
 vi.mock('@/shared/adapters/ollama', () => ({
@@ -85,6 +92,16 @@ describe('SetupWizard', () => {
     mockSetupAdapter.onboarding.testApiKey.mockResolvedValue(true)
     mockSetupAdapter.onboarding.setApiKey.mockResolvedValue(undefined)
     mockSetupAdapter.onboarding.setDefaultModel.mockResolvedValue(undefined)
+    mockGetNpmProxy.mockResolvedValue({
+      success: true,
+      data: { enabled: false, registryUrl: null },
+      error: null,
+    })
+    mockSaveNpmProxy.mockResolvedValue({
+      success: true,
+      data: { enabled: true, registryUrl: 'https://registry.npmmirror.com' },
+      error: null,
+    })
     mockGetProviderModelCatalogResult.mockResolvedValue({
       success: false,
       data: undefined,
@@ -131,7 +148,7 @@ describe('SetupWizard', () => {
 
       expect(await screen.findByRole('button', { name: /Install Core Engine/i })).toBeInTheDocument()
       expect(screen.getByText(/Core engine not installed/i)).toBeInTheDocument()
-      expect(screen.getByText(/Use China npm mirror/i)).toBeInTheDocument()
+      expect(screen.getByText(/Use npm mirror/i)).toBeInTheDocument()
     })
 
     it('falls back to not_installed when detection throws', async () => {
@@ -178,16 +195,30 @@ describe('SetupWizard', () => {
       expect(await screen.findByText('Configure LLM Provider')).toBeInTheDocument()
     })
 
-    it('passes China mirror registry when mirror toggle is checked', async () => {
+    it('shows the mirror toggle for English users', async () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       await screen.findByRole('button', { name: /Install Core Engine/i })
+
+      expect(screen.getByText(/Use npm mirror/i)).toBeInTheDocument()
+      expect(screen.getByRole('checkbox')).toBeInTheDocument()
+      expect(mockGetNpmProxy).toHaveBeenCalled()
+    })
+
+    it('passes the npm mirror registry when mirror toggle is checked', async () => {
+      await changeLanguage('zh')
+      render(<SetupWizard onComplete={() => {}} />)
+
+      const installButton = await screen.findByRole('button', { name: /安装核心引擎/i })
 
       const checkbox = screen.getByRole('checkbox')
       fireEvent.click(checkbox)
       expect(checkbox).toBeChecked()
 
-      fireEvent.click(screen.getByRole('button', { name: /Install Core Engine/i }))
+      await waitFor(() => {
+        expect(installButton).not.toBeDisabled()
+      })
+      fireEvent.click(installButton)
 
       await waitFor(() => {
         expect(mockInstallCapabilities).toHaveBeenCalledWith(
@@ -198,16 +229,60 @@ describe('SetupWizard', () => {
       })
     })
 
-    it('shows error and retry button when installation fails', async () => {
-      mockInstallCapabilities.mockRejectedValue(new Error('ENOMEM'))
+    it('waits for the mirror preference to persist before starting install', async () => {
+      await changeLanguage('zh')
+      mockGetNpmProxy.mockResolvedValue({
+        success: true,
+        data: { enabled: true, registryUrl: 'https://registry.npmmirror.com' },
+        error: null,
+      })
+      const save = deferred<{ success: boolean; data: { enabled: boolean; registryUrl: null }; error: null }>()
+      mockSaveNpmProxy.mockReturnValue(save.promise)
 
       render(<SetupWizard onComplete={() => {}} />)
 
-      fireEvent.click(await screen.findByRole('button', { name: /Install Core Engine/i }))
+      const checkbox = await screen.findByRole('checkbox')
+      await waitFor(() => {
+        expect(checkbox).toBeChecked()
+      })
+
+      const installButton = screen.getByRole('button', { name: /安装核心引擎/i })
+      fireEvent.click(checkbox)
+      fireEvent.click(installButton)
+
+      expect(mockInstallCapabilities).not.toHaveBeenCalled()
+
+      save.resolve({
+        success: true,
+        data: { enabled: false, registryUrl: null },
+        error: null,
+      })
+
+      await waitFor(() => {
+        expect(installButton).not.toBeDisabled()
+      })
+      fireEvent.click(installButton)
+
+      await waitFor(() => {
+        expect(mockInstallCapabilities).toHaveBeenCalledWith(
+          ['engine'],
+          expect.any(Function),
+          undefined,
+        )
+      })
+    })
+
+    it('shows error and retry button when installation fails', async () => {
+      mockInstallCapabilities.mockRejectedValue(new Error('ENOMEM'))
+      await changeLanguage('zh')
+
+      render(<SetupWizard onComplete={() => {}} />)
+
+      fireEvent.click(await screen.findByRole('button', { name: /安装核心引擎/i }))
 
       expect(await screen.findByText('ENOMEM')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument()
-      expect(screen.getByText(/Use China npm mirror/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /重试/i })).toBeInTheDocument()
+      expect(screen.getByText(/使用 npm 镜像/i)).toBeInTheDocument()
     })
 
     it('retries installation after failure', async () => {
@@ -912,14 +987,18 @@ describe('SetupWizard', () => {
         for (const item of results) onUpdate(item)
         return results
       })
+      const install = deferred<void>()
+      mockInstallCapabilities.mockReturnValue(install.promise)
 
       render(<SetupWizard onComplete={() => {}} />)
 
       fireEvent.click(await screen.findByRole('button', { name: /Install Core Engine/i }))
 
-      const saved = JSON.parse(localStorage.getItem('clawmaster-wizard-install') ?? '{}')
-      expect(saved.phase).toBe('installing')
-      expect(saved.startedAt).toBeGreaterThan(0)
+      await waitFor(() => {
+        const saved = JSON.parse(localStorage.getItem('clawmaster-wizard-install') ?? '{}')
+        expect(saved.phase).toBe('installing')
+        expect(saved.startedAt).toBeGreaterThan(0)
+      })
     })
 
     it('clears localStorage on install failure', async () => {
@@ -1005,7 +1084,7 @@ describe('SetupWizard', () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       expect(await screen.findByRole('button', { name: /Install Core Engine/i })).toBeInTheDocument()
-      expect(screen.getByText(/Use China npm mirror/i)).toBeInTheDocument()
+      expect(screen.getByText(/Use npm mirror/i)).toBeInTheDocument()
     })
 
     it('ignores stale localStorage entries older than 10 minutes', async () => {

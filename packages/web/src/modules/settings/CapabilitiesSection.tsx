@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   CheckCircle2,
@@ -17,6 +17,7 @@ import {
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { InstallTask } from '@/shared/components/InstallTask'
 import type { InstallStatus } from '@/shared/hooks/useInstallTask'
+import { platformResults } from '@/shared/adapters/platformResults'
 import { useCapabilityManager } from '@/modules/setup/useCapabilityManager'
 import {
   CAPABILITIES,
@@ -40,6 +41,7 @@ const CAPABILITY_DESC_KEYS: Record<CapabilityId, string> = {
   ocr: 'capability.ocr.desc',
   agent: 'capability.agent.desc',
 }
+const DEFAULT_NPM_PROXY_REGISTRY_URL = 'https://registry.npmmirror.com'
 
 function toInstallStatus(progress: InstallProgress | undefined): InstallStatus {
   if (!progress) return 'idle'
@@ -183,24 +185,130 @@ export function CapabilitiesSection() {
     useCapabilityManager()
 
   const [confirmReinstallId, setConfirmReinstallId] = useState<CapabilityId | null>(null)
+  const [npmProxyEnabled, setNpmProxyEnabled] = useState(false)
+  const [npmProxyRegistryUrl, setNpmProxyRegistryUrl] = useState<string | null>(null)
+  const [npmProxyLoading, setNpmProxyLoading] = useState(true)
+  const [npmProxySaving, setNpmProxySaving] = useState(false)
+  const [npmProxyError, setNpmProxyError] = useState<string | null>(null)
+  const npmProxySavePromiseRef = useRef<Promise<void> | null>(null)
+  const npmProxyPersistedEnabledRef = useRef(false)
+  const npmProxyPersistedRegistryUrlRef = useRef<string | null>(null)
+  const npmProxyRequestedEnabledRef = useRef(false)
 
   useEffect(() => {
     void detect()
   }, [detect])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadNpmProxy() {
+      setNpmProxyLoading(true)
+      setNpmProxyError(null)
+      const result = await platformResults.getClawmasterNpmProxy()
+      if (cancelled) return
+      if (!result.success || !result.data) {
+        setNpmProxyLoading(false)
+        setNpmProxyError(result.error ?? t('common.unknownError'))
+        return
+      }
+      npmProxyPersistedEnabledRef.current = result.data.enabled
+      npmProxyPersistedRegistryUrlRef.current = result.data.registryUrl
+      npmProxyRequestedEnabledRef.current = result.data.enabled
+      setNpmProxyEnabled(result.data.enabled)
+      setNpmProxyRegistryUrl(result.data.registryUrl)
+      setNpmProxyLoading(false)
+    }
+
+    void loadNpmProxy()
+
+    return () => {
+      cancelled = true
+    }
+  }, [t])
+
+  const effectiveNpmProxyRegistryUrl = npmProxyEnabled
+    ? (npmProxyRegistryUrl ?? DEFAULT_NPM_PROXY_REGISTRY_URL)
+    : null
+
+  const installOptions = effectiveNpmProxyRegistryUrl
+    ? { registryUrl: effectiveNpmProxyRegistryUrl }
+    : undefined
+
   const handleInstall = useCallback(
     (id: CapabilityId) => {
-      void install([id]).catch(() => {})
+      void (async () => {
+        try {
+          await npmProxySavePromiseRef.current
+        } catch {
+          return
+        }
+        await install([id], installOptions).catch(() => {})
+      })()
     },
-    [install],
+    [install, installOptions],
   )
 
   const handleConfirmReinstall = useCallback(() => {
     if (!confirmReinstallId) return
     const id = confirmReinstallId
     setConfirmReinstallId(null)
-    void install([id]).catch(() => {})
-  }, [confirmReinstallId, install])
+    void (async () => {
+      try {
+        await npmProxySavePromiseRef.current
+      } catch {
+        return
+      }
+      await install([id], installOptions).catch(() => {})
+    })()
+  }, [confirmReinstallId, install, installOptions])
+
+  const handleNpmProxyChange = useCallback(async (enabled: boolean) => {
+    npmProxyRequestedEnabledRef.current = enabled
+    setNpmProxyEnabled(enabled)
+    setNpmProxySaving(true)
+    setNpmProxyError(null)
+
+    if (npmProxySavePromiseRef.current) {
+      return
+    }
+
+    const savePromise = (async () => {
+      while (npmProxyPersistedEnabledRef.current !== npmProxyRequestedEnabledRef.current) {
+        const requestedEnabled = npmProxyRequestedEnabledRef.current
+        const result = await platformResults.saveClawmasterNpmProxy({ enabled: requestedEnabled })
+
+        if (!result.success || !result.data) {
+          if (npmProxyRequestedEnabledRef.current !== requestedEnabled) {
+            continue
+          }
+
+          npmProxyRequestedEnabledRef.current = npmProxyPersistedEnabledRef.current
+          setNpmProxyEnabled(npmProxyPersistedEnabledRef.current)
+          setNpmProxyRegistryUrl(npmProxyPersistedRegistryUrlRef.current)
+          setNpmProxyError(result.error ?? t('common.unknownError'))
+          throw new Error(result.error ?? t('common.unknownError'))
+        }
+
+        npmProxyPersistedEnabledRef.current = result.data.enabled
+        npmProxyPersistedRegistryUrlRef.current = result.data.registryUrl
+        if (npmProxyRequestedEnabledRef.current === requestedEnabled) {
+          npmProxyRequestedEnabledRef.current = result.data.enabled
+          setNpmProxyEnabled(result.data.enabled)
+          setNpmProxyRegistryUrl(result.data.registryUrl)
+        }
+      }
+    })()
+
+    const trackedSavePromise = savePromise.finally(() => {
+      if (npmProxySavePromiseRef.current === trackedSavePromise) {
+        npmProxySavePromiseRef.current = null
+        setNpmProxySaving(false)
+      }
+    })
+    npmProxySavePromiseRef.current = trackedSavePromise
+    void npmProxySavePromiseRef.current.catch(() => {})
+  }, [t])
 
   const confirmCapability = confirmReinstallId
     ? capabilities.find((c) => c.id === confirmReinstallId)
@@ -232,6 +340,35 @@ export function CapabilitiesSection() {
           {error}
         </div>
       )}
+
+      <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1">
+            <h4 className="text-sm font-semibold">{t('settings.capabilities.npmProxyTitle')}</h4>
+            <p className="text-xs text-muted-foreground">
+              {t('settings.capabilities.npmProxyDesc', {
+                registry: effectiveNpmProxyRegistryUrl ?? DEFAULT_NPM_PROXY_REGISTRY_URL,
+              })}
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={npmProxyEnabled}
+              disabled={npmProxyLoading || npmProxySaving}
+              onChange={(event) => {
+                void handleNpmProxyChange(event.currentTarget.checked)
+              }}
+            />
+            <span>{t('settings.capabilities.npmProxyToggle')}</span>
+          </label>
+        </div>
+        {npmProxyError ? (
+          <p role="alert" className="text-xs text-red-600 dark:text-red-300">
+            {npmProxyError}
+          </p>
+        ) : null}
+      </div>
 
       <div className="grid gap-3">
         {capabilities.length === 0 && detecting ? (

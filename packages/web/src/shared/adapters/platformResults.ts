@@ -49,7 +49,9 @@ import {
 import {
   clearOpenclawProfileResult,
   detectSystemResult,
+  getClawmasterNpmProxyResult,
   saveClawmasterRuntimeResult,
+  saveClawmasterNpmProxyResult,
   saveOpenclawProfileResult,
 } from '@/shared/adapters/system'
 import {
@@ -95,7 +97,9 @@ import {
 
 export const platformResults = {
   detectSystem: detectSystemResult,
+  getClawmasterNpmProxy: getClawmasterNpmProxyResult,
   saveClawmasterRuntime: saveClawmasterRuntimeResult,
+  saveClawmasterNpmProxy: saveClawmasterNpmProxyResult,
   saveOpenclawProfile: saveOpenclawProfileResult,
   clearOpenclawProfile: clearOpenclawProfileResult,
   resetOpenclawConfig: resetOpenclawConfigResult,
