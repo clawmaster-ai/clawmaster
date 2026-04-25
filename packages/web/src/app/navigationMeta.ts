@@ -27,13 +27,13 @@ export const NAV_SECTIONS: NavSectionMeta[] = [
     id: 'extend',
     labelKey: 'layout.section.extend',
     descriptionKey: 'layout.section.extendDesc',
-    paths: ['/capabilities', '/skills', '/content-drafts', '/plugins', '/mcp', '/docs'],
+    paths: ['/capabilities', '/mcp', '/plugins', '/skills', '/ocr', '/content-drafts'],
   },
   {
     id: 'control',
     labelKey: 'layout.section.control',
     descriptionKey: 'layout.section.controlDesc',
-    paths: ['/config', '/settings'],
+    paths: ['/config', '/docs', '/settings'],
   },
 ]
 
@@ -47,12 +47,13 @@ export const PAGE_META: Record<string, PageMeta> = {
   '/models': { sectionId: 'workspace', descriptionKey: 'layout.page.models' },
   '/agents': { sectionId: 'workspace', descriptionKey: 'layout.page.agents' },
   '/memory': { sectionId: 'workspace', descriptionKey: 'layout.page.memory' },
+  '/ocr': { sectionId: 'extend', descriptionKey: 'layout.page.ocr' },
   '/capabilities': { sectionId: 'extend', descriptionKey: 'layout.page.capabilities' },
   '/skills': { sectionId: 'extend', descriptionKey: 'layout.page.skills' },
   '/content-drafts': { sectionId: 'extend', descriptionKey: 'layout.page.contentDrafts' },
   '/plugins': { sectionId: 'extend', descriptionKey: 'layout.page.plugins' },
   '/mcp': { sectionId: 'extend', descriptionKey: 'layout.page.mcp' },
-  '/docs': { sectionId: 'extend', descriptionKey: 'layout.page.docs' },
+  '/docs': { sectionId: 'control', descriptionKey: 'layout.page.docs' },
   '/config': { sectionId: 'control', descriptionKey: 'layout.page.config' },
   '/settings': { sectionId: 'control', descriptionKey: 'layout.page.settings' },
 }

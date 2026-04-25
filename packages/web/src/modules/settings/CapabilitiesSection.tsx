@@ -181,10 +181,86 @@ function CapabilityRow({
   )
 }
 
+function NpmProxyToggle({
+  checked,
+  busy,
+  registryUrl,
+  label,
+  onToggle,
+}: {
+  checked: boolean
+  busy: boolean
+  registryUrl: string
+  label: string
+  onToggle: (nextValue: boolean) => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onToggle(!checked)}
+      disabled={busy}
+      className={[
+        'group flex min-w-[13rem] max-w-full items-center justify-between gap-3 rounded-2xl border px-3 py-3 text-left transition-colors',
+        checked
+          ? 'border-emerald-500/30 bg-emerald-500/10 text-foreground'
+          : 'border-border bg-background/80 text-muted-foreground hover:border-border/80 hover:bg-background',
+        busy ? 'cursor-wait opacity-80' : 'cursor-pointer',
+      ].join(' ')}
+    >
+      <div className="min-w-0 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-foreground">{label}</span>
+          {busy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] leading-5">
+          <span
+            className={[
+              'inline-flex items-center rounded-full px-2 py-0.5 font-medium',
+              checked
+                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                : 'bg-muted text-muted-foreground',
+            ].join(' ')}
+          >
+            {checked ? t('settings.capabilities.statusInstalled') : t('settings.capabilities.statusNotInstalled')}
+          </span>
+          <code className="max-w-full truncate rounded-full bg-background/90 px-2 py-0.5 text-[11px] text-muted-foreground">
+            {registryUrl}
+          </code>
+        </div>
+      </div>
+
+      <span
+        aria-hidden="true"
+        className={[
+          'relative inline-flex h-7 w-12 shrink-0 rounded-full border transition-colors',
+          checked
+            ? 'border-emerald-500/40 bg-emerald-500/80'
+            : 'border-border bg-muted',
+        ].join(' ')}
+      >
+        <span
+          className={[
+            'absolute top-0.5 h-[22px] w-[22px] rounded-full bg-white shadow-sm transition-transform',
+            checked ? 'translate-x-[1.35rem]' : 'translate-x-[0.1rem]',
+          ].join(' ')}
+        />
+      </span>
+    </button>
+  )
+}
+
 export function CapabilitiesSection() {
   const { t } = useTranslation()
   const { capabilities, installProgress, detecting, installing, error, detect, install } =
     useCapabilityManager()
+  const visibleCapabilities = capabilities.filter((capability) => capability.id !== 'agent')
 
   const [confirmReinstallId, setConfirmReinstallId] = useState<CapabilityId | null>(null)
   const [npmProxyEnabled, setNpmProxyEnabled] = useState(false)
@@ -346,11 +422,11 @@ export function CapabilitiesSection() {
   }, [t])
 
   const confirmCapability = confirmReinstallId
-    ? capabilities.find((c) => c.id === confirmReinstallId)
+    ? visibleCapabilities.find((c) => c.id === confirmReinstallId)
     : null
 
   return (
-    <section id="settings-capabilities" className="surface-card">
+    <section id="settings-capabilities" className="surface-card space-y-4 pb-6">
       <div className="section-heading">
         <div>
           <h3 className="section-title">{t('settings.capabilities.title')}</h3>
@@ -376,28 +452,32 @@ export function CapabilitiesSection() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-1">
-            <h4 className="text-sm font-semibold">{t('settings.capabilities.npmProxyTitle')}</h4>
-            <p className="text-xs text-muted-foreground">
-              {t('settings.capabilities.npmProxyDesc', {
-                registry: effectiveNpmProxyRegistryUrl ?? DEFAULT_NPM_PROXY_REGISTRY_URL,
-              })}
-            </p>
+      <div className="rounded-3xl border border-border bg-muted/30 p-4 md:p-5 space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="space-y-1.5">
+              <h4 className="text-sm font-semibold">{t('settings.capabilities.npmProxyTitle')}</h4>
+              <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                {t('settings.capabilities.npmProxyDesc', {
+                  registry: effectiveNpmProxyRegistryUrl ?? DEFAULT_NPM_PROXY_REGISTRY_URL,
+                })}
+              </p>
+            </div>
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
+
+          <div className="w-full xl:w-auto xl:max-w-[22rem] xl:shrink-0">
+            <NpmProxyToggle
               checked={npmProxyEnabled}
-              disabled={npmProxyLoading || npmProxySaving}
-              onChange={(event) => {
-                void handleNpmProxyChange(event.currentTarget.checked)
+              busy={npmProxyLoading || npmProxySaving}
+              registryUrl={effectiveNpmProxyRegistryUrl ?? DEFAULT_NPM_PROXY_REGISTRY_URL}
+              label={t('settings.capabilities.npmProxyToggle')}
+              onToggle={(nextValue) => {
+                void handleNpmProxyChange(nextValue)
               }}
             />
-            <span>{t('settings.capabilities.npmProxyToggle')}</span>
-          </label>
+          </div>
         </div>
+
         {npmProxyError ? (
           <p role="alert" className="text-xs text-red-600 dark:text-red-300">
             {npmProxyError}
@@ -405,14 +485,14 @@ export function CapabilitiesSection() {
         ) : null}
       </div>
 
-      <div className="grid gap-3">
-        {capabilities.length === 0 && detecting ? (
+      <div className="grid gap-3 pb-1">
+        {visibleCapabilities.length === 0 && detecting ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             {t('settings.capabilities.statusChecking')}
           </div>
         ) : (
-          capabilities.map((capability) => (
+          visibleCapabilities.map((capability) => (
             <CapabilityRow
               key={capability.id}
               capability={capability}

@@ -13,8 +13,8 @@ import { getCommandDescriptors } from './commandRegistry'
 import { getCommandShortcutLabel, isAppleClientPlatform } from './commandShortcut'
 import { resolveIcon } from './iconRegistry'
 import { NAV_SECTIONS, PAGE_META } from './navigationMeta'
+import { BrandMark } from '@/shared/components/BrandMark'
 import {
-  Shell,
   Sun,
   Moon,
   Menu,
@@ -376,9 +376,7 @@ export default function Layout({ children }: LayoutProps) {
     <>
       <div className="app-sidebar-header shrink-0">
         <div className="app-brand">
-          <div className="app-brand-mark">
-            <Shell className="h-4 w-4" />
-          </div>
+          <BrandMark animated className="app-brand-mark" imageClassName="h-full w-full object-contain" />
           <div className="app-brand-copy">
             <h1 className="app-brand-name">{t('layout.appName')}</h1>
             <p className="app-brand-subtitle">{t('layout.appSub')}</p>
@@ -387,18 +385,6 @@ export default function Layout({ children }: LayoutProps) {
         <button onClick={() => setSidebarOpen(false)} className="app-icon-button lg:hidden">
           <X className="h-5 w-5" />
         </button>
-      </div>
-
-      <div className="app-sidebar-overview">
-        <div className="app-sidebar-overview-card">
-          <p className="app-sidebar-eyebrow">{currentSection ? t(currentSection.labelKey) : t('layout.appName')}</p>
-          <p className="app-sidebar-summary">{pageTitle}</p>
-          <p className="app-sidebar-note">{pageDescription}</p>
-          <div className="app-sidebar-status-row">
-            <span className={`h-2 w-2 rounded-full ${gwStatus?.running ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span>{gwStatus?.running ? t('layout.status.gatewayRunning') : t('layout.status.gatewayStopped')}</span>
-          </div>
-        </div>
       </div>
 
       <nav className="app-sidebar-nav">
@@ -507,7 +493,7 @@ export default function Layout({ children }: LayoutProps) {
                       {t('layout.update.available', { version: updateBanner.latestVersion })}
                     </p>
                   </div>
-                  <Link to="/settings" className="button-secondary text-xs">
+                  <Link to="/settings#settings-update" className="button-secondary text-xs">
                     {t('layout.update.action')}
                   </Link>
                   <button
