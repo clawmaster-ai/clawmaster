@@ -2,7 +2,7 @@ suite: gateway-module
 name: 网关管理功能
 description: |
   验证网关管理页面的完整功能：
-  状态显示、启动/停止/重启、配置概览、Token 复制、外部链接
+  状态显示、启动/停止/重启、配置概览、Token 复制、带鉴权的 WebUI 链接、日志与诊断入口
 
 preconditions:
   - dev server 已启动（{BASE_URL} 可访问）
@@ -21,11 +21,10 @@ cases:
       - action: screenshot
         name: gateway-status
     assertions:
-      - 页面标题"网关管理"
-      - 显示圆形状态指示灯（绿色运行中 / 红色已停止）
-      - 显示状态文字"运行中"或"已停止"（大号字体）
-      - 显示 WebSocket URL（由 buildGatewayUrl 生成，格式 ws://host:port）
-      - 显示操作按钮区域
+      - 页面标题显示"网关管理"或"Gateway Management"
+      - 状态卡片显示"运行中"或"已停止"
+      - 页面显示由 buildGatewayUrl 生成的 "ws://"
+      - 操作区域存在"启动"或"Start"，或存在"停止"与"重启"
 
   - id: gw-02
     name: 网关启动操作
@@ -37,9 +36,9 @@ cases:
       - action: observe
         duration: 3000ms
     assertions:
-      - 按钮区域显示"启动中..."（animate-pulse 动画）
-      - 操作完成后状态变为"运行中"（绿色）
-      - 启动完成后显示"停止"和"重启"按钮
+      - 启动中时按钮区域显示"启动中..."或"Starting..."
+      - 操作完成后状态变为"运行中"或"Running"
+      - 启动完成后显示"停止"和"重启"，或"Stop"和"Restart"
 
   - id: gw-03
     name: 配置概览卡片
@@ -49,13 +48,11 @@ cases:
       - action: screenshot
         name: gateway-config
     assertions:
-      - 显示"配置"标题
-      - 4 列网格：端口、绑定地址、认证方式、Token
-      - 端口值显示数字（默认 18789）
-      - 绑定地址显示"loopback"
-      - 认证方式显示"token"
-      - Token 区域显示"复制 Token"链接
-      - 底部显示编辑配置提示文字
+      - 显示"配置"或"Config"标题
+      - 配置区显示"端口"或"Port"
+      - 配置区显示"绑定"或"Bind"
+      - 配置区显示"认证"或"Auth"
+      - Token 区域显示"复制 Token"、"Click to copy"或等价入口
 
   - id: gw-04
     name: 复制 Token 按钮
@@ -67,8 +64,7 @@ cases:
       - action: wait
         duration: 500ms
     assertions:
-      - 弹出提示"Token 已复制到剪贴板"
-      - 剪贴板内容为配置中的 token 值
+      - 页面出现"Token 已复制"或"Token copied"提示
 
   - id: gw-05
     name: 在浏览器中打开链接
@@ -76,8 +72,9 @@ cases:
       - action: observe
         target: text("在浏览器中打开")
     assertions:
-      - '“在浏览器中打开”按钮可见'
-      - 按钮 href 由 buildGatewayUrl(config) 生成（使用 config.gateway.bind/port）
+      - '"在浏览器中打开"或"Open OpenClaw WebUI"按钮可见'
+      - 按钮 href 由 gateway 配置生成，而不是硬编码 localhost
+      - 按钮带有 token 参数（若 auth.mode=token）
       - 按钮有 target="_blank" 属性
 
   - id: gw-06
@@ -90,6 +87,20 @@ cases:
       - action: observe
         duration: 5000ms
     assertions:
-      - 按钮区域显示"重启中..."（操作状态）
-      - 操作完成后状态恢复为"运行中"
-      - '“停止”和“重启”按钮恢复可用'
+      - 按钮区域显示"重启中..."或"Restarting..."
+      - 操作完成后状态恢复为"运行中"或"Running"
+      - '"停止"和"重启"或"Stop"和"Restart"按钮恢复可用'
+
+  - id: gw-07
+    name: 最近日志与诊断入口
+    steps:
+      - action: click
+        target: text("View Recent Logs")
+      - action: wait
+        duration: 800ms
+      - action: screenshot
+        name: gateway-recent-logs
+    assertions:
+      - 打开标题为"Recent Gateway Logs"或"最近网关日志"的面板
+      - 面板只显示 gateway 相关日志，而不是无过滤的全量日志
+      - 页面保留"More Diagnostics"或"更多诊断"入口

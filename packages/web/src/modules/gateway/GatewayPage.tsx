@@ -120,7 +120,7 @@ export default function Gateway() {
         </div>
       </div>
 
-      <div className="metric-grid">
+      <div className="metric-grid lg:grid-cols-3 xl:grid-cols-3">
         <div className="metric-card">
           <p className="metric-label">{t('dashboard.gatewayStatus')}</p>
           <p className={`metric-value ${status?.running ? 'text-green-600' : 'text-red-600'}`}>
