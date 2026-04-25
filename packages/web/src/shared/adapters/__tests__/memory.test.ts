@@ -83,6 +83,33 @@ describe('memory adapters', () => {
     })
   }, 10_000)
 
+  it('treats unsupported legacy memory status as an empty payload in tauri mode', async () => {
+    const platform = await import('../platform')
+    const { tauriInvoke } = await import('../invoke')
+    const { openclawMemoryStatusResult } = await import('../memory')
+
+    vi.mocked(platform.getIsTauri).mockReturnValue(true)
+    vi.mocked(tauriInvoke).mockResolvedValue({
+      code: 1,
+      stdout: '[plugins] memory bridge ready',
+      stderr: "error: unknown command 'memory'",
+    })
+
+    const result = await openclawMemoryStatusResult()
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        exitCode: 1,
+        data: [],
+        stderr: "error: unknown command 'memory'",
+      },
+    })
+    expect(tauriInvoke).toHaveBeenCalledWith('run_openclaw_command_captured', {
+      args: ['memory', 'status', '--json'],
+    })
+  })
+
   it('loads memory search capability over web api in web mode', async () => {
     const platform = await import('../platform')
     const { webFetchJson } = await import('../webHttp')

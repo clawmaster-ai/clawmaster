@@ -59,7 +59,7 @@ clawmaster doctor            # verify your environment
 ```
 
 > [!NOTE]
-> The current release is **v0.3.0-rc.1** (release candidate). Install with `npm i -g clawmaster@rc`.
+> The current release is **v0.3.0**. Install with `npm i -g clawmaster`.
 
 ### Desktop App (Beta)
 
@@ -149,6 +149,47 @@ You still get provider management, observability, memory tooling, sessions, plug
 - **Plugins, skills, and MCP** — Enable or disable capabilities, install curated items, add MCP servers, import MCP definitions.
 - **Sessions, memory, and observability** — Inspect sessions, manage memory backends, track token usage and estimated spend.
 
+## Product Tour
+
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <a href="./docs/screenshots/wizard-provider.png"><img src="./docs/screenshots/wizard-provider.png" alt="Setup wizard with tiered providers" /></a><br/>
+      <sub><b>Setup wizard</b> · 2-step guided install, tiered providers</sub>
+    </td>
+    <td align="center" width="25%">
+      <a href="./docs/screenshots/page-dashboard.png"><img src="./docs/screenshots/page-dashboard.png" alt="Overview dashboard" /></a><br/>
+      <sub><b>Overview</b> · Runtime health, next-step task flows</sub>
+    </td>
+    <td align="center" width="25%">
+      <a href="./docs/screenshots/page-models.png"><img src="./docs/screenshots/page-models.png" alt="Models and providers page" /></a><br/>
+      <sub><b>Models</b> · Multi-provider config with live key validation</sub>
+    </td>
+    <td align="center" width="25%">
+      <a href="./docs/screenshots/page-channels.png"><img src="./docs/screenshots/page-channels.png" alt="Channels onboarding" /></a><br/>
+      <sub><b>Channels</b> · Guided onboarding for 6 messaging platforms</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="./docs/screenshots/page-observe.png"><img src="./docs/screenshots/page-observe.png" alt="Observability with ClawProbe" /></a><br/>
+      <sub><b>Observe</b> · ClawProbe-backed cost, tokens, session health</sub>
+    </td>
+    <td align="center">
+      <a href="./docs/screenshots/page-memory.png"><img src="./docs/screenshots/page-memory.png" alt="Memory workspace" /></a><br/>
+      <sub><b>Memory</b> · PowerMem-backed knowledge workspace</sub>
+    </td>
+    <td align="center">
+      <a href="./docs/screenshots/page-mcp.png"><img src="./docs/screenshots/page-mcp.png" alt="MCP servers page" /></a><br/>
+      <sub><b>MCP</b> · Servers, endpoints, and skill definitions</sub>
+    </td>
+    <td align="center">
+      <a href="./docs/screenshots/page-skills.png"><img src="./docs/screenshots/page-skills.png" alt="Skills marketplace" /></a><br/>
+      <sub><b>Skills</b> · ClawHub marketplace with install and audit</sub>
+    </td>
+  </tr>
+</table>
+
 ## Roadmap
 
 Six core capabilities — each moves from infrastructure toward real daily use:
@@ -178,7 +219,7 @@ Pre-release tags (`-rc.N`) are used for release candidates.
 
 ## 📰 News
 
-- **2026-04-22** 🚀 v0.3.0-rc.1 — first release candidate. 2-step setup wizard, PaddleOCR, ERNIE image, cost observability, cron management. CLI is the recommended install method; desktop builds are beta.
+- **2026-04-25** 🚀 v0.3.0 — first official release. Setup wizard, PaddleOCR, ERNIE image, cost observability, cron management, bundled skills refresh, and managed PowerMem support. CLI is the recommended install method; desktop builds remain beta.
 - **2026-04-17** ✨ Brand and positioning launch — ClawMaster is now an OpenClaw companion for real life, not just a control plane. New wordmark, Apache 2.0 license, Pride Versioning.
 
 ## Development

@@ -5,6 +5,7 @@ import path from 'node:path'
 import type { OpenclawProfileSelection } from './openclawProfile.js'
 
 export type ClawmasterRuntimeMode = 'native' | 'wsl2'
+export const DEFAULT_NPM_PROXY_REGISTRY_URL = 'https://registry.npmmirror.com'
 
 export interface ClawmasterRuntimeSelection {
   mode: ClawmasterRuntimeMode
@@ -13,9 +14,14 @@ export interface ClawmasterRuntimeSelection {
   autoStartBackend?: boolean
 }
 
+export interface ClawmasterNpmProxySelection {
+  enabled: boolean
+}
+
 export interface ClawmasterSettings {
   openclawProfile?: OpenclawProfileSelection
   runtime?: ClawmasterRuntimeSelection
+  npmProxy?: ClawmasterNpmProxySelection
 }
 
 export interface ClawmasterSettingsContext {
@@ -105,3 +111,39 @@ export function setClawmasterRuntimeSelection(
   return normalized
 }
 
+export function normalizeClawmasterNpmProxySelection(
+  selection?: Partial<ClawmasterNpmProxySelection> | null
+): ClawmasterNpmProxySelection {
+  return {
+    enabled: selection?.enabled === true,
+  }
+}
+
+export function getClawmasterNpmProxySelection(
+  context: ClawmasterSettingsContext = {}
+): ClawmasterNpmProxySelection {
+  return normalizeClawmasterNpmProxySelection(readClawmasterSettings(context).npmProxy)
+}
+
+export function setClawmasterNpmProxySelection(
+  selection?: Partial<ClawmasterNpmProxySelection> | null,
+  context: ClawmasterSettingsContext = {}
+): ClawmasterNpmProxySelection {
+  const normalized = normalizeClawmasterNpmProxySelection(selection)
+  const next = readClawmasterSettings(context)
+  if (!normalized.enabled) {
+    delete next.npmProxy
+  } else {
+    next.npmProxy = normalized
+  }
+  writeClawmasterSettings(next, context)
+  return normalized
+}
+
+export function getClawmasterNpmProxyRegistryUrl(
+  context: ClawmasterSettingsContext = {}
+): string | null {
+  return getClawmasterNpmProxySelection(context).enabled
+    ? DEFAULT_NPM_PROXY_REGISTRY_URL
+    : null
+}

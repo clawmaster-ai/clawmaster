@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, ChevronsUpDown, Search, Sparkles } from 'lucide-react'
+import { Check, ChevronsUpDown, Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { platform } from '@/adapters'
 import { PasswordField } from '@/shared/components/PasswordField'
@@ -22,8 +22,6 @@ import {
 } from '@/modules/setup/types'
 import { getToolModelRecommendations } from '@/modules/setup/toolModelRecommendations'
 import type { OpenClawConfig, ModelInfo, OpenClawModelProvider, OpenClawModelRef } from '@/lib/types'
-
-const providerBadgeToneClass = 'border-amber-400/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
 
 function isGoldenSponsor(providerId: string) {
   return PROVIDER_BADGES[providerId as keyof typeof PROVIDER_BADGES] === 'golden-sponsor'
@@ -205,18 +203,8 @@ function getQuickPickModels(models: ProviderModelOption[], currentModelId: strin
   return quickPicks
 }
 
-function ProviderBadge({ providerId }: { providerId: string }) {
-  const { t } = useTranslation()
-  if (PROVIDER_BADGES[providerId as keyof typeof PROVIDER_BADGES] !== 'golden-sponsor') {
-    return null
-  }
-
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${providerBadgeToneClass}`}>
-      <Sparkles className="h-3.5 w-3.5" />
-      {t('providers.badgeGoldenSponsor')}
-    </span>
-  )
+function ProviderBadge(_: { providerId: string }) {
+  return null
 }
 
 function ProviderGuidancePanel({

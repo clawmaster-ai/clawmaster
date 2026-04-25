@@ -22,6 +22,15 @@ export interface ClawmasterRuntimeInput {
   autoStartBackend?: boolean
 }
 
+export interface ClawmasterNpmProxyInput {
+  enabled: boolean
+}
+
+export interface ClawmasterNpmProxyInfo {
+  enabled: boolean
+  registryUrl: string | null
+}
+
 export interface HttpProbeInput {
   url: string
   method?: 'GET' | 'POST'
@@ -93,6 +102,34 @@ export async function saveClawmasterRuntimeResult(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(runtime),
+  })
+}
+
+export async function getClawmasterNpmProxyResult(): Promise<
+  AdapterResult<ClawmasterNpmProxyInfo>
+> {
+  if (getIsTauri()) {
+    return fromPromise(() =>
+      tauriInvoke<ClawmasterNpmProxyInfo>('get_clawmaster_npm_proxy')
+    )
+  }
+  return webFetchJson<ClawmasterNpmProxyInfo>('/api/settings/npm-proxy')
+}
+
+export async function saveClawmasterNpmProxyResult(
+  npmProxy: ClawmasterNpmProxyInput
+): Promise<AdapterResult<ClawmasterNpmProxyInfo>> {
+  if (getIsTauri()) {
+    return fromPromise(() =>
+      tauriInvoke<ClawmasterNpmProxyInfo>('save_clawmaster_npm_proxy', {
+        enabled: npmProxy.enabled,
+      })
+    )
+  }
+  return webFetchJson<ClawmasterNpmProxyInfo>('/api/settings/npm-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(npmProxy),
   })
 }
 

@@ -6,6 +6,8 @@ import SetupWizard from '../SetupWizard'
 const mockDetectCapabilities = vi.fn()
 const mockInstallCapabilities = vi.fn()
 const mockGetProviderModelCatalogResult = vi.fn()
+const mockGetNpmProxy = vi.fn()
+const mockSaveNpmProxy = vi.fn()
 const mockSetupAdapter = {
   detectCapabilities: (...args: any[]) => mockDetectCapabilities(...args),
   installCapabilities: (...args: any[]) => mockInstallCapabilities(...args),
@@ -28,6 +30,11 @@ vi.mock('../adapters', () => ({
 
 vi.mock('@/shared/adapters/openclaw', () => ({
   getProviderModelCatalogResult: (...args: any[]) => mockGetProviderModelCatalogResult(...args),
+}))
+
+vi.mock('@/shared/adapters/system', () => ({
+  getClawmasterNpmProxyResult: (...args: any[]) => mockGetNpmProxy(...args),
+  saveClawmasterNpmProxyResult: (...args: any[]) => mockSaveNpmProxy(...args),
 }))
 
 vi.mock('@/shared/adapters/ollama', () => ({
@@ -85,6 +92,18 @@ describe('SetupWizard', () => {
     mockSetupAdapter.onboarding.testApiKey.mockResolvedValue(true)
     mockSetupAdapter.onboarding.setApiKey.mockResolvedValue(undefined)
     mockSetupAdapter.onboarding.setDefaultModel.mockResolvedValue(undefined)
+    mockSetupAdapter.onboarding.startGateway.mockResolvedValue(undefined)
+    mockSetupAdapter.onboarding.checkGateway.mockResolvedValue(true)
+    mockGetNpmProxy.mockResolvedValue({
+      success: true,
+      data: { enabled: false, registryUrl: null },
+      error: null,
+    })
+    mockSaveNpmProxy.mockResolvedValue({
+      success: true,
+      data: { enabled: true, registryUrl: 'https://registry.npmmirror.com' },
+      error: null,
+    })
     mockGetProviderModelCatalogResult.mockResolvedValue({
       success: false,
       data: undefined,
@@ -131,7 +150,7 @@ describe('SetupWizard', () => {
 
       expect(await screen.findByRole('button', { name: /Install Core Engine/i })).toBeInTheDocument()
       expect(screen.getByText(/Core engine not installed/i)).toBeInTheDocument()
-      expect(screen.getByText(/Use China npm mirror/i)).toBeInTheDocument()
+      expect(screen.getByText(/Use npm mirror/i)).toBeInTheDocument()
     })
 
     it('falls back to not_installed when detection throws', async () => {
@@ -178,16 +197,30 @@ describe('SetupWizard', () => {
       expect(await screen.findByText('Configure LLM Provider')).toBeInTheDocument()
     })
 
-    it('passes China mirror registry when mirror toggle is checked', async () => {
+    it('shows the mirror toggle for English users', async () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       await screen.findByRole('button', { name: /Install Core Engine/i })
+
+      expect(screen.getByText(/Use npm mirror/i)).toBeInTheDocument()
+      expect(screen.getByRole('checkbox')).toBeInTheDocument()
+      expect(mockGetNpmProxy).toHaveBeenCalled()
+    })
+
+    it('passes the npm mirror registry when mirror toggle is checked', async () => {
+      await changeLanguage('zh')
+      render(<SetupWizard onComplete={() => {}} />)
+
+      const installButton = await screen.findByRole('button', { name: /安装核心引擎/i })
 
       const checkbox = screen.getByRole('checkbox')
       fireEvent.click(checkbox)
       expect(checkbox).toBeChecked()
 
-      fireEvent.click(screen.getByRole('button', { name: /Install Core Engine/i }))
+      await waitFor(() => {
+        expect(installButton).not.toBeDisabled()
+      })
+      fireEvent.click(installButton)
 
       await waitFor(() => {
         expect(mockInstallCapabilities).toHaveBeenCalledWith(
@@ -198,16 +231,92 @@ describe('SetupWizard', () => {
       })
     })
 
-    it('shows error and retry button when installation fails', async () => {
-      mockInstallCapabilities.mockRejectedValue(new Error('ENOMEM'))
+    it('waits for the mirror preference to persist before starting install', async () => {
+      await changeLanguage('zh')
+      mockGetNpmProxy.mockResolvedValue({
+        success: true,
+        data: { enabled: true, registryUrl: 'https://registry.npmmirror.com' },
+        error: null,
+      })
+      const save = deferred<{ success: boolean; data: { enabled: boolean; registryUrl: null }; error: null }>()
+      mockSaveNpmProxy.mockReturnValue(save.promise)
 
       render(<SetupWizard onComplete={() => {}} />)
 
-      fireEvent.click(await screen.findByRole('button', { name: /Install Core Engine/i }))
+      const checkbox = await screen.findByRole('checkbox')
+      await waitFor(() => {
+        expect(checkbox).toBeChecked()
+      })
+
+      const installButton = screen.getByRole('button', { name: /安装核心引擎/i })
+      fireEvent.click(checkbox)
+      expect(installButton).not.toBeDisabled()
+      fireEvent.click(installButton)
+
+      expect(mockInstallCapabilities).not.toHaveBeenCalled()
+
+      save.resolve({
+        success: true,
+        data: { enabled: false, registryUrl: null },
+        error: null,
+      })
+
+      await waitFor(() => {
+        expect(mockInstallCapabilities).toHaveBeenCalledWith(
+          ['engine'],
+          expect.any(Function),
+          undefined,
+        )
+      })
+    })
+
+    it('does not queue duplicate engine installs while mirror persistence is pending', async () => {
+      await changeLanguage('zh')
+      mockGetNpmProxy.mockResolvedValue({
+        success: true,
+        data: { enabled: true, registryUrl: 'https://registry.npmmirror.com' },
+        error: null,
+      })
+      const save = deferred<{ success: boolean; data: { enabled: boolean; registryUrl: null }; error: null }>()
+      mockSaveNpmProxy.mockReturnValue(save.promise)
+
+      render(<SetupWizard onComplete={() => {}} />)
+
+      const checkbox = await screen.findByRole('checkbox')
+      await waitFor(() => {
+        expect(checkbox).toBeChecked()
+      })
+
+      const installButton = screen.getByRole('button', { name: /安装核心引擎/i })
+      fireEvent.click(checkbox)
+      fireEvent.click(installButton)
+      expect(installButton).toBeDisabled()
+      fireEvent.click(installButton)
+
+      expect(mockInstallCapabilities).not.toHaveBeenCalled()
+
+      save.resolve({
+        success: true,
+        data: { enabled: false, registryUrl: null },
+        error: null,
+      })
+
+      await waitFor(() => {
+        expect(mockInstallCapabilities).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('shows error and retry button when installation fails', async () => {
+      mockInstallCapabilities.mockRejectedValue(new Error('ENOMEM'))
+      await changeLanguage('zh')
+
+      render(<SetupWizard onComplete={() => {}} />)
+
+      fireEvent.click(await screen.findByRole('button', { name: /安装核心引擎/i }))
 
       expect(await screen.findByText('ENOMEM')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument()
-      expect(screen.getByText(/Use China npm mirror/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /重试/i })).toBeInTheDocument()
+      expect(screen.getByText(/使用 npm 镜像/i)).toBeInTheDocument()
     })
 
     it('retries installation after failure', async () => {
@@ -242,10 +351,11 @@ describe('SetupWizard', () => {
   // ──────────────────────────────────────────────────────
 
   describe('Step 2: Provider selection', () => {
-    it('shows golden sponsor badge for ERNIE', async () => {
+    it('shows ERNIE under the invited sponsors tier', async () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       await screen.findByText('Configure LLM Provider')
+      expect(screen.getByText('Invited Sponsors')).toBeInTheDocument()
       expect(screen.getByText('ERNIE LLM API')).toBeInTheDocument()
     })
 
@@ -258,13 +368,16 @@ describe('SetupWizard', () => {
       expect(within(pills as HTMLElement).getByText('Model')).toBeInTheDocument()
     })
 
-    it('shows tier-1 sponsor and tier-2 featured providers on load', async () => {
+    it('shows invited sponsors and the default global providers on load', async () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       await screen.findByText('Configure LLM Provider')
-      // Tier 1 — sponsor
+      // Tier 1 — invited sponsors
       expect(screen.getByText('ERNIE LLM API')).toBeInTheDocument()
       // Tier 2 featured (visible by default)
+      expect(screen.getByText('OpenAI')).toBeInTheDocument()
+      expect(screen.getByText('Anthropic')).toBeInTheDocument()
+      expect(screen.getByText('Google Gemini')).toBeInTheDocument()
       expect(screen.getByText('DeepSeek')).toBeInTheDocument()
       expect(screen.getByText('Kimi (Moonshot)')).toBeInTheDocument()
       expect(screen.getByText('MiniMax')).toBeInTheDocument()
@@ -274,8 +387,8 @@ describe('SetupWizard', () => {
       expect(screen.getByText('Ollama')).toBeInTheDocument()
       expect(screen.getByText('Custom (OpenAI Compatible)')).toBeInTheDocument()
       // Tier-2 "more" is collapsed by default
-      expect(screen.queryByText('OpenAI')).not.toBeInTheDocument()
-      expect(screen.queryByText('Anthropic')).not.toBeInTheDocument()
+      expect(screen.queryByText('Mistral AI')).not.toBeInTheDocument()
+      expect(screen.queryByText('Groq')).not.toBeInTheDocument()
     })
 
     it('reveals tier-2 "more" providers when expanded', async () => {
@@ -284,9 +397,10 @@ describe('SetupWizard', () => {
       await screen.findByText('Configure LLM Provider')
 
       fireEvent.click(screen.getByText(/More providers/i))
-      expect(screen.getByText('DeepSeek')).toBeInTheDocument()
+      expect(screen.getByText('OpenAI')).toBeInTheDocument()
       expect(screen.getByText('Anthropic')).toBeInTheDocument()
       expect(screen.getByText('Google Gemini')).toBeInTheDocument()
+      expect(screen.getByText('DeepSeek')).toBeInTheDocument()
       expect(screen.getByText('Mistral AI')).toBeInTheDocument()
       expect(screen.getByText('Groq')).toBeInTheDocument()
     })
@@ -297,11 +411,11 @@ describe('SetupWizard', () => {
       await screen.findByText('Configure LLM Provider')
 
       fireEvent.click(screen.getByText(/More providers/i))
-      fireEvent.click(screen.getByRole('button', { name: 'OpenAI' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Mistral AI' }))
       fireEvent.click(screen.getByRole('button', { name: /Collapse/i }))
 
-      expect(screen.getByRole('button', { name: 'OpenAI' })).toBeInTheDocument()
-      expect(screen.getByPlaceholderText(/Enter OpenAI API Key/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Mistral AI' })).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Enter Mistral AI API Key/i)).toBeInTheDocument()
       expect(screen.getByText(/More providers/i)).toBeInTheDocument()
     })
 
@@ -442,7 +556,7 @@ describe('SetupWizard', () => {
 
       expect(screen.getByRole('button', { name: /Validate & Continue/i })).toBeInTheDocument()
       expect(screen.queryByText('Select Default Model')).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /Enter ClawMaster/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Next/i })).not.toBeInTheDocument()
     })
 
     it('requires revalidation when the base URL changes after validation', async () => {
@@ -462,7 +576,7 @@ describe('SetupWizard', () => {
 
       expect(screen.getByRole('button', { name: /Validate & Continue/i })).toBeInTheDocument()
       expect(screen.queryByText('Select Default Model')).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /Enter ClawMaster/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Next/i })).not.toBeInTheDocument()
     })
 
     it('loads live GLM catalog models for custom OpenAI-compatible endpoints', async () => {
@@ -558,7 +672,7 @@ describe('SetupWizard', () => {
       fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-ds' } })
       fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
 
-      const enterButton = await screen.findByRole('button', { name: /Enter ClawMaster/i })
+      const enterButton = await screen.findByRole('button', { name: /Next/i })
 
       await waitFor(() => {
         expect(enterButton).toBeDisabled()
@@ -658,7 +772,7 @@ describe('SetupWizard', () => {
 
       expect(screen.getByDisplayValue('deepseek-chat')).not.toBeChecked()
 
-      fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
+      fireEvent.click(screen.getByRole('button', { name: /Next/i }))
 
       await waitFor(() => {
         expect(mockSetupAdapter.onboarding.setDefaultModel).toHaveBeenCalledWith('deepseek/deepseek-v4-preview')
@@ -673,7 +787,7 @@ describe('SetupWizard', () => {
       fireEvent.change(customInput, { target: { value: 'x' } })
       fireEvent.change(customInput, { target: { value: '' } })
 
-      const btn = screen.getByRole('button', { name: /Enter ClawMaster/i })
+      const btn = screen.getByRole('button', { name: /Next/i })
       expect(btn).toBeDisabled()
     })
   })
@@ -682,7 +796,56 @@ describe('SetupWizard', () => {
   // Full happy-path flow
   // ──────────────────────────────────────────────────────
 
-  describe('Full happy-path: detect → provider → model → reveal → complete', () => {
+  describe('Gateway step', () => {
+    it('requires a gateway check after model setup before completing onboarding', async () => {
+      const onComplete = vi.fn()
+      render(<SetupWizard onComplete={onComplete} />)
+
+      await screen.findByText('Configure LLM Provider')
+
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-prod-key' } })
+      fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
+
+      await screen.findByText('Select Default Model')
+      fireEvent.click(screen.getByDisplayValue('deepseek-chat'))
+      fireEvent.click(screen.getByRole('button', { name: /Next/i }))
+
+      expect(await screen.findByRole('heading', { name: 'Gateway' })).toBeInTheDocument()
+      expect(onComplete).not.toHaveBeenCalled()
+      expect(mockSetupAdapter.onboarding.checkGateway).toHaveBeenCalled()
+    })
+
+    it('starts the gateway when it is not running and then allows entering', async () => {
+      mockSetupAdapter.onboarding.checkGateway
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true)
+
+      render(<SetupWizard onComplete={vi.fn()} />)
+
+      await screen.findByText('Configure LLM Provider')
+
+      fireEvent.click(screen.getByText('DeepSeek'))
+      fireEvent.change(screen.getByPlaceholderText(/Enter DeepSeek API Key/i), { target: { value: 'sk-prod-key' } })
+      fireEvent.click(screen.getByRole('button', { name: /Validate & Continue/i }))
+
+      await screen.findByText('Select Default Model')
+      fireEvent.click(screen.getByDisplayValue('deepseek-chat'))
+      fireEvent.click(screen.getByRole('button', { name: /Next/i }))
+
+      expect(await screen.findByRole('button', { name: /Start Gateway/i })).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /Start Gateway/i }))
+
+      await waitFor(() => {
+        expect(mockSetupAdapter.onboarding.startGateway).toHaveBeenCalledWith(18789)
+      })
+
+      expect(await screen.findByRole('button', { name: /Enter ClawMaster/i })).toBeInTheDocument()
+    })
+  })
+
+  describe('Full happy-path: detect → provider → model → gateway → reveal → complete', () => {
     it('completes the entire wizard flow end-to-end', async () => {
       const onComplete = vi.fn()
       render(<SetupWizard onComplete={onComplete} />)
@@ -700,7 +863,7 @@ describe('SetupWizard', () => {
 
       // Step 2c: pick model and confirm
       fireEvent.click(screen.getByDisplayValue('deepseek-chat'))
-      fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
+      fireEvent.click(screen.getByRole('button', { name: /Next/i }))
 
       // Adapter calls
       await waitFor(() => {
@@ -708,6 +871,9 @@ describe('SetupWizard', () => {
         expect(mockSetupAdapter.onboarding.setApiKey).toHaveBeenCalledWith('deepseek', 'sk-prod-key', 'https://api.deepseek.com/v1')
         expect(mockSetupAdapter.onboarding.setDefaultModel).toHaveBeenCalledWith('deepseek/deepseek-chat')
       })
+
+      expect(await screen.findByRole('button', { name: /Enter ClawMaster/i })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
 
       // Circle reveal triggers onComplete
       await waitFor(() => {
@@ -720,7 +886,7 @@ describe('SetupWizard', () => {
   // Full install path flow
   // ──────────────────────────────────────────────────────
 
-  describe('Full install path: not_installed → install → provider → model → complete', () => {
+  describe('Full install path: not_installed → install → provider → model → gateway → complete', () => {
     it('installs engine then completes the wizard', async () => {
       mockDetectCapabilities.mockImplementation(async (onUpdate: (status: any) => void) => {
         const results = engineMissing()
@@ -746,11 +912,14 @@ describe('SetupWizard', () => {
 
       // Pick model and finish
       fireEvent.click(screen.getByDisplayValue('deepseek-chat'))
-      fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
+      fireEvent.click(screen.getByRole('button', { name: /Next/i }))
 
       await waitFor(() => {
         expect(mockSetupAdapter.onboarding.setDefaultModel).toHaveBeenCalledWith('deepseek/deepseek-chat')
       })
+
+      expect(await screen.findByRole('button', { name: /Enter ClawMaster/i })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
 
       await waitFor(() => {
         expect(onComplete).toHaveBeenCalledTimes(1)
@@ -763,7 +932,7 @@ describe('SetupWizard', () => {
   // ──────────────────────────────────────────────────────
 
   describe('Skip flow', () => {
-    it('allows skipping from provider step directly', async () => {
+    it('allows skipping provider setup but still requires the gateway step', async () => {
       const onComplete = vi.fn()
       render(<SetupWizard onComplete={onComplete} />)
 
@@ -771,8 +940,23 @@ describe('SetupWizard', () => {
 
       fireEvent.click(screen.getByText(/Skip remaining steps/i))
 
+      expect(await screen.findByRole('heading', { name: 'Gateway' })).toBeInTheDocument()
+      expect(onComplete).not.toHaveBeenCalled()
+    })
+
+    it('completes after skipping provider setup and confirming the gateway step', async () => {
+      const onComplete = vi.fn()
+      render(<SetupWizard onComplete={onComplete} />)
+
+      await screen.findByText('Configure LLM Provider')
+
+      fireEvent.click(screen.getByText(/Skip remaining steps/i))
+
+      expect(await screen.findByRole('button', { name: /Enter ClawMaster/i })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
+
       await waitFor(() => {
-        expect(onComplete).toHaveBeenCalledTimes(1)
+        expect(onComplete).toHaveBeenCalled()
       }, { timeout: 2000 })
     })
 
@@ -782,6 +966,8 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
       fireEvent.click(screen.getByText(/Skip remaining steps/i))
+      expect(await screen.findByRole('button', { name: /Enter ClawMaster/i })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
 
       await waitFor(() => {
         expect(onComplete).toHaveBeenCalled()
@@ -887,13 +1073,16 @@ describe('SetupWizard', () => {
       fireEvent.click(screen.getByText(/Ollama/i))
       expect(await screen.findByText('qwen2.5:latest')).toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
+      fireEvent.click(screen.getByRole('button', { name: /Next/i }))
 
       await waitFor(() => {
         expect(mockSetupAdapter.onboarding.testApiKey).toHaveBeenCalledWith('ollama', 'ollama', 'http://localhost:11434/v1')
         expect(mockSetupAdapter.onboarding.setApiKey).toHaveBeenCalledWith('ollama', 'ollama', 'http://localhost:11434/v1')
         expect(mockSetupAdapter.onboarding.setDefaultModel).toHaveBeenCalledWith('ollama/qwen2.5:latest')
       })
+
+      expect(await screen.findByRole('button', { name: /Enter ClawMaster/i })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
 
       await waitFor(() => {
         expect(onComplete).toHaveBeenCalledTimes(1)
@@ -912,14 +1101,18 @@ describe('SetupWizard', () => {
         for (const item of results) onUpdate(item)
         return results
       })
+      const install = deferred<void>()
+      mockInstallCapabilities.mockReturnValue(install.promise)
 
       render(<SetupWizard onComplete={() => {}} />)
 
       fireEvent.click(await screen.findByRole('button', { name: /Install Core Engine/i }))
 
-      const saved = JSON.parse(localStorage.getItem('clawmaster-wizard-install') ?? '{}')
-      expect(saved.phase).toBe('installing')
-      expect(saved.startedAt).toBeGreaterThan(0)
+      await waitFor(() => {
+        const saved = JSON.parse(localStorage.getItem('clawmaster-wizard-install') ?? '{}')
+        expect(saved.phase).toBe('installing')
+        expect(saved.startedAt).toBeGreaterThan(0)
+      })
     })
 
     it('clears localStorage on install failure', async () => {
@@ -1005,7 +1198,7 @@ describe('SetupWizard', () => {
       render(<SetupWizard onComplete={() => {}} />)
 
       expect(await screen.findByRole('button', { name: /Install Core Engine/i })).toBeInTheDocument()
-      expect(screen.getByText(/Use China npm mirror/i)).toBeInTheDocument()
+      expect(screen.getByText(/Use npm mirror/i)).toBeInTheDocument()
     })
 
     it('ignores stale localStorage entries older than 10 minutes', async () => {
@@ -1037,6 +1230,8 @@ describe('SetupWizard', () => {
 
       await screen.findByText('Configure LLM Provider')
       fireEvent.click(screen.getByText(/Skip remaining steps/i))
+      expect(await screen.findByRole('button', { name: /Enter ClawMaster/i })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Enter ClawMaster/i }))
 
       await waitFor(() => {
         expect(onComplete).toHaveBeenCalled()

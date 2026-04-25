@@ -105,17 +105,15 @@ describe('ModelsPage', () => {
     expect(within(firstRun).getByText('Connect your first provider')).toBeInTheDocument()
     expect(within(firstRun).getByText('Text providers')).toBeInTheDocument()
     expect(within(firstRun).getByText('Image providers')).toBeInTheDocument()
-    // First-run grid surfaces the top 4 providers from PRIMARY_PROVIDERS,
-    // which after the tier reshuffle is: ERNIE LLM API (sponsor) + first
-    // three tier-2 "featured" entries (DeepSeek, Kimi, MiniMax).
+    // First-run grid surfaces the top 4 providers from PRIMARY_PROVIDERS:
+    // ERNIE LLM API plus the default featured trio (OpenAI, Anthropic, Gemini).
     expect(within(firstRun).getByText('ERNIE LLM API')).toBeInTheDocument()
-    expect(within(firstRun).getByText('DeepSeek')).toBeInTheDocument()
-    expect(within(firstRun).getByText('Kimi (Moonshot)')).toBeInTheDocument()
-    expect(within(firstRun).getByText('MiniMax')).toBeInTheDocument()
+    expect(within(firstRun).getByText('OpenAI')).toBeInTheDocument()
+    expect(within(firstRun).getByText('Anthropic')).toBeInTheDocument()
+    expect(within(firstRun).getByText('Google Gemini')).toBeInTheDocument()
     expect(within(firstRun).getByText('ERNIE-Image')).toBeInTheDocument()
     expect(within(firstRun).getByText('Gemini Image')).toBeInTheDocument()
     expect(within(firstRun).getByText('GPT Image')).toBeInTheDocument()
-    expect(within(firstRun).getAllByText('Golden Sponsor').length).toBeGreaterThan(0)
 
     fireEvent.click(getProviderButtonByLabel('ERNIE LLM API'))
 
@@ -285,7 +283,7 @@ describe('ModelsPage', () => {
     })
   })
 
-  it('ranks the golden sponsor first in configured providers and in the add-provider panel', async () => {
+  it('keeps the invited sponsor first in configured providers and in the add-provider panel', async () => {
     mockGetConfig.mockResolvedValueOnce({
       agents: {
         defaults: {
@@ -321,7 +319,6 @@ describe('ModelsPage', () => {
     const addPanel = getElementById('models-add-provider')
     const providerButtons = Array.from(addPanel.querySelectorAll<HTMLButtonElement>('[data-provider-id]'))
     expect(providerButtons[0]?.dataset.providerId).toBe('baidu-aistudio')
-    expect(providerButtons[0]?.textContent).toContain('Golden Sponsor')
     expect(providerButtons[0]?.textContent).toContain('ERNIE LLM API')
   })
 

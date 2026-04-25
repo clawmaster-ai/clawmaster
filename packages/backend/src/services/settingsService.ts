@@ -1,8 +1,12 @@
 import fs from 'node:fs'
 import {
+  getClawmasterNpmProxyRegistryUrl,
+  getClawmasterNpmProxySelection,
   getClawmasterRuntimeSelection,
+  setClawmasterNpmProxySelection,
   setClawmasterRuntimeSelection,
   type ClawmasterRuntimeSelection,
+  type ClawmasterNpmProxySelection,
 } from '../clawmasterSettings.js'
 import {
   expandUserPath,
@@ -38,6 +42,7 @@ export interface OpenclawProfileSeedInput {
 }
 
 export type ClawmasterRuntimeInput = Partial<ClawmasterRuntimeSelection>
+export type ClawmasterNpmProxyInput = Partial<ClawmasterNpmProxySelection>
 
 export function getBackupDefaults() {
   const snapshotsDir = getOpenclawSnapshotsDir()
@@ -280,6 +285,25 @@ export function saveClawmasterRuntime(
   context: OpenclawProfileContext = {}
 ) {
   return setClawmasterRuntimeSelection(runtime, context)
+}
+
+export function getClawmasterNpmProxy() {
+  const selection = getClawmasterNpmProxySelection()
+  return {
+    ...selection,
+    registryUrl: getClawmasterNpmProxyRegistryUrl(),
+  }
+}
+
+export function saveClawmasterNpmProxy(
+  npmProxy?: ClawmasterNpmProxyInput | null,
+  context: OpenclawProfileContext = {}
+) {
+  const selection = setClawmasterNpmProxySelection(npmProxy, context)
+  return {
+    ...selection,
+    registryUrl: getClawmasterNpmProxyRegistryUrl(context),
+  }
 }
 
 export async function uninstallOpenclaw() {

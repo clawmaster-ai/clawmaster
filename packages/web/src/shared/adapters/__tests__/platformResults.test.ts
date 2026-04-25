@@ -5,6 +5,8 @@ describe('platformResults', () => {
   it('exports all expected adapter functions', () => {
     // Core system
     expect(typeof platformResults.detectSystem).toBe('function')
+    expect(typeof platformResults.getClawmasterNpmProxy).toBe('function')
+    expect(typeof platformResults.saveClawmasterNpmProxy).toBe('function')
 
     // Gateway
     expect(typeof platformResults.getGatewayStatus).toBe('function')

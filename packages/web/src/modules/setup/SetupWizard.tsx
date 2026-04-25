@@ -23,12 +23,12 @@ import {
 } from '@/shared/adapters/ollama'
 import { changeLanguage } from '@/i18n'
 import { getProviderModelCatalogResult } from '@/shared/adapters/openclaw'
+import { getClawmasterNpmProxyResult, saveClawmasterNpmProxyResult } from '@/shared/adapters/system'
 import { supportsProviderCatalog } from '@/shared/providerCatalog'
 import { getSetupAdapter } from './adapters'
 import { CircleReveal } from './CircleReveal'
 import {
   PROVIDERS,
-  PROVIDER_BADGES,
   TEXT_PROVIDER_TIERS,
   providerSupportsSetup,
   getProviderCredentialLabel,
@@ -48,6 +48,7 @@ type WizardPhase =
   | 'installing'    // npm install -g openclaw in progress
   | 'install_error' // install failed
   | 'provider'      // pick provider + API key + model (all in one)
+  | 'gateway'       // required gateway status/start check before entering app
 
 interface SetupWizardProps {
   onComplete: () => void
@@ -59,6 +60,10 @@ const INSTALL_STATE_KEY = 'clawmaster-wizard-install'
 const INSTALL_STALE_MS = 10 * 60 * 1000
 const INSTALL_RECOVERY_POLL_MS = 2000
 const INSTALL_RECOVERY_GRACE_MS = 60 * 1000
+const NPM_MIRROR_REGISTRY_URL = 'https://registry.npmmirror.com'
+const GATEWAY_DEFAULT_PORT = 18789
+const GATEWAY_START_POLL_ATTEMPTS = 6
+const GATEWAY_START_POLL_INTERVAL_MS = 1000
 
 type PersistedInstallState = {
   phase: 'installing' | 'installed'
@@ -174,6 +179,19 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const configInitializedRef = useRef(false)
   const recoveryDetectInFlightRef = useRef(false)
   const recoveryStartedAtRef = useRef<number | null>(null)
+  const mirrorTouchedRef = useRef(false)
+  const mirrorSavePromiseRef = useRef<Promise<void> | null>(null)
+  const mirrorLoadPromiseRef = useRef<Promise<void> | null>(null)
+  const mirrorPersistedEnabledRef = useRef(false)
+  const mirrorRequestedEnabledRef = useRef(false)
+  const installPendingRef = useRef(false)
+  const [mirrorLoading, setMirrorLoading] = useState(true)
+  const [mirrorSaving, setMirrorSaving] = useState(false)
+  const [installPending, setInstallPending] = useState(false)
+  const [gatewayState, setGatewayState] = useState<'checking' | 'stopped' | 'running'>('checking')
+  const [gatewayBusy, setGatewayBusy] = useState(false)
+  const [gatewayError, setGatewayError] = useState<string | null>(null)
+  const gatewayCheckRequestIdRef = useRef(0)
 
   // Provider / model state
   const [onboard, setOnboard] = useState<OnboardingState>(DEFAULT_ONBOARDING_STATE)
@@ -261,6 +279,11 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
 
   const adapter = getSetupAdapter()
   const simProgress = useSimulatedProgress()
+  const enterGatewayStep = useCallback(() => {
+    setGatewayError(null)
+    setGatewayState('checking')
+    setPhase('gateway')
+  }, [])
   const ensureConfigInitialized = useCallback(async () => {
     if (configInitializedRef.current) return true
 
@@ -379,6 +402,33 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   }, [detectEngine])
 
   useEffect(() => {
+    let cancelled = false
+
+    setMirrorLoading(true)
+    const loadPromise = getClawmasterNpmProxyResult().then((result) => {
+      if (cancelled) return
+      if (!mirrorTouchedRef.current && result.success && result.data) {
+        mirrorPersistedEnabledRef.current = result.data.enabled
+        mirrorRequestedEnabledRef.current = result.data.enabled
+        setUseMirror(result.data.enabled)
+      }
+    }).finally(() => {
+      if (!cancelled) {
+        setMirrorLoading(false)
+      }
+      if (mirrorLoadPromiseRef.current === loadPromise) {
+        mirrorLoadPromiseRef.current = null
+      }
+    })
+
+    mirrorLoadPromiseRef.current = loadPromise
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (!recoveringInstall) return
     const intervalId = window.setInterval(() => {
       if (recoveryDetectInFlightRef.current) return
@@ -396,34 +446,163 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   // ─── Step 1b: Install OpenClaw ───
 
   const startInstall = useCallback(async () => {
-    recoveryStartedAtRef.current = null
-    setRecoveringInstall(false)
-    setPhase('installing')
-    setInstallError(null)
-    simProgress.start()
-    saveInstallState({ phase: 'installing', startedAt: Date.now() })
-
-    const installOptions = useMirror
-      ? { registryUrl: 'https://registry.npmmirror.com' }
-      : undefined
+    if (installPendingRef.current) {
+      return
+    }
+    installPendingRef.current = true
+    setInstallPending(true)
 
     try {
-      await adapter.installCapabilities(['engine'], () => {}, installOptions)
+      try {
+        await mirrorLoadPromiseRef.current
+        await mirrorSavePromiseRef.current
+      } catch (error) {
+        setInstallError(error instanceof Error ? error.message : String(error))
+        setPhase('install_error')
+        return
+      }
 
-      simProgress.finish()
-      saveInstallState({ phase: 'installed', startedAt: Date.now() })
-      await new Promise((r) => setTimeout(r, 600))
       recoveryStartedAtRef.current = null
-      clearInstallState()
-      setPhase('provider')
-    } catch (err) {
-      simProgress.reset()
-      recoveryStartedAtRef.current = null
-      clearInstallState()
-      setInstallError(err instanceof Error ? err.message : String(err))
-      setPhase('install_error')
+      setRecoveringInstall(false)
+      setPhase('installing')
+      setInstallError(null)
+      simProgress.start()
+      saveInstallState({ phase: 'installing', startedAt: Date.now() })
+
+      const installOptions = mirrorRequestedEnabledRef.current
+        ? { registryUrl: NPM_MIRROR_REGISTRY_URL }
+        : undefined
+
+      try {
+        await adapter.installCapabilities(['engine'], () => {}, installOptions)
+
+        simProgress.finish()
+        saveInstallState({ phase: 'installed', startedAt: Date.now() })
+        await new Promise((r) => setTimeout(r, 600))
+        recoveryStartedAtRef.current = null
+        clearInstallState()
+        setPhase('provider')
+      } catch (err) {
+        simProgress.reset()
+        recoveryStartedAtRef.current = null
+        clearInstallState()
+        setInstallError(err instanceof Error ? err.message : String(err))
+        setPhase('install_error')
+      }
+    } finally {
+      installPendingRef.current = false
+      setInstallPending(false)
     }
-  }, [adapter, simProgress, useMirror])
+  }, [adapter, simProgress])
+
+  const checkGatewayStatus = useCallback(async () => {
+    const requestId = gatewayCheckRequestIdRef.current + 1
+    gatewayCheckRequestIdRef.current = requestId
+    setGatewayError(null)
+    setGatewayState('checking')
+
+    try {
+      const running = await adapter.onboarding.checkGateway(GATEWAY_DEFAULT_PORT)
+      if (gatewayCheckRequestIdRef.current !== requestId) {
+        return false
+      }
+      setGatewayState(running ? 'running' : 'stopped')
+      return running
+    } catch (error) {
+      if (gatewayCheckRequestIdRef.current !== requestId) {
+        return false
+      }
+      setGatewayState('stopped')
+      setGatewayError(error instanceof Error ? error.message : String(error))
+      return false
+    }
+  }, [adapter])
+
+  useEffect(() => {
+    if (phase !== 'gateway') return
+    void checkGatewayStatus()
+  }, [checkGatewayStatus, phase])
+
+  const startGatewayAndCheck = useCallback(async () => {
+    if (gatewayBusy) {
+      return
+    }
+
+    setGatewayBusy(true)
+    setGatewayError(null)
+    setGatewayState('checking')
+
+    try {
+      await adapter.onboarding.startGateway(GATEWAY_DEFAULT_PORT)
+
+      for (let attempt = 0; attempt < GATEWAY_START_POLL_ATTEMPTS; attempt += 1) {
+        const running = await adapter.onboarding.checkGateway(GATEWAY_DEFAULT_PORT)
+        if (running) {
+          setGatewayState('running')
+          return
+        }
+        if (attempt < GATEWAY_START_POLL_ATTEMPTS - 1) {
+          await new Promise((resolve) => setTimeout(resolve, GATEWAY_START_POLL_INTERVAL_MS))
+        }
+      }
+
+      setGatewayState('stopped')
+      setGatewayError(t('setup.gatewayTimeout'))
+    } catch (error) {
+      setGatewayState('stopped')
+      setGatewayError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setGatewayBusy(false)
+    }
+  }, [adapter, gatewayBusy, t])
+
+  const completeWizard = useCallback(() => {
+    clearInstallState()
+    setShowReveal(true)
+  }, [])
+
+  const handleMirrorChange = useCallback((checked: boolean) => {
+    mirrorTouchedRef.current = true
+    mirrorRequestedEnabledRef.current = checked
+    setUseMirror(checked)
+    setMirrorSaving(true)
+
+    if (mirrorSavePromiseRef.current) {
+      return
+    }
+
+    const savePromise = (async () => {
+      while (mirrorPersistedEnabledRef.current !== mirrorRequestedEnabledRef.current) {
+        const requestedEnabled = mirrorRequestedEnabledRef.current
+        const result = await saveClawmasterNpmProxyResult({ enabled: requestedEnabled })
+
+        if (!result.success || !result.data) {
+          if (mirrorRequestedEnabledRef.current !== requestedEnabled) {
+            continue
+          }
+
+          mirrorRequestedEnabledRef.current = mirrorPersistedEnabledRef.current
+          setUseMirror(mirrorPersistedEnabledRef.current)
+          throw new Error(result.error ?? t('common.unknownError'))
+        }
+
+        mirrorPersistedEnabledRef.current = result.data.enabled
+        if (mirrorRequestedEnabledRef.current === requestedEnabled) {
+          mirrorRequestedEnabledRef.current = result.data.enabled
+          setUseMirror(result.data.enabled)
+        }
+      }
+    })()
+
+    const trackedSavePromise = savePromise.finally(() => {
+      if (mirrorSavePromiseRef.current === trackedSavePromise) {
+        mirrorSavePromiseRef.current = null
+        setMirrorSaving(false)
+      }
+    })
+    mirrorSavePromiseRef.current = trackedSavePromise
+    void mirrorSavePromiseRef.current.catch(() => {})
+  }, [t])
 
   // ─── Step 2: Set API Key ───
 
@@ -481,12 +660,11 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       await ensureConfigInitialized()
       await adapter.onboarding.setDefaultModel(fullModelId)
       updateOnboard({ busy: false })
-      // Trigger reveal animation
-      setShowReveal(true)
+      enterGatewayStep()
     } catch (err) {
       updateOnboard({ busy: false, error: err instanceof Error ? err.message : String(err) })
     }
-  }, [adapter, ensureConfigInitialized, onboard.provider, onboard.model, onboard.customModelId, updateOnboard])
+  }, [adapter, ensureConfigInitialized, enterGatewayStep, onboard.provider, onboard.model, onboard.customModelId, updateOnboard])
 
   const runSetOllamaAndFinish = useCallback(async (modelId: string) => {
     const selectedModelId = modelId.trim()
@@ -520,11 +698,11 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         model: selectedModelId,
         customModelId: '',
       })
-      setShowReveal(true)
+      enterGatewayStep()
     } catch (err) {
       updateOnboard({ busy: false, error: err instanceof Error ? err.message : String(err) })
     }
-  }, [adapter, ensureConfigInitialized, onboard.customBaseUrl, t, updateOnboard])
+  }, [adapter, ensureConfigInitialized, enterGatewayStep, onboard.customBaseUrl, t, updateOnboard])
 
   const handleRevealComplete = useCallback(() => {
     clearInstallState()
@@ -553,8 +731,11 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             installError={installError}
             simProgress={simProgress}
             isDemo={isDemo}
+            mirrorLoading={mirrorLoading}
+            mirrorSaving={mirrorSaving}
+            installPending={installPending}
             useMirror={useMirror}
-            onMirrorChange={setUseMirror}
+            onMirrorChange={handleMirrorChange}
             onInstall={startInstall}
             onRetry={detectEngine}
           />
@@ -573,8 +754,20 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             onProviderSwitch={resetValidationState}
             onSubmitApiKey={runSetApiKey}
             onSubmitModel={runSetModelAndFinish}
-            onSkip={() => setShowReveal(true)}
+            onSkip={enterGatewayStep}
             onSubmitOllama={runSetOllamaAndFinish}
+          />
+        )}
+
+        {/* ─── Step 3: Gateway check / start ─── */}
+        {phase === 'gateway' && (
+          <GatewayStep
+            gatewayState={gatewayState}
+            gatewayBusy={gatewayBusy}
+            gatewayError={gatewayError}
+            onStart={startGatewayAndCheck}
+            onRetryCheck={checkGatewayStatus}
+            onEnter={completeWizard}
           />
         )}
       </div>
@@ -590,6 +783,9 @@ function EngineStep({
   installError,
   simProgress,
   isDemo,
+  mirrorLoading,
+  mirrorSaving,
+  installPending,
   useMirror,
   onMirrorChange,
   onInstall,
@@ -600,12 +796,17 @@ function EngineStep({
   installError: string | null
   simProgress: ReturnType<typeof useSimulatedProgress>
   isDemo: boolean
+  mirrorLoading: boolean
+  mirrorSaving: boolean
+  installPending: boolean
   useMirror: boolean
   onMirrorChange: (value: boolean) => void
   onInstall: () => void
   onRetry: () => void
 }) {
   const { t } = useTranslation()
+  const mirrorToggleBusy = mirrorLoading || mirrorSaving
+  const installActionDisabled = installPending || phase === 'installing'
 
   return (
     <div className="wizard-engine-step">
@@ -681,6 +882,7 @@ function EngineStep({
           <input
             type="checkbox"
             checked={useMirror}
+            disabled={mirrorToggleBusy}
             onChange={(e) => onMirrorChange(e.target.checked)}
             className="accent-primary"
           />
@@ -691,14 +893,14 @@ function EngineStep({
       {/* Action buttons */}
       <div className="wizard-actions">
         {phase === 'not_installed' && (
-          <button onClick={onInstall} className="wizard-btn-primary">
+          <button onClick={onInstall} disabled={installActionDisabled} className="wizard-btn-primary">
             <Download className="h-4 w-4" />
             {t('setup.installCore')}
           </button>
         )}
         {phase === 'install_error' && (
           <>
-            <button onClick={onInstall} className="wizard-btn-primary">
+            <button onClick={onInstall} disabled={installActionDisabled} className="wizard-btn-primary">
               <Download className="h-4 w-4" />
               {t('common.retry')}
             </button>
@@ -718,16 +920,39 @@ function EngineStep({
   )
 }
 
+function WizardStepPills({
+  active,
+}: {
+  active: 'model' | 'gateway'
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="wizard-step-pills">
+      <span className="wizard-pill wizard-pill-done">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        OpenClaw
+      </span>
+      <span className="wizard-pill-divider" />
+      <span className={`wizard-pill ${active === 'model' ? 'wizard-pill-active' : 'wizard-pill-done'}`}>
+        {active === 'model' ? <Sparkles className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+        {t('setup.step.model')}
+      </span>
+      <span className="wizard-pill-divider" />
+      <span className={`wizard-pill ${active === 'gateway' ? 'wizard-pill-active' : ''}`}>
+        <Server className="h-3.5 w-3.5" />
+        {t('setup.step.gateway')}
+      </span>
+    </div>
+  )
+}
+
 // ─── Step 2 Component: Provider + API Key + Model ───
 
 const allProviderIds = Object.keys(PROVIDERS).filter(providerSupportsSetup)
 
 function filterTierMembersForSetup(members: readonly string[]) {
   return members.filter((id) => allProviderIds.includes(id))
-}
-
-function isGoldenSponsor(providerId: string) {
-  return PROVIDER_BADGES[providerId as keyof typeof PROVIDER_BADGES] === 'golden-sponsor'
 }
 
 function ProviderModelStep({
@@ -773,17 +998,7 @@ function ProviderModelStep({
       <p className="wizard-provider-subtitle">{t('setup.configureLLMDesc')}</p>
 
       {/* Step indicator */}
-      <div className="wizard-step-pills">
-        <span className="wizard-pill wizard-pill-done">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          OpenClaw
-        </span>
-        <span className="wizard-pill-divider" />
-        <span className="wizard-pill wizard-pill-active">
-          <Sparkles className="h-3.5 w-3.5" />
-          {t('setup.step.model')}
-        </span>
-      </div>
+      <WizardStepPills active="model" />
 
       {/* Provider picker — rendered as 3 tiers */}
       <div className="wizard-card">
@@ -942,7 +1157,7 @@ function ProviderModelStep({
             disabled={(!onboard.model && !onboard.customModelId.trim()) || onboard.busy}
             className="wizard-btn-primary mt-3"
           >
-            {onboard.busy ? t('setup.settingModel') : t('setup.enterMaster')}
+            {onboard.busy ? t('setup.settingModel') : t('common.nextStep')}
           </button>
         </div>
       )}
@@ -961,6 +1176,95 @@ function ProviderModelStep({
           {t('setup.skipRemaining')}
         </button>
       )}
+    </div>
+  )
+}
+
+function GatewayStep({
+  gatewayState,
+  gatewayBusy,
+  gatewayError,
+  onStart,
+  onRetryCheck,
+  onEnter,
+}: {
+  gatewayState: 'checking' | 'stopped' | 'running'
+  gatewayBusy: boolean
+  gatewayError: string | null
+  onStart: () => void
+  onRetryCheck: () => void
+  onEnter: () => void
+}) {
+  const { t } = useTranslation()
+  const gatewayReady = gatewayState === 'running'
+  const gatewayChecking = gatewayState === 'checking'
+
+  return (
+    <div className="wizard-provider-step">
+      <BrandMark animated className="wizard-provider-brand" imageClassName="wizard-brand-icon-img" />
+      <h2 className="wizard-provider-title">{t('setup.gateway')}</h2>
+      <p className="wizard-provider-subtitle">{t('setup.gatewayCheckDesc')}</p>
+
+      <WizardStepPills active="gateway" />
+
+      <div className="wizard-status-card">
+        <div className="wizard-status-row">
+          <div className="wizard-status-icon-wrap" data-status={gatewayReady ? 'installed' : gatewayChecking ? 'checking' : 'error'}>
+            {gatewayChecking && <Loader2 className="h-5 w-5 animate-spin" />}
+            {gatewayReady && <CheckCircle2 className="h-5 w-5" />}
+            {!gatewayReady && !gatewayChecking && <AlertCircle className="h-5 w-5" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="wizard-status-label">{t('setup.gateway')}</p>
+            <p className="wizard-status-detail">
+              {gatewayChecking && t('setup.gatewayChecking')}
+              {gatewayReady && t('setup.gatewayReadyDesc')}
+              {!gatewayReady && !gatewayChecking && (gatewayError ?? t('setup.gatewayRequiredDesc'))}
+            </p>
+          </div>
+          {gatewayReady && (
+            <span className="wizard-status-tag-ok">{t('setup.ready')}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="wizard-card">
+        <p className="wizard-card-kicker">{t('setup.step.gateway')}</p>
+        <p className="text-sm text-muted-foreground">
+          {gatewayReady ? t('setup.gatewayReadyDesc') : t('setup.gatewayRequiredDesc')}
+        </p>
+        {gatewayError && (
+          <p className="mt-3 text-xs text-red-500">{gatewayError}</p>
+        )}
+        <div className="wizard-actions mt-4">
+          {gatewayReady ? (
+            <button type="button" onClick={onEnter} className="wizard-btn-primary">
+              <CheckCircle2 className="h-4 w-4" />
+              {t('setup.enterMaster')}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onStart}
+                disabled={gatewayBusy || gatewayChecking}
+                className="wizard-btn-primary"
+              >
+                <Server className="h-4 w-4" />
+                {gatewayBusy ? t('setup.startingGateway') : t('setup.startGateway')}
+              </button>
+              <button
+                type="button"
+                onClick={onRetryCheck}
+                disabled={gatewayBusy || gatewayChecking}
+                className="wizard-btn-secondary"
+              >
+                {t('setup.checkGatewayAgain')}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1011,7 +1315,6 @@ function ProviderChip({
   onSelect: () => void
 }) {
   const { i18n } = useTranslation()
-  const isSponsor = isGoldenSponsor(providerId)
 
   return (
     <button
@@ -1019,11 +1322,6 @@ function ProviderChip({
       className={`wizard-provider-chip ${selected ? 'wizard-provider-chip-active' : ''}`}
     >
       <span>{getProviderLabel(providerId, i18n.language)}</span>
-      {isSponsor && (
-        <span className="wizard-sponsor-tag">
-          <Sparkles className="h-3 w-3" />
-        </span>
-      )}
     </button>
   )
 }
@@ -1241,7 +1539,7 @@ function OllamaSetupPanel({
             disabled={onboard.busy || status.models.length === 0}
             className="wizard-btn-primary"
           >
-            {onboard.busy ? t('setup.verifying') : t('setup.enterMaster')}
+            {onboard.busy ? t('setup.verifying') : t('common.nextStep')}
           </button>
         </>
       )}

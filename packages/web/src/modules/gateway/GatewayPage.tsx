@@ -8,7 +8,7 @@ import { ActionBanner } from '@/shared/components/ActionBanner'
 import { LoadingState } from '@/shared/components/LoadingState'
 import { RecentLogsSheet } from '@/shared/components/RecentLogsSheet'
 import type { GatewayStatus, OpenClawConfig } from '@/lib/types'
-import { buildGatewayUrl } from '@/shared/gatewayUrl'
+import { buildGatewayUrl, buildGatewayWebUiUrl } from '@/shared/gatewayUrl'
 
 export default function Gateway() {
   const { t } = useTranslation()
@@ -120,7 +120,7 @@ export default function Gateway() {
         </div>
       </div>
 
-      <div className="metric-grid">
+      <div className="metric-grid lg:grid-cols-3 xl:grid-cols-3">
         <div className="metric-card">
           <p className="metric-label">{t('dashboard.gatewayStatus')}</p>
           <p className={`metric-value ${status?.running ? 'text-green-600' : 'text-red-600'}`}>
@@ -195,7 +195,7 @@ export default function Gateway() {
                 </button>
               )}
               <a 
-                href={buildGatewayUrl(config)}
+                href={buildGatewayWebUiUrl(config)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="button-secondary"
