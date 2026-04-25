@@ -13,8 +13,8 @@ import { getCommandDescriptors } from './commandRegistry'
 import { getCommandShortcutLabel, isAppleClientPlatform } from './commandShortcut'
 import { resolveIcon } from './iconRegistry'
 import { NAV_SECTIONS, PAGE_META } from './navigationMeta'
+import { BrandMark } from '@/shared/components/BrandMark'
 import {
-  Shell,
   Sun,
   Moon,
   Menu,
@@ -376,9 +376,7 @@ export default function Layout({ children }: LayoutProps) {
     <>
       <div className="app-sidebar-header shrink-0">
         <div className="app-brand">
-          <div className="app-brand-mark">
-            <Shell className="h-4 w-4" />
-          </div>
+          <BrandMark animated className="app-brand-mark" imageClassName="h-full w-full object-contain" />
           <div className="app-brand-copy">
             <h1 className="app-brand-name">{t('layout.appName')}</h1>
             <p className="app-brand-subtitle">{t('layout.appSub')}</p>

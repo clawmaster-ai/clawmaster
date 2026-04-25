@@ -18,7 +18,7 @@ import { InstallTask } from '@/shared/components/InstallTask'
 import { RecentLogsSheet } from '@/shared/components/RecentLogsSheet'
 import { CapabilitiesSection } from './CapabilitiesSection'
 import { isWindowsHostPlatform } from '@/shared/hostPlatform'
-import { CheckCircle2, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, FileText, Copy, FolderInput, Sparkles, Laptop, MonitorCog, Radio, MessageSquare, Database } from 'lucide-react'
+import { CheckCircle2, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, FileText, Copy, FolderInput, Sparkles, Laptop, MonitorCog, Radio, MessageSquare, Database, ArrowUpRight } from 'lucide-react'
 import type { SystemInfo } from '@/lib/types'
 import type { OpenclawNpmVersions } from '@/shared/adapters/npmOpenclaw'
 import type { ClawmasterRuntimeInput, OpenclawProfileInput, OpenclawProfileSeedInput } from '@/shared/adapters/system'
@@ -946,13 +946,17 @@ export default function Settings() {
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">{t('logs.systemCardDescription')}</p>
               </div>
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button type="button" className="button-secondary" onClick={() => setLogsOpen('all')}>
+            <div className="mt-4 space-y-2">
+              <button type="button" className="button-primary w-full justify-center rounded-2xl px-4 py-3" onClick={() => setLogsOpen('all')}>
                 <FileText className="h-4 w-4" />
                 {t('logs.openSystemLogs')}
               </button>
-              <Link to="/settings#settings-system-info" className="inline-flex items-center gap-2 px-1 text-sm font-medium text-primary hover:underline">
-                {t('logs.gotoSystemInfo')}
+              <Link
+                to="/settings#settings-system-info"
+                className="inline-flex w-full items-center justify-between rounded-2xl border border-border/70 bg-background/80 px-4 py-3 text-sm font-medium text-foreground transition hover:border-primary/25 hover:bg-background hover:text-primary"
+              >
+                <span>{t('logs.gotoSystemInfo')}</span>
+                <ArrowUpRight className="h-4 w-4" />
               </Link>
             </div>
           </div>
@@ -966,13 +970,17 @@ export default function Settings() {
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">{t('logs.gatewayCardDescription')}</p>
               </div>
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button type="button" className="button-secondary" onClick={() => setLogsOpen('gateway')}>
+            <div className="mt-4 space-y-2">
+              <button type="button" className="button-primary w-full justify-center rounded-2xl px-4 py-3" onClick={() => setLogsOpen('gateway')}>
                 <FileText className="h-4 w-4" />
                 {t('logs.openGatewayLogs')}
               </button>
-              <Link to="/gateway#gateway-runtime" className="inline-flex items-center gap-2 px-1 text-sm font-medium text-primary hover:underline">
-                {t('logs.gotoGatewayPage')}
+              <Link
+                to="/gateway#gateway-runtime"
+                className="inline-flex w-full items-center justify-between rounded-2xl border border-border/70 bg-background/80 px-4 py-3 text-sm font-medium text-foreground transition hover:border-primary/25 hover:bg-background hover:text-primary"
+              >
+                <span>{t('logs.gotoGatewayPage')}</span>
+                <ArrowUpRight className="h-4 w-4" />
               </Link>
             </div>
           </div>
@@ -986,13 +994,17 @@ export default function Settings() {
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">{t('logs.channelsCardDescription')}</p>
               </div>
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button type="button" className="button-secondary" onClick={() => setLogsOpen('channels')}>
+            <div className="mt-4 space-y-2">
+              <button type="button" className="button-primary w-full justify-center rounded-2xl px-4 py-3" onClick={() => setLogsOpen('channels')}>
                 <FileText className="h-4 w-4" />
                 {t('logs.openChannelLogs')}
               </button>
-              <Link to="/channels#channels-page" className="inline-flex items-center gap-2 px-1 text-sm font-medium text-primary hover:underline">
-                {t('logs.gotoChannelsPage')}
+              <Link
+                to="/channels#channels-page"
+                className="inline-flex w-full items-center justify-between rounded-2xl border border-border/70 bg-background/80 px-4 py-3 text-sm font-medium text-foreground transition hover:border-primary/25 hover:bg-background hover:text-primary"
+              >
+                <span>{t('logs.gotoChannelsPage')}</span>
+                <ArrowUpRight className="h-4 w-4" />
               </Link>
             </div>
           </div>
@@ -1025,27 +1037,45 @@ export default function Settings() {
       </section>
 
       {/* 关于 */}
-      <section className="surface-card">
+      <section className="surface-card space-y-4 pb-5">
         <div className="section-heading">
           <h3 className="section-title">{t('settings.about')}</h3>
         </div>
-        <p className="text-sm text-muted-foreground">{t('settings.aboutName')}</p>
-        <p className="text-sm text-muted-foreground">{t('settings.aboutDesc')}</p>
-        <p className="text-sm text-muted-foreground">{t('settings.aboutCommunity')}</p>
-        <div className="mt-3 flex gap-4 flex-wrap">
-          <a href="https://docs.openclaw.ai" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">
+        <div className="space-y-2">
+          <p className="text-base font-medium text-foreground">{t('settings.aboutName')}</p>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+            {t('settings.aboutDesc')} · {t('settings.aboutCommunity')}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href="https://docs.openclaw.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-sm font-medium text-primary transition hover:border-primary/25 hover:bg-background"
+          >
             {t('settings.aboutDocs')}
           </a>
-          <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">
+          <a
+            href="https://github.com/openclaw/openclaw"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-sm font-medium text-primary transition hover:border-primary/25 hover:bg-background"
+          >
             GitHub
           </a>
-          <a href="https://clawhub.ai" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">
+          <a
+            href="https://clawhub.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-sm font-medium text-primary transition hover:border-primary/25 hover:bg-background"
+          >
             ClawHub
           </a>
         </div>
 
         {/* Acknowledgments */}
-        <div className="section-subcard mt-5">
+        <div className="section-subcard">
           <h4 className="text-sm font-medium">{t('settings.acknowledgments')}</h4>
           <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
             {[
@@ -1060,7 +1090,7 @@ export default function Settings() {
                 href={p.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-xl border border-transparent px-3 py-2 transition hover:border-primary/20 hover:bg-card/70 hover:text-primary"
+                className="rounded-xl border border-transparent px-3 py-2 leading-5 transition hover:border-primary/20 hover:bg-card/70 hover:text-primary"
                 title={p.desc}
               >
                 <span className="font-medium text-foreground">{p.name}</span> {p.desc}
