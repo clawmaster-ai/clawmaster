@@ -37,7 +37,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "prepack": "npm run build:backend && npm run build",
-    "test:cli": "node --test bin/*.test.mjs tests/desktop/harness.unit.test.mjs",
+    "test:cli": "node --test bin/*.test.mjs scripts/*.test.mjs tests/desktop/harness.unit.test.mjs",
     "test:plugins": "npx tsx --test plugins/memory-clawmaster-powermem/*.test.ts",
     "test:desktop": "node --test tests/desktop/smoke.test.mjs",
     "test:wizard-smoke": "node tests/install/wizard-install-smoke.mjs",

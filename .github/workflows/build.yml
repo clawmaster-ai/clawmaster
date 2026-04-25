@@ -443,6 +443,20 @@ jobs:
             NPM_TAG="rc"
           fi
 
+          RELEASE_URL="https://github.com/${GH_REPO}/releases/tag/${TAG}"
+          RELEASE_DOWNLOAD_BASE="https://github.com/${GH_REPO}/releases/download/${TAG}"
+          NPM_PACKAGE_URL="https://www.npmjs.com/package/clawmaster/v/${VERSION}"
+          NPM_DIST_URL="https://www.npmjs.com/package/clawmaster?activeTab=versions"
+
+          # Build direct asset URLs deterministically from the release tag.
+          linux_appimage_url="${RELEASE_DOWNLOAD_BASE}/ClawMaster_${VERSION}_amd64.AppImage"
+          linux_deb_url="${RELEASE_DOWNLOAD_BASE}/ClawMaster_${VERSION}_amd64.deb"
+          macos_intel_url="${RELEASE_DOWNLOAD_BASE}/ClawMaster_${VERSION}_x64.dmg"
+          macos_arm64_url="${RELEASE_DOWNLOAD_BASE}/ClawMaster_${VERSION}_aarch64.dmg"
+          windows_msi_url="${RELEASE_DOWNLOAD_BASE}/ClawMaster_${VERSION}_x64_en-US.msi"
+          windows_exe_url="${RELEASE_DOWNLOAD_BASE}/ClawMaster_${VERSION}_x64-setup.exe"
+          checksums_url="${RELEASE_DOWNLOAD_BASE}/SHA256SUMS.txt"
+
           # Use printf instead of heredoc because YAML's `run: |` indentation
           # leaks into the heredoc content — turning every heading into an
           # indented code block in the rendered markdown.
@@ -450,22 +464,23 @@ jobs:
             printf '## Install\n\n'
             printf '### CLI + Web Console (Recommended)\n\n'
             printf '```bash\n'
-            printf 'npm install -g clawmaster@%s\n' "$NPM_TAG"
+            printf 'npm install -g clawmaster\n'
             printf 'clawmaster\n'
             printf '```\n\n'
-            printf 'Open http://localhost:16223 — the setup wizard guides you through OpenClaw engine detection and LLM provider configuration.\n\n'
+            printf '`clawmaster` starts the local service and opens the landing page in your browser by default.\n\n'
+            printf 'If the browser does not open automatically, use the backup local address: http://localhost:16223\n\n'
+            printf -- '- npm package: [%s](%s)\n' "clawmaster@${VERSION}" "$NPM_PACKAGE_URL"
+            printf -- '- all published versions: [%s](%s)\n\n' "npm versions" "$NPM_DIST_URL"
             printf '> To pin this exact version: `npm install -g clawmaster@%s`\n\n' "$VERSION"
             printf '### Desktop App (Beta)\n\n'
-            printf 'Download the installer for your platform from the Assets section below.\n\n'
-            printf '| Platform | Files |\n'
+            printf 'Direct downloads for this release. Checksums: [`SHA256SUMS.txt`](%s)\n\n' "$checksums_url"
+            printf '| Platform | Downloads |\n'
             printf '|---|---|\n'
-            printf '| Linux x64 | `.AppImage`, `.deb` |\n'
-            printf '| macOS Intel | `.dmg` |\n'
-            printf '| macOS Apple Silicon | `.dmg` |\n'
-            printf '| Windows x64 | `.msi`, `.exe` |\n\n'
-            printf '> **Note:** Desktop builds are in beta. The CLI + Web Console is the recommended install method.\n\n'
-            printf '## Checksums\n\n'
-            printf 'Verify downloads with `SHA256SUMS.txt` attached to this release.\n\n'
+            printf '| Linux x64 | [AppImage](%s) · [deb](%s) |\n' "$linux_appimage_url" "$linux_deb_url"
+            printf '| macOS Intel | [dmg](%s) |\n' "$macos_intel_url"
+            printf '| macOS Apple Silicon | [dmg](%s) |\n' "$macos_arm64_url"
+            printf '| Windows x64 | [msi](%s) · [exe](%s) |\n\n' "$windows_msi_url" "$windows_exe_url"
+            printf '> Desktop builds are in beta. The CLI + Web Console is the recommended install method.\n\n'
             printf "## What's Changed\n\n"
             printf '%s\n' "$GENERATED_BODY"
           } > RELEASE_NOTES.md
