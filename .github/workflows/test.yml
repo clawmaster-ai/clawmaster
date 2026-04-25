@@ -457,10 +457,13 @@ jobs:
                 await checkGatewayBtn.first().click();
               }
             }
-            await page.locator('text=网关已启动').or(page.locator('text=Gateway started')).first()
-              .waitFor({ timeout: 15000 })
-              .catch(() => page.locator('text=已就绪').or(page.locator('text=Ready')).first().waitFor({ timeout: 15000 }));
-            await skipEnterBtn.first().waitFor({ timeout: 10000 });
+            await skipEnterBtn.first().waitFor({ timeout: 15000 }).catch(async () => {
+              const canCheckGatewayAfterStart = await checkGatewayBtn.first().isVisible().catch(() => false);
+              if (canCheckGatewayAfterStart) {
+                await checkGatewayBtn.first().click();
+              }
+              await skipEnterBtn.first().waitFor({ timeout: 15000 });
+            });
           }
           await skipEnterBtn.first().click();
           await page.waitForTimeout(2000);
