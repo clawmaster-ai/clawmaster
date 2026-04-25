@@ -66,7 +66,7 @@ cases:
     assertions:
       - 网关页能显示当前运行状态
       - 点击启动后状态切换为运行中
-      - 可从 ClawMaster 跳转或打开 OpenClaw WebUI
+      - 可从 ClawMaster 打开带鉴权参数的 OpenClaw WebUI
       - 在 OpenClaw WebUI 发起首个对话时，请求能正常返回
       - 首次对话使用的是 ClawMaster 中刚配置的默认模型或 provider
 

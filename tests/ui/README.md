@@ -14,7 +14,7 @@
 | `06-skills-marketplace.yaml` | 13 | 技能市场（ClawHub 前置/4 个重点技能/过滤/SkillGuard/运行时启停/OpenClaw WebUI 效果） |
 | `07-setup-install-real.yaml` | 16 | 安装向导真实安装全流程（检测/卸载/安装/CapabilityGuard/错误处理/API） |
 | `08-onboarding-config.yaml` | 17 | 安装后配置引导（初始化/API Key/模型/网关/通道/跳过/汇总） |
-| `09-gateway-module.yaml` | 6 | 网关管理（状态指示/启动停止/配置概览/Token 复制/重启） |
+| `09-gateway-module.yaml` | 7 | 网关管理（状态指示/启动停止/配置概览/Token 复制/重启/最近日志与诊断入口） |
 | `10-mcp-servers.yaml` | 8 | MCP 服务器管理（推荐配置/导入/手动添加/安装进度/OpenClaw WebUI 可见性） |
 | `11-sessions-module.yaml` | 8 | 会话管理（列表/Agent 过滤/Token 进度条/对话历史/清理/轮询与 useAdapterCall 稳定性） |
 | `12-channels-module.yaml` | 11 | 通道管理（推荐入口/微信扫码流/上下文日志/列表/编辑器/验证连接/启用禁用/账号/移除） |
@@ -28,7 +28,7 @@
 | `20-command-palette.yaml` | 7 | 共享命令面板（快捷键打开/页面跳转/区块跳转/主题操作/空状态/移动端入口） |
 | `21-ocr-workflow.yaml` | 5 | OCR 主流程（页面引导/保存配置/样例解析/上传解析/OpenClaw WebUI 技能执行） |
 | `22-cron-module.yaml` | 6 | Cron 模块（页面渲染/网关依赖/调度助手/Observe 模板导入/创建执行/运行记录） |
-| **合计** | **207** | |
+| **合计** | **208** | |
 
 ## 用例格式
 
