@@ -443,9 +443,6 @@ jobs:
           await skipGatewayStep.first().waitFor({ timeout: 5000 });
           const startGatewayBtn = page.locator('text=启动网关').or(page.locator('text=Start Gateway'));
           const checkGatewayBtn = page.locator('text=重新检查网关').or(page.locator('text=Check Again'));
-          await page.locator('text=网关已启动').or(page.locator('text=Gateway started')).first()
-            .waitFor({ timeout: 10000 })
-            .catch(() => page.locator('text=已就绪').or(page.locator('text=Ready')).first().waitFor({ timeout: 2000 }));
           const skipEnterBtn = page.locator('text=进入管理大师').or(page.locator('text=Enter ClawMaster'));
           // Skip only advances to the mandatory gateway step. Depending on environment
           // the gateway may already be running or may need an explicit start/recheck.
@@ -460,6 +457,9 @@ jobs:
                 await checkGatewayBtn.first().click();
               }
             }
+            await page.locator('text=网关已启动').or(page.locator('text=Gateway started')).first()
+              .waitFor({ timeout: 15000 })
+              .catch(() => page.locator('text=已就绪').or(page.locator('text=Ready')).first().waitFor({ timeout: 15000 }));
             await skipEnterBtn.first().waitFor({ timeout: 10000 });
           }
           await skipEnterBtn.first().click();
