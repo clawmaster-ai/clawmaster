@@ -59,7 +59,7 @@ clawmaster doctor            # 检查环境
 ```
 
 > [!NOTE]
-> 当前版本为 **v0.3.0-rc.1**（候选发布）。安装命令：`npm i -g clawmaster@rc`。
+> 当前版本为 **v0.3.0**。安装命令：`npm i -g clawmaster`。
 
 ### 桌面应用（Beta 测试版）
 
@@ -219,7 +219,7 @@ ClawMaster 采用 [Pride Versioning](https://pridever.org/)（自豪版本号）
 
 ## 📰 动态
 
-- **2026-04-22** 🚀 v0.3.0-rc.1 —— 首个候选发布。两步式安装向导、PaddleOCR 文档解析、文心大模型图像生成、费用可观测、定时任务管理。CLI 为推荐安装方式，桌面版为 Beta。
+- **2026-04-25** 🚀 v0.3.0 —— 首个正式版。安装向导、PaddleOCR 文档解析、文心大模型图像生成、费用可观测、定时任务管理、内置技能刷新与托管 PowerMem 支持已就绪。CLI 为推荐安装方式，桌面版仍为 Beta。
 - **2026-04-17** ✨ 品牌与定位正式发布 —— ClawMaster 定位为真正走进日常生活的 OpenClaw 伙伴，而非单纯的控制台。全新 Wordmark、Apache 2.0 许可、Pride Versioning。
 
 ## 开发

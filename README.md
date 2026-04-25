@@ -59,7 +59,7 @@ clawmaster doctor            # verify your environment
 ```
 
 > [!NOTE]
-> The current release is **v0.3.0-rc.1** (release candidate). Install with `npm i -g clawmaster@rc`.
+> The current release is **v0.3.0**. Install with `npm i -g clawmaster`.
 
 ### Desktop App (Beta)
 
@@ -219,7 +219,7 @@ Pre-release tags (`-rc.N`) are used for release candidates.
 
 ## 📰 News
 
-- **2026-04-22** 🚀 v0.3.0-rc.1 — first release candidate. 2-step setup wizard, PaddleOCR, ERNIE image, cost observability, cron management. CLI is the recommended install method; desktop builds are beta.
+- **2026-04-25** 🚀 v0.3.0 — first official release. Setup wizard, PaddleOCR, ERNIE image, cost observability, cron management, bundled skills refresh, and managed PowerMem support. CLI is the recommended install method; desktop builds remain beta.
 - **2026-04-17** ✨ Brand and positioning launch — ClawMaster is now an OpenClaw companion for real life, not just a control plane. New wordmark, Apache 2.0 license, Pride Versioning.
 
 ## Development
