@@ -13,6 +13,7 @@ import {
   HardDrive,
   Loader2,
   MessageSquare,
+  RotateCw,
   ScrollText,
   Settings2,
   Sparkles,
@@ -394,6 +395,10 @@ export default function Dashboard() {
             <ExternalLink className="h-4 w-4" />
             {t('gateway.openInBrowser')}
           </a>
+          <Link to="/settings#settings-capabilities" className="button-secondary">
+            <RotateCw className="h-4 w-4" />
+            {t('settings.capabilities.reinstall')}
+          </Link>
           <Link to="/config" className="button-secondary">
             <Settings2 className="h-4 w-4" />
             {t('config.title')}
