@@ -441,10 +441,24 @@ jobs:
           await skipLink.first().click();
           const skipGatewayStep = page.locator('text=网关').or(page.locator('text=Gateway'));
           await skipGatewayStep.first().waitFor({ timeout: 5000 });
+          const startGatewayBtn = page.locator('text=启动网关').or(page.locator('text=Start Gateway'));
+          const checkGatewayBtn = page.locator('text=重新检查网关').or(page.locator('text=Check Again'));
           const skipEnterBtn = page.locator('text=进入管理大师').or(page.locator('text=Enter ClawMaster'));
-          // Skip flow can render the final CTA before any transient readiness copy settles.
-          // Key the smoke test off the stable action instead of localized status text.
-          await skipEnterBtn.first().waitFor({ timeout: 10000 });
+          // Skip only advances to the mandatory gateway step. Depending on environment
+          // the gateway may already be running or may need an explicit start/recheck.
+          const skipGatewayReady = await skipEnterBtn.first().isVisible().catch(() => false);
+          if (!skipGatewayReady) {
+            const canStartGateway = await startGatewayBtn.first().isVisible().catch(() => false);
+            if (canStartGateway) {
+              await startGatewayBtn.first().click();
+            } else {
+              const canCheckGateway = await checkGatewayBtn.first().isVisible().catch(() => false);
+              if (canCheckGateway) {
+                await checkGatewayBtn.first().click();
+              }
+            }
+            await skipEnterBtn.first().waitFor({ timeout: 10000 });
+          }
           await skipEnterBtn.first().click();
           await page.waitForTimeout(2000);
           const skipMainVisible = await page.locator('.app-layout, [class*="Layout"], nav').first()
