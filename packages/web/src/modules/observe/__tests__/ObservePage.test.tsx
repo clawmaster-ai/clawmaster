@@ -318,6 +318,57 @@ describe('ObservePage', () => {
     expect(mockGetSessionDetail).toHaveBeenCalledWith('agent:main:latest', { agentId: 'main' })
   })
 
+  it('falls back to session list fields when latest session detail fails', async () => {
+    mockClawprobeStatus.mockResolvedValueOnce({
+      success: true,
+      data: {
+        ...fallbackStatus,
+        daemonRunning: true,
+        installRequired: false,
+        sessionKey: null,
+      },
+    })
+    mockGetSessions.mockResolvedValueOnce({
+      success: true,
+      data: {
+        path: '/tmp/.openclaw/workspace/.openclaw/sessions',
+        count: 1,
+        sessions: [
+          {
+            key: 'agent:main:detail-missing',
+            sessionId: 'detail-missing',
+            agentId: 'main',
+            model: 'gpt-4.1-mini',
+            modelProvider: 'openai',
+            kind: 'direct',
+            inputTokens: 1200,
+            outputTokens: 300,
+            totalTokens: 78000,
+            contextTokens: 20000,
+            updatedAt: 1774900000000,
+            ageMs: 30000,
+          },
+        ],
+      },
+    })
+    mockGetSessionDetail.mockResolvedValueOnce({
+      success: false,
+      error: 'session not found',
+    })
+
+    render(
+      <MemoryRouter>
+        <ObservePage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Latest Session')).toBeInTheDocument()
+    expect(screen.getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.getByText('1,200 / 300')).toBeInTheDocument()
+    expect(screen.getByText('- / 20,000 tokens')).toBeInTheDocument()
+    expect(screen.queryByText('78,000 / 20,000 tokens')).not.toBeInTheDocument()
+  })
+
   it('passes the latest session agent when fetching details from a multi-agent session list', async () => {
     mockClawprobeStatus.mockResolvedValueOnce({
       success: true,

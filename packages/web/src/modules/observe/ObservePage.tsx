@@ -33,7 +33,6 @@ type ObserveSessionSnapshot = {
   key: string
   model: string | null
   provider: string | null
-  billedTokens: number
   inputTokens: number
   outputTokens: number
   usedContextTokens: number
@@ -43,6 +42,8 @@ type ObserveSessionSnapshot = {
   updatedAtMs: number
   isActive: boolean
 }
+
+const ACTIVE_SESSION_WINDOW_MS = 5 * 60 * 1000
 
 function severityClass(sev: string): string {
   if (sev === 'critical') return 'border-red-500/40 bg-red-500/5 text-red-900 dark:text-red-100'
@@ -55,17 +56,27 @@ function normalizeTimestampMs(value: number): number {
   return value < 1_000_000_000_000 ? value * 1000 : value
 }
 
-function sessionUpdatedAtMs(session: SessionInfo): number {
+function sessionUpdatedAtMs(session: SessionInfo, now = Date.now()): number {
   const explicit = normalizeTimestampMs(session.updatedAt)
   if (explicit > 0) return explicit
-  if (session.ageMs > 0) return Date.now() - session.ageMs
+  if (session.ageMs > 0) return now - session.ageMs
   return 0
 }
 
+function sessionTieBreakerKey(session: SessionInfo): string {
+  return session.key || session.sessionId || session.agentId
+}
+
 function selectLatestSession(sessions: SessionInfo[]): SessionInfo | null {
+  const now = Date.now()
   return sessions.reduce<SessionInfo | null>((latest, session) => {
     if (!latest) return session
-    return sessionUpdatedAtMs(session) > sessionUpdatedAtMs(latest) ? session : latest
+    const sessionTime = sessionUpdatedAtMs(session, now)
+    const latestTime = sessionUpdatedAtMs(latest, now)
+    if (sessionTime !== latestTime) return sessionTime > latestTime ? session : latest
+    return sessionTieBreakerKey(session).localeCompare(sessionTieBreakerKey(latest)) > 0
+      ? session
+      : latest
   }, null)
 }
 
@@ -89,7 +100,6 @@ function buildSessionSnapshot(
   if (latestSession) {
     const key = latestSession.key || latestSession.sessionId
     const detail = latestSessionDetail
-    const billedTokens = detail?.totalTokens ?? latestSession.totalTokens
     const contextTokens = firstPositiveNumber(
       detail?.windowSize,
       latestSession.contextTokens,
@@ -97,14 +107,12 @@ function buildSessionSnapshot(
     )
     const usedContextTokens = firstPositiveNumber(
       detail?.contextTokens,
-      status.sessionKey === key ? status.sessionTokens : 0,
-      latestSession.totalTokens
+      status.sessionKey === key ? status.sessionTokens : 0
     )
     return {
       key,
       model: detail?.model || latestSession.model || (status.sessionKey === key ? status.model : null),
       provider: detail?.provider || latestSession.modelProvider || (status.sessionKey === key ? status.provider : null),
-      billedTokens,
       inputTokens: detail?.inputTokens ?? latestSession.inputTokens,
       outputTokens: detail?.outputTokens ?? latestSession.outputTokens,
       usedContextTokens,
@@ -112,24 +120,18 @@ function buildSessionSnapshot(
       utilizationPct: tokenPercentage(usedContextTokens, contextTokens),
       estimatedUsd: detail ? detail.estimatedUsd : null,
       updatedAtMs: sessionUpdatedAtMs(latestSession),
-      isActive: status.sessionKey === key || (latestSession.ageMs > 0 && latestSession.ageMs < 5 * 60 * 1000),
+      isActive: status.sessionKey === key || (latestSession.ageMs > 0 && latestSession.ageMs < ACTIVE_SESSION_WINDOW_MS),
     }
   }
 
   if (!status.sessionKey) return null
   const detail = latestSessionDetail
-  const billedTokens = firstPositiveNumber(
-    detail?.totalTokens,
-    status.inputTokens + status.outputTokens,
-    status.sessionTokens
-  )
   const contextTokens = firstPositiveNumber(detail?.windowSize, status.windowSize)
   const usedContextTokens = firstPositiveNumber(detail?.contextTokens, status.sessionTokens)
   return {
     key: status.sessionKey,
     model: detail?.model || status.model,
     provider: detail?.provider || status.provider,
-    billedTokens,
     inputTokens: detail?.inputTokens ?? status.inputTokens,
     outputTokens: detail?.outputTokens ?? status.outputTokens,
     usedContextTokens,
@@ -141,9 +143,9 @@ function buildSessionSnapshot(
   }
 }
 
-function formatDateTime(ms: number): string {
+function formatDateTime(ms: number, language: string): string {
   if (ms <= 0) return '-'
-  return new Date(ms).toLocaleString([], {
+  return new Date(ms).toLocaleString(language || undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -152,8 +154,12 @@ function formatDateTime(ms: number): string {
   })
 }
 
+function formatContextTokenValue(value: number): string {
+  return value > 0 ? value.toLocaleString() : '-'
+}
+
 export default function ObservePage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const [costPeriod, setCostPeriod] = useState<'day' | 'week' | 'month' | 'all'>('week')
   const [bootstrapBusy, setBootstrapBusy] = useState(false)
@@ -486,7 +492,7 @@ export default function ObservePage() {
                   <div className="text-xs uppercase tracking-wide text-muted-foreground">
                     {t('observe.lastActive')}
                   </div>
-                  <div className="text-sm font-medium">{formatDateTime(sessionSnapshot.updatedAtMs)}</div>
+                  <div className="text-sm font-medium">{formatDateTime(sessionSnapshot.updatedAtMs, i18n.language)}</div>
                 </div>
               </div>
 
@@ -502,7 +508,7 @@ export default function ObservePage() {
               </div>
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>
-                  {sessionSnapshot.usedContextTokens.toLocaleString()} / {sessionSnapshot.contextTokens.toLocaleString()} {t('observe.tokens')}
+                  {formatContextTokenValue(sessionSnapshot.usedContextTokens)} / {formatContextTokenValue(sessionSnapshot.contextTokens)} {t('observe.tokens')}
                 </span>
                 <span>{t('observe.contextWindow')}</span>
               </div>
