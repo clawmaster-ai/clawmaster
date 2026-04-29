@@ -13,10 +13,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/openmaster-ai/clawmaster/milestone/1"><img src="https://img.shields.io/badge/🎯_Next_Milestone-v0.4.0-6f42c1?style=for-the-badge" alt="下一个里程碑: v0.4.0" /></a>
-</p>
-
-<p align="center">
   <img src="https://raw.githubusercontent.com/openmaster-ai/brand/main/logos/clawmaster/static/amber.svg" width="28" alt="ClawMaster amber mark" />
   &nbsp;
   <img src="https://img.shields.io/badge/Brand-OpenMaster_Universe-F5A623?style=flat" alt="OpenMaster Universe Brand" />
@@ -31,6 +27,7 @@
 
 <p align="center">
   <a href="https://github.com/openmaster-ai/clawmaster/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/openmaster-ai/clawmaster/build.yml?branch=main" alt="Build" /></a>
+  <a href="https://github.com/openmaster-ai/clawmaster/milestone/1"><img src="https://img.shields.io/badge/milestone-v0.4.0-6f42c1" alt="下一个里程碑: v0.4.0" /></a>
   <a href="https://github.com/openmaster-ai/clawmaster/stargazers"><img src="https://img.shields.io/github/stars/openmaster-ai/clawmaster?style=social" alt="Stars" /></a>
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="Apache 2.0" />
 </p>
