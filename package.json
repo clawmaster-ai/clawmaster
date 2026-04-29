@@ -11,6 +11,7 @@
     "bundled-skills/clawprobe-cost-digest/",
     "bundled-skills/ernie-image/",
     "bundled-skills/models-dev/",
+    "bundled-skills/package-download-tracker/",
     "bundled-skills/paddleocr-doc-parsing/",
     "plugins/memory-clawmaster-powermem/",
     "plugins/openclaw-ernie-image/",
