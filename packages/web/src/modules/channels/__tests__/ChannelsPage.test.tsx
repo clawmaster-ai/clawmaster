@@ -120,6 +120,9 @@ describe('ChannelsPage', () => {
       if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'login') {
         return 'login started'
       }
+      if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'logout') {
+        return 'logout started'
+      }
       if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'status') {
         return 'waiting'
       }
@@ -143,6 +146,8 @@ describe('ChannelsPage', () => {
     fireEvent.click(cancelButton)
     expect(screen.queryByRole('dialog', { name: '微信' })).not.toBeInTheDocument()
 
+    await act(async () => {})
+
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000)
     })
@@ -156,6 +161,53 @@ describe('ChannelsPage', () => {
         args[3] === 'wechat',
     )
     expect(statusCalls).toHaveLength(0)
+    expect(mockExecCommand).toHaveBeenCalledWith('openclaw', [
+      'channels',
+      'logout',
+      '--channel',
+      'wechat',
+    ])
+  })
+
+  it('polls WeChat status while the QR login command is still pending', async () => {
+    let resolveLogin: (() => void) | null = null
+    mockExecCommand.mockImplementation((cmd: string, args: string[]) => {
+      if (cmd === 'npm' && args[0] === 'list') {
+        return Promise.resolve('installed')
+      }
+      if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'login') {
+        return new Promise<string>((resolve) => {
+          resolveLogin = () => resolve('login finished')
+        })
+      }
+      if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'status') {
+        return Promise.resolve('waiting')
+      }
+      return Promise.resolve('')
+    })
+
+    renderChannels()
+
+    expect(await screen.findByText('推荐入口')).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: '开始配置' })[1])
+
+    await screen.findByText('已安装')
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '开始扫码登录' }))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+
+    expect(mockExecCommand).toHaveBeenCalledWith('openclaw', [
+      'channels',
+      'status',
+      '--channel',
+      'wechat',
+    ])
+
+    resolveLogin?.()
+    await act(async () => {})
   })
 
   it('shows timeout recovery and refreshes the WeChat QR login after expiry', async () => {
@@ -165,6 +217,9 @@ describe('ChannelsPage', () => {
       }
       if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'login') {
         return 'login started'
+      }
+      if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'logout') {
+        return 'logout started'
       }
       if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'status') {
         return 'waiting'
@@ -191,6 +246,7 @@ describe('ChannelsPage', () => {
     expect(screen.getByText('二维码可能已过期，请刷新后重新扫码。')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '刷新二维码' }))
+    await act(async () => {})
 
     const loginCalls = mockExecCommand.mock.calls.filter(
       ([cmd, args]) =>
@@ -201,6 +257,12 @@ describe('ChannelsPage', () => {
         args[3] === 'wechat',
     )
     expect(loginCalls).toHaveLength(2)
+    expect(mockExecCommand).toHaveBeenCalledWith('openclaw', [
+      'channels',
+      'logout',
+      '--channel',
+      'wechat',
+    ])
   })
 
   it('opens recent logs from the contextual troubleshooting action', async () => {

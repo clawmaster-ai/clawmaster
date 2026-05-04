@@ -280,19 +280,28 @@ export default function Channels() {
     }
   }
 
+  async function stopWechatQrLoginSession() {
+    try {
+      await execCommand('openclaw', ['channels', 'logout', '--channel', 'wechat'])
+    } catch {
+      // Ignore cleanup failures so the modal can still close or retry locally.
+    }
+  }
+
   async function startWechatQrLogin() {
+    if (wechatSetupStage === 'timedOut') {
+      await stopWechatQrLoginSession()
+    }
     const attemptId = wechatScanAttemptRef.current + 1
     wechatScanAttemptRef.current = attemptId
     setWechatSetupError(null)
     setWechatSetupStage('scanning')
-    try {
-      await execCommand('openclaw', ['channels', 'login', '--channel', 'wechat'])
-    } catch (err) {
+    void execCommand('openclaw', ['channels', 'login', '--channel', 'wechat']).catch((err) => {
       if (wechatScanAttemptRef.current !== attemptId) return
+      wechatScanAttemptRef.current += 1
       setWechatSetupError(err instanceof Error ? err.message : String(err))
       setWechatSetupStage('error')
-      return
-    }
+    })
     for (let i = 0; i < WECHAT_QR_MAX_POLLS; i++) {
       await new Promise((resolve) => setTimeout(resolve, WECHAT_QR_POLL_INTERVAL_MS))
       if (wechatScanAttemptRef.current !== attemptId) return
@@ -300,6 +309,7 @@ export default function Channels() {
         const out = await execCommand('openclaw', ['channels', 'status', '--channel', 'wechat'])
         if (wechatScanAttemptRef.current !== attemptId) return
         if (out.includes('connected') || out.includes('ready') || out.includes('online')) {
+          wechatScanAttemptRef.current += 1
           setWechatSetupStage('connected')
           await refetch()
           return
@@ -310,14 +320,20 @@ export default function Channels() {
       }
     }
     if (wechatScanAttemptRef.current !== attemptId) return
+    wechatScanAttemptRef.current += 1
     setWechatSetupStage('timedOut')
   }
 
   function closeWechatSetup() {
+    const shouldStopActiveSession =
+      wechatSetupStage === 'scanning' || wechatSetupStage === 'timedOut'
     wechatScanAttemptRef.current += 1
     setWechatSetupOpen(false)
     setWechatSetupError(null)
     setWechatSetupStage('idle')
+    if (shouldStopActiveSession) {
+      void stopWechatQrLoginSession()
+    }
   }
 
   function openChannelEditor(typeId: string, accountId?: string) {
