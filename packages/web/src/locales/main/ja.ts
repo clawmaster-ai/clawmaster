@@ -1021,6 +1021,8 @@ export default {
   "channel.qr.scanHint": "スマホアプリでQRコードをスキャンしてログイン",
   "channel.qr.connected": "接続成功！",
   "channel.qr.timeout": "ログインがタイムアウトしました。再試行してください。",
+  "channel.qr.timeoutHint": "QRコードの有効期限が切れた可能性があります。更新して新しいコードを取得してください。",
+  "channel.qr.refresh": "QRコードを更新",
   "channel.feishu.permissionsTitle": "権限テンプレート（飛書の権限設定にコピー）",
   "common.copyToClipboard": "コピー",
   "channel.wechat.step1.highlight": "開始をクリックすると自動インストールされます",

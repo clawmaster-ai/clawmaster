@@ -1021,6 +1021,8 @@ export default {
   "channel.qr.scanHint": "Scan the QR code with your phone app to log in",
   "channel.qr.connected": "Connected!",
   "channel.qr.timeout": "Login timed out. Please retry.",
+  "channel.qr.timeoutHint": "The QR code may have expired. Refresh it to request a new one.",
+  "channel.qr.refresh": "Refresh QR code",
   "channel.feishu.permissionsTitle": "Permissions template (copy to Feishu permission config)",
   "common.copyToClipboard": "Copy",
   "channel.wechat.step1.highlight": "Automatically installed when you click Start",
