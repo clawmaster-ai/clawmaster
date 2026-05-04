@@ -217,6 +217,17 @@ describe('CronPage', () => {
     })
   })
 
+  it('warns in the editor when no message channels are configured', async () => {
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Cron Jobs' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Create Job' }))
+
+    expect(await screen.findByText('No message channels are configured yet.')).toBeInTheDocument()
+    expect(screen.getByText(/channel delivery is unavailable until you configure at least one channel account/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Channels' })).toHaveAttribute('href', '/channels#channel-focus')
+  })
+
   it('opens the create dialog with a prefilled cost digest template from the observe flow', async () => {
     renderPage(['/cron?template=cost-digest&period=week'])
 
@@ -366,6 +377,37 @@ describe('CronPage', () => {
     await waitFor(() => {
       expect(mockRemoveCronJob).toHaveBeenCalledWith('job-1')
     })
+  })
+
+  it('falls back to the generic success toast when run-now output is not user-facing', async () => {
+    mockRunCronJob.mockResolvedValueOnce({ success: true, data: '' })
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Cron Jobs' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Run Now' }))
+
+    await waitFor(() => {
+      expect(mockRunCronJob).toHaveBeenCalledWith('job-1')
+    })
+    expect(await screen.findByText('Cron job run requested.')).toBeInTheDocument()
+  })
+
+  it('opens run history when the visible error badge is clicked', async () => {
+    mockGetCronJobs.mockResolvedValue({
+      success: true,
+      data: [baseJob({ lastStatus: 'error' })],
+    })
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Cron Jobs' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'View details for status error' }))
+
+    await waitFor(() => {
+      expect(mockGetCronRuns).toHaveBeenCalledWith('job-1', 20)
+    })
+    expect(await screen.findByText('Run History · Morning report')).toBeInTheDocument()
   })
 
   it('prefills the edit dialog from the selected job and dispatches updateCronJob', async () => {
