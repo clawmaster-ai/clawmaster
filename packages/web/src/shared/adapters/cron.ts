@@ -290,6 +290,31 @@ function normalizeCronRun(raw: unknown, index: number): CronRun {
   }
 }
 
+function extractCronRunCommandFeedback(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return trimmed
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    const object = asObject(parsed)
+    if (!object) return ''
+
+    return firstString(
+      object.message,
+      object.summary,
+      object.output,
+      object.stdout,
+      object.stderr,
+    )
+  } catch {
+    return trimmed
+  }
+}
+
 function parseCronJobsPayload(raw: string): CronJob[] {
   const parsed = JSON.parse(raw) as unknown
   if (Array.isArray(parsed)) return parsed.map(normalizeCronJob)
@@ -441,7 +466,7 @@ export function runCronJobResult(id: string): Promise<AdapterResult<string>> {
     const trimmedId = id.trim()
     if (!trimmedId) throw new Error('Cron job id is required')
     const raw = await execCommand('openclaw', ['cron', 'run', trimmedId])
-    return raw.trim()
+    return extractCronRunCommandFeedback(raw)
   })
 }
 
