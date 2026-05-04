@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
@@ -136,10 +136,13 @@ type WechatSetupStage =
   | 'installing'
   | 'ready'
   | 'scanning'
+  | 'timedOut'
   | 'connected'
   | 'error'
 
 const WECHAT_PLUGIN_PACKAGE = '@tencent-weixin/openclaw-weixin'
+const WECHAT_QR_POLL_INTERVAL_MS = 3000
+const WECHAT_QR_MAX_POLLS = 20
 
 export default function Channels() {
   const { t, i18n } = useTranslation()
@@ -174,10 +177,17 @@ export default function Channels() {
   const [wechatSetupStage, setWechatSetupStage] = useState<WechatSetupStage>('idle')
   const [wechatSetupError, setWechatSetupError] = useState<string | null>(null)
   const [wechatPluginInstalled, setWechatPluginInstalled] = useState(false)
+  const wechatScanAttemptRef = useRef(0)
   const [logsOpen, setLogsOpen] = useState(false)
   const [feedback, setFeedback] = useState<{ tone: 'info' | 'success' | 'error'; message: string } | null>(null)
   const [pendingRemoval, setPendingRemoval] = useState<{ typeId: string; label: string } | null>(null)
   const [pendingAccountRemoval, setPendingAccountRemoval] = useState<{ typeId: string; accountId: string } | null>(null)
+
+  useEffect(() => {
+    return () => {
+      wechatScanAttemptRef.current += 1
+    }
+  }, [])
 
   const channels: Record<string, OpenClawChannelEntry> = config?.channels || {}
   const allAgents = config?.agents?.list ?? []
@@ -240,6 +250,7 @@ export default function Channels() {
   }
 
   async function openWechatSetup() {
+    wechatScanAttemptRef.current += 1
     setWechatSetupOpen(true)
     setWechatSetupError(null)
     setWechatSetupStage('checking')
@@ -270,24 +281,43 @@ export default function Channels() {
   }
 
   async function startWechatQrLogin() {
+    const attemptId = wechatScanAttemptRef.current + 1
+    wechatScanAttemptRef.current = attemptId
     setWechatSetupError(null)
     setWechatSetupStage('scanning')
-    execCommand('openclaw', ['channels', 'login', '--channel', 'wechat']).catch(() => {})
-    for (let i = 0; i < 60; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+    try {
+      await execCommand('openclaw', ['channels', 'login', '--channel', 'wechat'])
+    } catch (err) {
+      if (wechatScanAttemptRef.current !== attemptId) return
+      setWechatSetupError(err instanceof Error ? err.message : String(err))
+      setWechatSetupStage('error')
+      return
+    }
+    for (let i = 0; i < WECHAT_QR_MAX_POLLS; i++) {
+      await new Promise((resolve) => setTimeout(resolve, WECHAT_QR_POLL_INTERVAL_MS))
+      if (wechatScanAttemptRef.current !== attemptId) return
       try {
         const out = await execCommand('openclaw', ['channels', 'status', '--channel', 'wechat'])
+        if (wechatScanAttemptRef.current !== attemptId) return
         if (out.includes('connected') || out.includes('ready') || out.includes('online')) {
           setWechatSetupStage('connected')
           await refetch()
           return
         }
       } catch {
+        if (wechatScanAttemptRef.current !== attemptId) return
         // Keep polling while the login session is initializing.
       }
     }
-    setWechatSetupError(t('channel.qr.timeout'))
-    setWechatSetupStage('error')
+    if (wechatScanAttemptRef.current !== attemptId) return
+    setWechatSetupStage('timedOut')
+  }
+
+  function closeWechatSetup() {
+    wechatScanAttemptRef.current += 1
+    setWechatSetupOpen(false)
+    setWechatSetupError(null)
+    setWechatSetupStage('idle')
   }
 
   function openChannelEditor(typeId: string, accountId?: string) {
@@ -848,7 +878,7 @@ export default function Channels() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="wechat-setup-title"
-          onClick={() => wechatSetupStage !== 'installing' && wechatSetupStage !== 'scanning' && setWechatSetupOpen(false)}
+          onClick={() => wechatSetupStage !== 'installing' && closeWechatSetup()}
         >
           <div
             className="w-[min(100%,36rem)] rounded-[1.5rem] border border-border bg-card p-6 shadow-lg space-y-4"
@@ -921,6 +951,16 @@ export default function Channels() {
                 </div>
               ) : null}
 
+              {wechatSetupStage === 'timedOut' ? (
+                <div className="space-y-3">
+                  <div className="inline-flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
+                    <CircleDashed className="h-4 w-4" />
+                    {t('channel.qr.timeout')}
+                  </div>
+                  <div className="inline-note text-sm">{t('channel.qr.timeoutHint')}</div>
+                </div>
+              ) : null}
+
               {wechatSetupStage === 'connected' ? (
                 <div className="inline-flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
                   <CheckCircle2 className="h-4 w-4" />
@@ -937,8 +977,8 @@ export default function Channels() {
               <button
                 type="button"
                 className="button-secondary px-3 py-1.5 text-sm"
-                onClick={() => setWechatSetupOpen(false)}
-                disabled={wechatSetupStage === 'installing' || wechatSetupStage === 'scanning'}
+                onClick={closeWechatSetup}
+                disabled={wechatSetupStage === 'installing'}
               >
                 {t('common.cancel')}
               </button>
@@ -959,6 +999,15 @@ export default function Channels() {
                   onClick={() => void startWechatQrLogin()}
                 >
                   {t('channel.qr.start')}
+                </button>
+              )}
+              {wechatSetupStage === 'timedOut' && (
+                <button
+                  type="button"
+                  className="button-primary px-3 py-1.5 text-sm"
+                  onClick={() => void startWechatQrLogin()}
+                >
+                  {t('channel.qr.refresh')}
                 </button>
               )}
               {wechatSetupStage === 'error' && wechatPluginInstalled && (

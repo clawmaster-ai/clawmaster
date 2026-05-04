@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { changeLanguage } from '@/i18n'
 import ChannelsPage from '../ChannelsPage'
@@ -38,6 +38,10 @@ function renderChannels() {
 }
 
 describe('ChannelsPage', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(async () => {
     vi.clearAllMocks()
     await changeLanguage('zh')
@@ -106,6 +110,97 @@ describe('ChannelsPage', () => {
       '-g',
       '@tencent-weixin/openclaw-weixin',
     ])
+  })
+
+  it('keeps cancel available during WeChat QR scanning and stops polling after close', async () => {
+    mockExecCommand.mockImplementation(async (cmd: string, args: string[]) => {
+      if (cmd === 'npm' && args[0] === 'list') {
+        return 'installed'
+      }
+      if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'login') {
+        return 'login started'
+      }
+      if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'status') {
+        return 'waiting'
+      }
+      return ''
+    })
+
+    renderChannels()
+
+    expect(await screen.findByText('推荐入口')).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: '开始配置' })[1])
+
+    await screen.findByText('已安装')
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '开始扫码登录' }))
+
+    await act(async () => {})
+
+    const cancelButton = screen.getByRole('button', { name: '取消' })
+    expect(cancelButton).not.toBeDisabled()
+
+    fireEvent.click(cancelButton)
+    expect(screen.queryByRole('dialog', { name: '微信' })).not.toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+
+    const statusCalls = mockExecCommand.mock.calls.filter(
+      ([cmd, args]) =>
+        cmd === 'openclaw' &&
+        Array.isArray(args) &&
+        args[0] === 'channels' &&
+        args[1] === 'status' &&
+        args[3] === 'wechat',
+    )
+    expect(statusCalls).toHaveLength(0)
+  })
+
+  it('shows timeout recovery and refreshes the WeChat QR login after expiry', async () => {
+    mockExecCommand.mockImplementation(async (cmd: string, args: string[]) => {
+      if (cmd === 'npm' && args[0] === 'list') {
+        return 'installed'
+      }
+      if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'login') {
+        return 'login started'
+      }
+      if (cmd === 'openclaw' && args[0] === 'channels' && args[1] === 'status') {
+        return 'waiting'
+      }
+      return ''
+    })
+
+    renderChannels()
+
+    expect(await screen.findByText('推荐入口')).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: '开始配置' })[1])
+
+    await screen.findByText('已安装')
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '开始扫码登录' }))
+
+    await act(async () => {})
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60000)
+    })
+
+    expect(screen.getByText('登录超时，请重试')).toBeInTheDocument()
+    expect(screen.getByText('二维码可能已过期，请刷新后重新扫码。')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '刷新二维码' }))
+
+    const loginCalls = mockExecCommand.mock.calls.filter(
+      ([cmd, args]) =>
+        cmd === 'openclaw' &&
+        Array.isArray(args) &&
+        args[0] === 'channels' &&
+        args[1] === 'login' &&
+        args[3] === 'wechat',
+    )
+    expect(loginCalls).toHaveLength(2)
   })
 
   it('opens recent logs from the contextual troubleshooting action', async () => {

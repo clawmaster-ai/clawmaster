@@ -1020,6 +1020,8 @@ export default {
   "channel.qr.scanHint": "请用手机 App 扫描二维码完成登录",
   "channel.qr.connected": "连接成功！",
   "channel.qr.timeout": "登录超时，请重试",
+  "channel.qr.timeoutHint": "二维码可能已过期，请刷新后重新扫码。",
+  "channel.qr.refresh": "刷新二维码",
   "channel.feishu.permissionsTitle": "权限模板（一键复制到飞书权限配置）",
   "common.copyToClipboard": "复制",
   "channel.wechat.step1.highlight": "点击开始后自动安装，无需手动操作",
