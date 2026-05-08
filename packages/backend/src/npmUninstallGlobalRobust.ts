@@ -1,8 +1,14 @@
 import fs from 'fs'
 import path from 'path'
-import { execShellCommand } from './execOpenclaw.js'
+import { execNpmCommand } from './execOpenclaw.js'
 
 const ALLOWED = new Set(['openclaw', 'clawhub'])
+
+type NpmCommandRunner = (args: string[]) => Promise<{
+  code: number
+  stdout: string
+  stderr: string
+}>
 
 function looksLikeNpmRenameIssue(combined: string): boolean {
   return /ENOTEMPTY|rename|EPERM|EACCES|EEXIST/i.test(combined)
@@ -15,18 +21,20 @@ function looksLikeNpmRenameIssue(combined: string): boolean {
  * 3) else remove $(npm root -g)/<name> (only openclaw / clawhub allowed)
  */
 export async function npmUninstallGlobalRobust(
-  packageName: 'openclaw' | 'clawhub'
+  packageName: 'openclaw' | 'clawhub',
+  deps: { execNpm?: NpmCommandRunner } = {}
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   if (!ALLOWED.has(packageName)) {
     return { code: 1, stdout: '', stderr: 'unsupported package' }
   }
+  const runNpm = deps.execNpm ?? execNpmCommand
 
-  let r = await execShellCommand(`npm uninstall -g ${packageName}`)
+  let r = await runNpm(['uninstall', '-g', packageName])
   if (r.code === 0) return r
 
   const combined = `${r.stderr}\n${r.stdout}`
   if (looksLikeNpmRenameIssue(combined)) {
-    const f = await execShellCommand(`npm uninstall -g ${packageName} --force`)
+    const f = await runNpm(['uninstall', '-g', packageName, '--force'])
     r = {
       code: f.code,
       stdout: [r.stdout, f.stdout].filter(Boolean).join('\n'),
@@ -35,7 +43,7 @@ export async function npmUninstallGlobalRobust(
     if (r.code === 0) return r
   }
 
-  const rootRes = await execShellCommand('npm root -g')
+  const rootRes = await runNpm(['root', '-g'])
   if (rootRes.code !== 0) {
     return {
       code: r.code,

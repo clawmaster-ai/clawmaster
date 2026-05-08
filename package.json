@@ -58,12 +58,15 @@
     "selenium-webdriver": "^4.34.0"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.38",
+    "@langchain/core": "^1.1.45",
     "@sinclair/typebox": "^0.34.0",
     "@tauri-apps/api": "^2.10.1",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "powermem": "^0.1.0",
     "ws": "^8.18.0"
+  },
+  "overrides": {
+    "langsmith": "^0.6.3"
   }
 }
