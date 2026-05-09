@@ -208,14 +208,14 @@ describe('WikiPage', () => {
   it('renders status, article search results, and opens article details in a modal', async () => {
     render(<WikiPage />)
 
-    expect(await screen.findByRole('heading', { name: 'Wiki' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Stale means Wiki evolution/i })).toBeInTheDocument()
-    const bonusSection = await screen.findByRole('heading', { name: 'What Wiki already did for you' })
+    expect(await screen.findByRole('heading', { name: 'Knowledge' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Stale means evolution/i })).toBeInTheDocument()
+    const bonusSection = await screen.findByRole('heading', { name: "What's already done for you" })
     const bonusCard = bonusSection.closest('section') as HTMLElement
     expect(within(bonusCard).getByText('LLM synthesis pages')).toBeInTheDocument()
     expect(within(bonusCard).getByText('Searchable source pages')).toBeInTheDocument()
     expect(within(bonusCard).getByText('Auto-maintained pages')).toBeInTheDocument()
-    expect(within(bonusCard).getByText('1 maintenance update(s); 1 true evolved article(s).')).toBeInTheDocument()
+    expect(within(bonusCard).getByText('1 maintenance update(s); 1 truly evolved page(s).')).toBeInTheDocument()
     expect(within(bonusCard).getByText('Health signals')).toBeInTheDocument()
     expect(await screen.findByText('PowerMem Bridge')).toBeInTheDocument()
     expect(await screen.findByText('Powermem Knowledge')).toBeInTheDocument()
@@ -237,7 +237,7 @@ describe('WikiPage', () => {
     fireEvent.click(within(detailDialog).getByRole('button', { name: /Close/i }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'PowerMem Bridge' })).not.toBeInTheDocument())
 
-    fireEvent.change(screen.getByPlaceholderText('Search articles or ask what we know...'), {
+    fireEvent.change(screen.getByPlaceholderText('Search pages or ask what we know...'), {
       target: { value: 'PowerMem' },
     })
     fireEvent.click(screen.getByRole('button', { name: /Search/i }))
@@ -251,14 +251,14 @@ describe('WikiPage', () => {
     render(<WikiPage />)
 
     expect(await screen.findByText('PowerMem Bridge')).toBeInTheDocument()
-    fireEvent.change(screen.getByPlaceholderText('Search articles or ask what we know...'), {
+    fireEvent.change(screen.getByPlaceholderText('Search pages or ask what we know...'), {
       target: { value: 'missing topic' },
     })
     fireEvent.click(screen.getByRole('button', { name: /Search/i }))
 
     await waitFor(() => expect(mockWikiSearch).toHaveBeenCalledWith('missing topic', { limit: 20 }))
-    const searchSection = screen.getByRole('heading', { name: 'Article Search' }).closest('section') as HTMLElement
-    expect(within(searchSection).getByText('No wiki articles yet.')).toBeInTheDocument()
+    const searchSection = screen.getByRole('heading', { name: 'Search' }).closest('section') as HTMLElement
+    expect(within(searchSection).getByText('No pages yet.')).toBeInTheDocument()
     expect(within(searchSection).queryByText('PowerMem Bridge')).not.toBeInTheDocument()
     fireEvent.click(within(searchSection).getByRole('button', { name: /Clear search/i }))
     expect(await within(searchSection).findByText('PowerMem Bridge')).toBeInTheDocument()
@@ -275,7 +275,7 @@ describe('WikiPage', () => {
     expect(screen.getByRole('button', { name: /Summarize once/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Use once/i })).toBeInTheDocument()
 
-    fireEvent.change(screen.getByPlaceholderText('Ask a question against compiled knowledge'), {
+    fireEvent.change(screen.getByPlaceholderText('Ask a question against the knowledge base'), {
       target: { value: 'what do we know about powermem?' },
     })
     fireEvent.click(screen.getByRole('button', { name: /^Ask$/i }))
@@ -287,7 +287,7 @@ describe('WikiPage', () => {
       limit: 5,
     }))
     expect(await screen.findByText(/Saved synthesis: Powermem/i)).toBeInTheDocument()
-    expect(await screen.findByText(/Updated freshness for 2 article/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Updated freshness for 2 page/i)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Run Lint/i }))
     expect(await screen.findByText(/1 issue/i)).toBeInTheDocument()
@@ -295,8 +295,8 @@ describe('WikiPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Run Evolve/i }))
     await waitFor(() => expect(mockWikiEvolve).toHaveBeenCalled())
-    expect(await screen.findByText(/Updated freshness for 1 article/i)).toBeInTheDocument()
-    expect(await screen.findByText(/Wiki health found 0 conflict/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Updated freshness for 1 page/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Health check found 0 conflict/i)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Run Deep Evolve/i }))
     await waitFor(() => expect(mockWikiDeepEvolve).toHaveBeenCalled())
