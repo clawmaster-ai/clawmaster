@@ -655,6 +655,8 @@ export async function writeWikiMetaFilesForTest(vaultRoot: string, pageId: strin
 }
 
 function resolveWikiVaultRoot(managedContext: ManagedMemoryContext): string {
+  const explicitOverride = process.env['CLAWMASTER_WIKI_ROOT']?.trim()
+  if (explicitOverride) return explicitOverride
   return join(resolveOpenclawWorkspaceDir(managedContext), '..', 'wiki')
 }
 

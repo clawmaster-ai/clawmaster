@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import {
   addManagedMemory,
@@ -11,11 +10,15 @@ import {
   type ManagedMemoryContext,
 } from './managedMemory.js'
 import {
-  getOpenclawPathModule,
   getOpenclawProfileSelection,
   type OpenclawProfileContext,
   type OpenclawProfileSelection,
 } from '../openclawProfile.js'
+import {
+  ensureWikiVaultStructure,
+  resolveWikiVaultLayout,
+  type WikiVaultLayout,
+} from '../openclawVaultPaths.js'
 import {
   wikiLlmComplete,
   wikiLlmCompleteStructured,
@@ -278,56 +281,12 @@ const PAGE_DIRS: Record<WikiPageType, string> = {
   process: 'processes',
 }
 
-const WIKI_STATE_FILE = 'ingest-state.json'
 const DEFAULT_FRESHNESS_SCORE = 1
 const GENERATED_BLOCK_PREFIX = 'CLAWMASTER-GENERATED'
 const DERIVED_PAGE_CONFIDENCE_THRESHOLD = 0.72
 const MAX_INGEST_LLM_CHARS = 12_000
 const MAX_DEEP_EVOLVE_PAGES = 5
 const MAX_CONTRADICTION_PAIRS = 10
-const WIKI_SCHEMA_TEMPLATE = `# Wiki Schema
-
-This vault stores durable, citation-aware wiki knowledge for OpenClaw and ClawMaster workflows.
-
-## Layout
-
-- \`raw/\`: original imported artifacts or fetched source payloads when stored later
-- \`pages/sources/\`: imported source notes and source-linked summaries
-- \`pages/entities/\`: people, orgs, tools, and products enriched from sources
-- \`pages/concepts/\`: patterns, ideas, and reusable techniques enriched from sources
-- \`pages/synthesis/\`: durable synthesized answers created from source pages
-- \`pages/processes/\`: process docs and operating procedures
-- \`.meta/freshness.json\`: computed freshness state
-- \`.meta/conflicts.json\`: lint issues considered wiki conflicts
-- \`.meta/ingest-state.json\`: source-to-page provenance for incremental re-ingest
-
-## Required frontmatter
-
-- \`id\`: stable page id
-- \`title\`: human-readable page title
-- \`type\`: one of entity, concept, source, synthesis, process
-- \`createdAt\`, \`updatedAt\`
-- \`freshnessScore\`, \`freshnessStatus\`
-- \`memoryId\`: managed memory backing record id when present
-
-## Generated provenance
-
-- \`generatedFromSourceIds\`: pipe-delimited source page ids whose generated blocks contribute to the page
-- Generated blocks use HTML comments of the form \`<!-- CLAWMASTER-GENERATED:<key>:START -->\`
-- Re-ingest replaces or removes only the generated block for the matching source page id
-
-## Linking and citations
-
-- Use \`[[Wiki Links]]\` for page references
-- Source pages should preserve provenance via \`sourceUrl\` and \`sourcePath\`
-- Synthesis pages should cite source pages with \`[[Page Title]]\` links
-
-## Maintenance
-
-- Mechanical evolve recalculates freshness, related pages, and structural health
-- Deep evolve is opt-in and may revise stale pages with LLM review
-- Lint checks structure first, then optional contradiction checks across related pages
-`
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -450,45 +409,30 @@ function getProfileKey(profileSelection: OpenclawProfileSelection): string {
   return profileSelection.kind
 }
 
-function resolveOpenclawStateDir(
-  profileSelection: OpenclawProfileSelection,
-  context: WikiServiceContext,
-): string {
-  const pathModule = getOpenclawPathModule(context.platform)
-  const homeDir = context.homeDir ?? os.homedir()
-  if (profileSelection.kind === 'named' && profileSelection.name) {
-    return pathModule.join(homeDir, `.openclaw-${profileSelection.name}`)
-  }
-  if (profileSelection.kind === 'dev') {
-    return pathModule.join(homeDir, '.openclaw-dev')
-  }
-  return pathModule.join(homeDir, '.openclaw')
-}
-
 export function resolveWikiPaths(context: WikiServiceContext = {}): WikiPaths {
   const profileSelection = context.profileSelection ?? getOpenclawProfileSelection(context)
-  const vaultRoot =
-    context.vaultRootOverride
-    ?? process.env['CLAWMASTER_WIKI_ROOT']?.trim()
-    ?? path.join(resolveOpenclawStateDir(profileSelection, context), 'wiki')
-  const pagesRoot = path.join(vaultRoot, 'pages')
-  const metaRoot = path.join(vaultRoot, '.meta')
+  const layout: WikiVaultLayout = resolveWikiVaultLayout({
+    homeDir: context.homeDir,
+    platform: context.platform,
+    profileSelection,
+    vaultRootOverride: context.vaultRootOverride,
+  })
   return {
     profileKey: getProfileKey(profileSelection),
-    vaultRoot,
-    rawRoot: path.join(vaultRoot, 'raw'),
-    pagesRoot,
-    metaRoot,
-    indexPath: path.join(vaultRoot, 'index.md'),
-    logPath: path.join(vaultRoot, 'log.md'),
-    schemaPath: path.join(vaultRoot, 'SCHEMA.md'),
-    freshnessPath: path.join(metaRoot, 'freshness.json'),
-    conflictsPath: path.join(metaRoot, 'conflicts.json'),
+    vaultRoot: layout.vaultRoot,
+    rawRoot: layout.rawRoot,
+    pagesRoot: layout.pagesRoot,
+    metaRoot: layout.metaRoot,
+    indexPath: layout.indexPath,
+    logPath: layout.logPath,
+    schemaPath: layout.schemaPath,
+    freshnessPath: layout.freshnessPath,
+    conflictsPath: layout.conflictsPath,
   }
 }
 
 function statePath(paths: WikiPaths): string {
-  return path.join(paths.metaRoot, WIKI_STATE_FILE)
+  return path.join(paths.metaRoot, 'ingest-state.json')
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {
@@ -507,30 +451,18 @@ async function writeIfMissing(filePath: string, content: string): Promise<void> 
 
 export async function ensureWikiVault(context: WikiServiceContext = {}): Promise<WikiPaths> {
   const paths = resolveWikiPaths(context)
-  await fs.mkdir(paths.rawRoot, { recursive: true })
-  await fs.mkdir(paths.metaRoot, { recursive: true })
-  await Promise.all(
-    Object.values(PAGE_DIRS).map((dir) => fs.mkdir(path.join(paths.pagesRoot, dir), { recursive: true })),
-  )
-  await writeIfMissing(
-    paths.indexPath,
-    '# Wiki Index\n\nCompiled wiki articles will appear here after ingest.\n',
-  )
-  await writeIfMissing(
-    paths.logPath,
-    '# Wiki Log\n\n',
-  )
-  await writeIfMissing(
-    paths.schemaPath,
-    `${WIKI_SCHEMA_TEMPLATE}\n`,
-  )
-  const existingSchema = await fs.readFile(paths.schemaPath, 'utf8').catch(() => '')
-  if (existingSchema.trim() === '# Wiki Schema\n\nPages use YAML frontmatter with id, title, type, source, freshness, and provenance fields.'.trim()) {
-    await fs.writeFile(paths.schemaPath, `${WIKI_SCHEMA_TEMPLATE}\n`, 'utf8')
-  }
-  await writeIfMissing(paths.freshnessPath, '{}\n')
-  await writeIfMissing(paths.conflictsPath, '[]\n')
-  await writeIfMissing(statePath(paths), `${JSON.stringify({ version: 1, sources: {} }, null, 2)}\n`)
+  await ensureWikiVaultStructure({
+    vaultRoot: paths.vaultRoot,
+    rawRoot: paths.rawRoot,
+    pagesRoot: paths.pagesRoot,
+    metaRoot: paths.metaRoot,
+    indexPath: paths.indexPath,
+    logPath: paths.logPath,
+    schemaPath: paths.schemaPath,
+    freshnessPath: paths.freshnessPath,
+    conflictsPath: paths.conflictsPath,
+    ingestStatePath: statePath(paths),
+  })
   return paths
 }
 
