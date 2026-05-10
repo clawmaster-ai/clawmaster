@@ -42,13 +42,15 @@ This vault stores durable, citation-aware knowledge for OpenClaw and ClawMaster 
 
 ## Generated provenance
 
-- \`generatedFromSourceIds\`: pipe-delimited source page ids whose generated blocks contribute to the page
+- \`generatedFromSourceIds\`: YAML array of source page ids whose generated blocks contribute to this page (e.g. \`["sources-foo", "sources-bar"]\`)
+- \`relatedPages\`: YAML array of related page titles derived from this source (replaces the legacy body-level "Extracted Wiki Links" section)
 - Generated blocks use HTML comments of the form \`<!-- CLAWMASTER-GENERATED:<key>:START -->\`
 - Re-ingest replaces or removes only the generated block for the matching source page id
 
 ## Linking and citations
 
-- Use \`[[Page Title]]\` wiki-style links for cross-references
+- Use \`[[Page Title]]\` wiki-style links for cross-references in body text
+- Frontmatter \`relatedPages\` arrays are unioned with body \`[[links]]\` for backlink calculations and are visible to dataview-style queries in external editors
 - Source pages should preserve provenance via \`sourceUrl\` and \`sourcePath\`
 - Synthesis pages should cite source pages with \`[[Page Title]]\` links
 

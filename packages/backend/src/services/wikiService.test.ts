@@ -254,6 +254,23 @@ test('llm ingest creates derived pages and removes outdated generated pages on r
   assert.equal(derivedPage.frontmatter.generatedFromSourceIds, first.page!.id)
   assert.match(derivedPage.content, /PowerMem Source/)
 
+  const derivedRaw = await fs.readFile(derivedPage.path, 'utf8')
+  assert.match(
+    derivedRaw,
+    new RegExp(`generatedFromSourceIds: \\["${first.page!.id}"\\]`),
+    'derived page should persist generatedFromSourceIds as a YAML array on disk',
+  )
+
+  const sourcePage = await getWikiPage(first.page!.id, context)
+  assert.equal(sourcePage.frontmatter.relatedPages, 'SeekDB Runtime')
+  const sourceRaw = await fs.readFile(sourcePage.path, 'utf8')
+  assert.match(
+    sourceRaw,
+    /relatedPages: \["SeekDB Runtime"\]/,
+    'source page should persist relatedPages as a YAML array on disk',
+  )
+  assert.doesNotMatch(sourceRaw, /## Extracted Wiki Links/)
+
   const second = await ingestWikiSource(
     {
       title: 'PowerMem Source',

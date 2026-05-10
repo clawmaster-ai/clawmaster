@@ -332,25 +332,6 @@ function removeGeneratedBlock(body: string, blockId: string): string {
   return upsertGeneratedBlock(body, blockId, '')
 }
 
-function parsePipeList(value: string | undefined): string[] {
-  return (value ?? '')
-    .split('|')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
-function serializePipeList(values: string[]): string {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].join('|')
-}
-
-function buildSourceLinksBlock(links: string[]): string {
-  if (links.length === 0) return ''
-  return [
-    '## Extracted Wiki Links',
-    '',
-    ...links.map((link) => `- [[${link}]]`),
-  ].join('\n')
-}
 
 function buildDerivedContributionBlock(sourceTitle: string, summary: string): string {
   return [
@@ -613,14 +594,59 @@ async function fetchUrlContent(sourceUrl: string): Promise<{ title?: string; con
   }
 }
 
-function renderFrontmatter(values: Record<string, string | number | boolean | null | undefined>): string {
+type FrontmatterScalar = string | number | boolean | null | undefined
+type FrontmatterValue = FrontmatterScalar | string[]
+
+function isFilledArray(value: FrontmatterValue): value is string[] {
+  return Array.isArray(value)
+}
+
+function renderFrontmatter(values: Record<string, FrontmatterValue>): string {
   const lines = Object.entries(values)
-    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .filter(([, value]) => {
+      if (value === undefined || value === null) return false
+      if (typeof value === 'string' && value === '') return false
+      if (Array.isArray(value) && value.length === 0) return false
+      return true
+    })
     .map(([key, value]) => {
       if (typeof value === 'number' || typeof value === 'boolean') return `${key}: ${value}`
+      if (isFilledArray(value)) {
+        const items = value.map((item) => JSON.stringify(String(item))).join(', ')
+        return `${key}: [${items}]`
+      }
       return `${key}: ${JSON.stringify(String(value))}`
     })
   return `---\n${lines.join('\n')}\n---\n`
+}
+
+function parseFrontmatterScalar(rawValue: string): string {
+  if (rawValue.startsWith('[') && rawValue.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(rawValue) as unknown
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => String(item).trim())
+          .filter(Boolean)
+          .join('|')
+      }
+    } catch {
+      /* fall through to plain string parsing */
+    }
+  }
+  if (/^-?\d+$/.test(rawValue) && !Number.isSafeInteger(Number(rawValue))) return rawValue
+  try {
+    const parsed = JSON.parse(rawValue) as unknown
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => String(item).trim())
+        .filter(Boolean)
+        .join('|')
+    }
+    return String(parsed)
+  } catch {
+    return rawValue
+  }
 }
 
 function parseFrontmatter(raw: string): { frontmatter: Record<string, string>; body: string } {
@@ -636,25 +662,42 @@ function parseFrontmatter(raw: string): { frontmatter: Record<string, string>; b
     const key = line.slice(0, index).trim()
     const rawValue = line.slice(index + 1).trim()
     if (!key) continue
-    if (/^-?\d+$/.test(rawValue) && !Number.isSafeInteger(Number(rawValue))) {
-      frontmatter[key] = rawValue
-      continue
-    }
-    try {
-      const parsed = JSON.parse(rawValue) as unknown
-      frontmatter[key] = String(parsed)
-    } catch {
-      frontmatter[key] = rawValue
-    }
+    frontmatter[key] = parseFrontmatterScalar(rawValue)
   }
   return { frontmatter, body }
 }
 
+const LIST_FRONTMATTER_KEYS = new Set(['generatedFromSourceIds', 'relatedPages', 'relatedPageIds'])
+
+function normalizeFrontmatterValueForWrite(key: string, value: FrontmatterValue): FrontmatterValue {
+  if (Array.isArray(value)) return value
+  if (LIST_FRONTMATTER_KEYS.has(key) && typeof value === 'string' && value.length > 0) {
+    return value.split('|').map((item) => item.trim()).filter(Boolean)
+  }
+  return value
+}
+
 function renderMarkdownWithFrontmatter(
-  frontmatter: Record<string, string | number | boolean | null | undefined>,
+  frontmatter: Record<string, FrontmatterValue>,
   body: string,
 ): string {
-  return `${renderFrontmatter(frontmatter)}\n${body.replace(/^\r?\n/, '')}`
+  const normalized: Record<string, FrontmatterValue> = {}
+  for (const [key, value] of Object.entries(frontmatter)) {
+    normalized[key] = normalizeFrontmatterValueForWrite(key, value)
+  }
+  return `${renderFrontmatter(normalized)}\n${body.replace(/^\r?\n/, '')}`
+}
+
+function readListFrontmatter(value: string | undefined): string[] {
+  if (!value) return []
+  return value
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function serializeFrontmatterList(values: string[]): string {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].join('|')
 }
 
 function extractWikiLinks(content: string): string[] {
@@ -858,6 +901,12 @@ function pageTypeFromRelativePath(relativePath: string): WikiPageType {
   return 'source'
 }
 
+function linksForPage(page: ParsedPage): string[] {
+  const bodyLinks = extractWikiLinks(page.body)
+  const frontmatterLinks = readListFrontmatter(page.frontmatter.relatedPages)
+  return [...new Set([...bodyLinks, ...frontmatterLinks])]
+}
+
 function summarizeParsedPages(pages: ParsedPage[], query = '', freshnessMeta: WikiFreshnessMeta = {}): WikiPageSummary[] {
   const titleToId = new Map<string, string>()
   for (const page of pages) {
@@ -870,7 +919,7 @@ function summarizeParsedPages(pages: ParsedPage[], query = '', freshnessMeta: Wi
   const backlinksById = new Map<string, Set<string>>()
   for (const page of pages) {
     const fromId = page.frontmatter.id || slugify(page.frontmatter.title || path.basename(page.filePath, '.md'))
-    for (const link of extractWikiLinks(page.body)) {
+    for (const link of linksForPage(page)) {
       const targetId = titleToId.get(link) ?? slugify(link)
       if (!backlinksById.has(targetId)) backlinksById.set(targetId, new Set())
       backlinksById.get(targetId)!.add(fromId)
@@ -906,7 +955,7 @@ function summarizeParsedPages(pages: ParsedPage[], query = '', freshnessMeta: Wi
       evolveChangeSummary: page.frontmatter.evolveChangeSummary || '',
       evolveSource: page.frontmatter.evolveSource || '',
       lastAccessedAt: meta?.lastAccessedAt || page.frontmatter.lastAccessedAt || '',
-      links: extractWikiLinks(page.body),
+      links: linksForPage(page),
       backlinks: [...(backlinksById.get(id) ?? new Set())],
       memoryIds: page.frontmatter.memoryId ? [page.frontmatter.memoryId] : [],
     }
@@ -925,6 +974,7 @@ function renderWikiPage(input: {
   fingerprint: string
   createdAt: string
   updatedAt: string
+  relatedPages?: string[]
 }): string {
   const fm = renderFrontmatter({
     id: input.id,
@@ -941,6 +991,7 @@ function renderWikiPage(input: {
     freshnessScore: DEFAULT_FRESHNESS_SCORE,
     freshnessStatus: 'fresh',
     sourceCount: input.sourcePath || input.sourceUrl ? 1 : 0,
+    relatedPages: input.relatedPages && input.relatedPages.length > 0 ? input.relatedPages : undefined,
     createdAt: input.createdAt,
     updatedAt: input.updatedAt,
   })
@@ -1015,7 +1066,7 @@ async function syncPageManagedMemory(
           sourcePath: parsed.frontmatter.sourcePath,
           sourceUrl: parsed.frontmatter.sourceUrl,
           sourceFingerprint: parsed.frontmatter.fingerprint,
-          sourcePageIds: parsePipeList(parsed.frontmatter.generatedFromSourceIds),
+          sourcePageIds: readListFrontmatter(parsed.frontmatter.generatedFromSourceIds),
           importedAt: nowIso(),
           createdBy: parsed.frontmatter.evolveSource?.includes('llm') ? 'wiki-llm' : 'wiki-service',
         },
@@ -1131,8 +1182,8 @@ async function upsertDerivedPage(
   const contribution = buildDerivedContributionBlock(sourcePage.title, item.summary)
   const existingRaw = await fs.readFile(pagePath, 'utf8').catch(() => '')
   const existingParsed = existingRaw ? parseFrontmatter(existingRaw) : null
-  const currentSourceIds = parsePipeList(existingParsed?.frontmatter.generatedFromSourceIds)
-  const nextSourceIds = serializePipeList([...currentSourceIds, sourcePage.id])
+  const currentSourceIds = readListFrontmatter(existingParsed?.frontmatter.generatedFromSourceIds)
+  const nextSourceIds = serializeFrontmatterList([...currentSourceIds, sourcePage.id])
   const nextBody = existingParsed
     ? upsertGeneratedBlock(
         ensureContributionSection(stripHeading(existingParsed.frontmatter.title || item.name, existingParsed.body)),
@@ -1200,7 +1251,7 @@ async function cleanupRemovedDerivedPages(
       continue
     }
     const blockId = blockIdForSource(sourcePageId)
-    const nextSourceIds = parsePipeList(page.frontmatter.generatedFromSourceIds).filter((id) => id !== sourcePageId)
+    const nextSourceIds = readListFrontmatter(page.frontmatter.generatedFromSourceIds).filter((id) => id !== sourcePageId)
     const nextBody = pruneEmptyContributionSection(removeGeneratedBlock(stripHeading(page.title, page.content), blockId))
     const generatedShell = generatedDerivedPageIntro(page.type)
     const remainingMeaningfulBody = nextBody
@@ -1220,7 +1271,7 @@ async function cleanupRemovedDerivedPages(
     }
     const nextFrontmatter = {
       ...page.frontmatter,
-      generatedFromSourceIds: serializePipeList(nextSourceIds),
+      generatedFromSourceIds: serializeFrontmatterList(nextSourceIds),
       updatedAt: nowIso(),
     }
     await fs.writeFile(page.path, renderMarkdownWithFrontmatter(nextFrontmatter, nextBody), 'utf8')
@@ -1494,15 +1545,13 @@ export async function ingestWikiSource(
   const uniqueSuggestions = [...new Map(
     derivedSuggestions.map((item) => [`${item.kind}:${item.name.toLowerCase()}`, item]),
   ).values()]
-  const sourceContent = upsertGeneratedBlock(
-    content,
-    `${GENERATED_BLOCK_PREFIX}:related-links`,
-    buildSourceLinksBlock(
-      uniqueSuggestions
-        .map((item) => item.existingTitle?.trim() || item.name.trim())
-        .filter(Boolean),
-    ),
-  )
+  // Drop any legacy `## Extracted Wiki Links` body block left over from earlier
+  // versions so re-ingest cleans it up; the same information now lives in the
+  // `relatedPages` YAML frontmatter array, which does not clutter editors.
+  const relatedPageTitles = uniqueSuggestions
+    .map((item) => item.existingTitle?.trim() || item.name.trim())
+    .filter(Boolean)
+  const sourceContent = removeGeneratedBlock(content, `${GENERATED_BLOCK_PREFIX}:related-links`)
 
   const now = nowIso()
   const created = await addManagedMemory(
@@ -1559,6 +1608,7 @@ export async function ingestWikiSource(
       fingerprint,
       createdAt: existingPage?.createdAt || previous?.updatedAt || now,
       updatedAt: now,
+      relatedPages: relatedPageTitles,
     }),
     'utf8',
   )
@@ -2390,7 +2440,7 @@ async function collectDeepEvolveRelatedPages(
   page: WikiPageDetail,
   context: WikiServiceContext,
 ): Promise<WikiPageDetail[]> {
-  const queue = parsePipeList(page.frontmatter.relatedPageIds)
+  const queue = readListFrontmatter(page.frontmatter.relatedPageIds)
   const seen = new Set<string>([page.id])
   const relatedPages: WikiPageDetail[] = []
 
@@ -2401,7 +2451,7 @@ async function collectDeepEvolveRelatedPages(
     const relatedPage = await getWikiPage(relatedId, context).catch(() => null)
     if (!relatedPage) continue
     relatedPages.push(relatedPage)
-    for (const nestedId of parsePipeList(relatedPage.frontmatter.relatedPageIds)) {
+    for (const nestedId of readListFrontmatter(relatedPage.frontmatter.relatedPageIds)) {
       if (!seen.has(nestedId)) queue.push(nestedId)
     }
   }
