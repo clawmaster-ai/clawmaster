@@ -316,7 +316,7 @@ function clipAutoRecallQuery(query: string, maxLength = 96): string {
   return `${normalized.slice(0, maxLength - 3)}...`
 }
 
-export function buildAutoRecallLogForTest(
+export function formatAutoRecallLog(
   query: string,
   summary: { wikiCount: number; memoryCount: number },
 ): string {
@@ -1480,7 +1480,7 @@ const plugin = {
             .filter((item) => (item.score ?? 0) >= cfg.recallScoreThreshold)
 
           const recallContext = buildAutoRecallContextForTest(query, results, cfg.recallLimit)
-          api.logger.info(buildAutoRecallLogForTest(query, recallContext))
+          api.logger.info(formatAutoRecallLog(query, recallContext))
           return {
             prependSystemContext: MEMORY_RECALL_GUIDANCE,
             ...(recallContext.prependContext
