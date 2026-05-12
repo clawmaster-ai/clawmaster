@@ -6,12 +6,14 @@ import test from 'node:test'
 import {
   resolveWikiLlm,
   setWikiLlmCommandRunnerForTests,
+  setWikiLlmTransportForTests,
   setWikiLlmUseGatewayFetchForTests,
   wikiLlmComplete,
   wikiLlmEnabled,
 } from './wikiLlm.js'
 
 const originalFetch = globalThis.fetch
+const originalUseGatewayEnv = process.env.WIKI_LLM_USE_GATEWAY
 
 async function createHomeRoot(name: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), `clawmaster-wiki-llm-${name}-`))
@@ -26,7 +28,9 @@ async function writeConfig(homeDir: string, config: Record<string, unknown>): Pr
 test.afterEach(() => {
   globalThis.fetch = originalFetch
   setWikiLlmCommandRunnerForTests(null)
-  setWikiLlmUseGatewayFetchForTests(false)
+  setWikiLlmTransportForTests(null)
+  if (originalUseGatewayEnv === undefined) delete process.env.WIKI_LLM_USE_GATEWAY
+  else process.env.WIKI_LLM_USE_GATEWAY = originalUseGatewayEnv
 })
 
 test('resolveWikiLlm disables the helper when no default model is configured', async () => {
@@ -118,4 +122,73 @@ test('wikiLlmComplete uses the supported infer model gateway command in producti
     '--prompt',
     'USER:\nReply with exactly OK.',
   ])
+})
+
+test('wikiLlmComplete defaults to infer-model transport and does not touch globalThis.fetch', async () => {
+  const homeDir = await createHomeRoot('transport-default')
+  await writeConfig(homeDir, {
+    agents: { defaults: { model: { primary: 'openai/gpt-4o-mini' } } },
+  })
+
+  let fetchCalled = false
+  globalThis.fetch = (async () => {
+    fetchCalled = true
+    return new Response('{}', { status: 200 })
+  }) as typeof fetch
+
+  let inferCalled = false
+  setWikiLlmCommandRunnerForTests(async () => {
+    inferCalled = true
+    return {
+      code: 0,
+      stdout: JSON.stringify({ ok: true, outputs: [{ text: 'from-infer' }] }),
+      stderr: '',
+    }
+  })
+
+  const result = await wikiLlmComplete([{ role: 'user', content: 'ping' }], {}, { homeDir })
+  assert.equal(result, 'from-infer')
+  assert.equal(inferCalled, true)
+  assert.equal(fetchCalled, false)
+})
+
+test('wikiLlmComplete uses gateway-fetch when WIKI_LLM_USE_GATEWAY=1', async () => {
+  const homeDir = await createHomeRoot('transport-env')
+  await writeConfig(homeDir, {
+    agents: { defaults: { model: { primary: 'openai/gpt-4o-mini' } } },
+    gateway: { port: 19999, auth: { mode: 'token', token: 'env-token' } },
+  })
+
+  process.env.WIKI_LLM_USE_GATEWAY = '1'
+  let fetchCalled = false
+  globalThis.fetch = (async () => {
+    fetchCalled = true
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: 'from-gateway' } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }) as typeof fetch
+
+  const result = await wikiLlmComplete([{ role: 'user', content: 'ping' }], {}, { homeDir })
+  assert.equal(result, 'from-gateway')
+  assert.equal(fetchCalled, true)
+})
+
+test('setWikiLlmTransportForTests explicit override beats WIKI_LLM_USE_GATEWAY env', async () => {
+  const homeDir = await createHomeRoot('transport-override')
+  await writeConfig(homeDir, {
+    agents: { defaults: { model: { primary: 'openai/gpt-4o-mini' } } },
+  })
+
+  process.env.WIKI_LLM_USE_GATEWAY = '1'
+  setWikiLlmTransportForTests('infer-model')
+
+  let inferCalled = false
+  setWikiLlmCommandRunnerForTests(async () => {
+    inferCalled = true
+    return { code: 0, stdout: JSON.stringify({ ok: true, outputs: [{ text: 'infer-wins' }] }), stderr: '' }
+  })
+
+  const result = await wikiLlmComplete([{ role: 'user', content: 'ping' }], {}, { homeDir })
+  assert.equal(result, 'infer-wins')
+  assert.equal(inferCalled, true)
 })

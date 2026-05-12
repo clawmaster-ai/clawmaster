@@ -292,6 +292,15 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
+function logWikiLlmFailure(code: string, error: unknown, extra?: Record<string, unknown>): void {
+  const message = error instanceof Error ? error.message : String(error)
+  // Surface LLM failures as a warning log so operators can triage gateway/auth
+  // misconfiguration in the field. Callers still propagate a stable warning
+  // code through the response payload; this adds visibility without changing
+  // the contract.
+  console.warn(`[wiki] ${code}: ${message}`, extra ?? {})
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -364,12 +373,11 @@ function stripMarkdownSection(body: string, sectionTitle: string): string {
 
 function sanitizeWikiBody(title: string, body: string): string {
   const withoutHeading = stripHeading(title, body)
-  const withoutGeneratedBlocks = withoutHeading
-    .replace(/<!--\s*CLAWMASTER-GENERATED:[\s\S]*?:START\s*-->/g, '\n')
-    .replace(/<!--\s*CLAWMASTER-GENERATED:[\s\S]*?:END\s*-->/g, '\n')
-    .replace(/<!--[\s\S]*?-->/g, '\n')
+  // Strip any HTML comment — the CLAWMASTER-GENERATED markers and any other
+  // comment block are all covered by the generic pattern below.
+  const withoutComments = withoutHeading.replace(/<!--[\s\S]*?-->/g, '\n')
   return ['Extracted Wiki Links', 'Sources']
-    .reduce((content, sectionTitle) => stripMarkdownSection(content, sectionTitle), withoutGeneratedBlocks)
+    .reduce((content, sectionTitle) => stripMarkdownSection(content, sectionTitle), withoutComments)
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
@@ -1537,8 +1545,9 @@ export async function ingestWikiSource(
           context,
         )
         derivedExtractionCompleted = true
-      } catch {
+      } catch (error) {
         warnings.push('wiki_llm_extract_failed')
+        logWikiLlmFailure('wiki_llm_extract_failed', error, { title })
       }
     }
   }
@@ -1630,9 +1639,10 @@ export async function ingestWikiSource(
         context,
       )
       nextDerivedResults.push(result)
-    } catch {
+    } catch (error) {
       derivedUpsertFailed = true
       warnings.push(`wiki_derived_page_failed:${item.name}`)
+      logWikiLlmFailure('wiki_derived_page_failed', error, { name: item.name })
     }
   }
 
@@ -1766,8 +1776,9 @@ export async function queryWiki(
         { maxTokens: 1024, temperature: 0.3 },
         context,
       )
-    } catch {
+    } catch (error) {
       warnings.push('wiki_llm_query_fallback')
+      logWikiLlmFailure('wiki_llm_query_fallback', error, { query: trimmed })
     }
   }
 
@@ -2147,8 +2158,12 @@ async function detectContradictions(
           detail: `${left.title} vs ${right.title}: ${contradiction.explanation.trim()}`,
         })
       }
-    } catch {
+    } catch (error) {
       warnings.push('wiki_llm_contradiction_check_failed')
+      logWikiLlmFailure('wiki_llm_contradiction_check_failed', error, {
+        left: left.id,
+        right: right.id,
+      })
       break
     }
   }
@@ -2431,7 +2446,8 @@ async function reviseStalePageWithLlm(
     await fs.writeFile(page.path, renderMarkdownWithFrontmatter(nextFrontmatter, nextBody), 'utf8')
     await syncPageManagedMemory(page.path, context)
     return { changed: true }
-  } catch {
+  } catch (error) {
+    logWikiLlmFailure('wiki_llm_deep_evolve_failed', error, { pageId: page.id })
     return { changed: false, warning: `wiki_llm_deep_evolve_failed:${page.id}` }
   }
 }
