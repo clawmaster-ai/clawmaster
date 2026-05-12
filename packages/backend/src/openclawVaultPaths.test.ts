@@ -208,6 +208,17 @@ test('ensureWikiVaultStructure is idempotent and does not overwrite existing con
   }
 })
 
+test('resolveWikiVaultLayout uses dataRootOverride when vaultRootOverride is absent', () => {
+  const layout = resolveWikiVaultLayout({
+    env: emptyEnv(),
+    platform: 'linux',
+    dataRootOverride: '/home/testuser/.clawmaster/data/named/work',
+  })
+  assert.equal(layout.vaultRoot, path.posix.join('/home/testuser/.openclaw-work', 'wiki'))
+  assert.equal(layout.pagesRoot, path.posix.join('/home/testuser/.openclaw-work', 'wiki', 'pages'))
+  assert.equal(layout.ingestStatePath, path.posix.join('/home/testuser/.openclaw-work', 'wiki', '.meta', 'ingest-state.json'))
+})
+
 test('resolveWikiVaultRoot matches the plugin-side resolution for representative managed data roots (parity)', () => {
   const cases = [
     {

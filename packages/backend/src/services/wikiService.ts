@@ -406,6 +406,7 @@ export function resolveWikiPaths(context: WikiServiceContext = {}): WikiPaths {
     platform: context.platform,
     profileSelection,
     vaultRootOverride: context.vaultRootOverride,
+    dataRootOverride: context.managedMemoryContext?.dataRootOverride,
   })
   return {
     profileKey: getProfileKey(profileSelection),
