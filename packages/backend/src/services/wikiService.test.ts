@@ -747,6 +747,42 @@ test('lint flags orphan and missing linked pages, evolve records freshness', asy
   assert.deepEqual(related[created.page!.id], [])
 })
 
+test('contradiction detection sanitizes and truncates page content before sending to llm', async () => {
+  const context = await createContext('contradiction-truncate')
+  // Ingest without a model configured so LLM extraction is skipped during
+  // ingest itself; the large pages are still written to disk. LLM is only
+  // enabled afterwards for the lint contradiction check.
+  const longContent = 'X'.repeat(10_000)
+  await ingestWikiSource(
+    { title: 'Big Page A', content: `[[Big Page B]] ${longContent}`, sourcePath: '/a.md' },
+    context,
+  )
+  await ingestWikiSource(
+    { title: 'Big Page B', content: longContent, sourcePath: '/b.md' },
+    context,
+  )
+
+  await writeWikiConfig(context, {
+    agents: { defaults: { model: { primary: 'openai/gpt-4o-mini' } } },
+  })
+  setWikiLlmUseGatewayFetchForTests(true)
+  let receivedBodyLength = 0
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as { messages?: Array<{ content?: string }> }
+    const userMessage = body.messages?.find((m) => m.content?.includes('Page 1'))?.content ?? ''
+    receivedBodyLength = userMessage.length
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ contradictions: [] }) } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }) as typeof fetch
+
+  await lintWiki(context)
+  assert.ok(
+    receivedBodyLength < 7_500,
+    `contradiction check sent ${receivedBodyLength} chars — expected < 7500 after truncation`,
+  )
+})
+
 test('lint emits contradiction issues when llm contradiction checks find a conflict', async () => {
   const context = await createContext('contradiction')
   await writeWikiConfig(context, {

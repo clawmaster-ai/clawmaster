@@ -286,6 +286,7 @@ const GENERATED_BLOCK_PREFIX = 'CLAWMASTER-GENERATED'
 const DERIVED_PAGE_CONFIDENCE_THRESHOLD = 0.72
 const MAX_INGEST_LLM_CHARS = 12_000
 const MAX_DEEP_EVOLVE_PAGES = 5
+const MAX_CONTRADICTION_PAGE_CHARS = 3_000
 const MAX_CONTRADICTION_PAIRS = 10
 
 function nowIso(): string {
@@ -1517,7 +1518,7 @@ export async function ingestWikiSource(
     sourcePath: ingestInput.sourcePath,
   })
   if (previous?.fingerprint === fingerprint && await pathExists(pagePath)) {
-    const page = (await listWikiPages(context)).find((item) => item.id === previous.pageId)
+    const page = knownPages.find((item) => item.id === previous.pageId)
     return {
       state: 'skipped',
       confirmationRequired: false,
@@ -1624,6 +1625,10 @@ export async function ingestWikiSource(
 
   const nextDerivedResults: WikiDerivedResult[] = []
   let derivedUpsertFailed = false
+  // Maintain a local snapshot of known pages and extend it after each
+  // successful derived upsert so later suggestions in the same batch see pages
+  // created earlier in the same ingest without a full re-scan.
+  const mutableKnownPages = [...knownPages]
   for (const item of uniqueSuggestions) {
     try {
       const result = await upsertDerivedPage(
@@ -1635,10 +1640,35 @@ export async function ingestWikiSource(
           sourcePath: ingestInput.sourcePath,
         },
         item,
-        await listWikiPages(context),
+        mutableKnownPages,
         context,
       )
       nextDerivedResults.push(result)
+      if (result.created) {
+        mutableKnownPages.push({
+          id: result.pageId,
+          title: item.existingTitle || item.name,
+          type: result.pageType,
+          path: derivedPagePath(paths, result.pageType, item.name),
+          relativePath: '',
+          snippet: '',
+          sourceCount: 0,
+          freshnessStatus: 'fresh',
+          freshnessScore: 1,
+          lifecycleState: 'just_ingested',
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+          evolvedAt: '',
+          evolveCheckedAt: '',
+          evolveChangedAt: '',
+          evolveChangeSummary: '',
+          evolveSource: '',
+          lastAccessedAt: '',
+          links: [],
+          backlinks: [],
+          memoryIds: result.memoryId ? [result.memoryId] : [],
+        })
+      }
     } catch (error) {
       derivedUpsertFailed = true
       warnings.push(`wiki_derived_page_failed:${item.name}`)
@@ -2128,17 +2158,19 @@ async function detectContradictions(
     try {
       const leftPage = await getWikiPage(left.id, context)
       const rightPage = await getWikiPage(right.id, context)
+      const leftContent = sanitizeContentForSynthesis(leftPage).slice(0, MAX_CONTRADICTION_PAGE_CHARS)
+      const rightContent = sanitizeContentForSynthesis(rightPage).slice(0, MAX_CONTRADICTION_PAGE_CHARS)
       const result = await wikiLlmCompleteStructured<{
         contradictions?: Array<{ claim1?: string; claim2?: string; explanation?: string }>
       }>(
         buildWikiLlmMessages(
-          'Compare two wiki pages and report factual contradictions only. Return an empty contradictions array when the pages are compatible.',
+          'Compare two knowledge pages and report factual contradictions only. Return an empty contradictions array when the pages are compatible.',
           [
             `Page 1: [[${leftPage.title}]]`,
-            leftPage.content,
+            leftContent,
             '',
             `Page 2: [[${rightPage.title}]]`,
-            rightPage.content,
+            rightContent,
           ].join('\n'),
         ),
         {
