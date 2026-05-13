@@ -24,6 +24,7 @@ import {
   PADDLEOCR_SKILL_KEY,
   PADDLEOCR_TASK_URL,
 } from './catalog'
+import { toUserFacingPaddleOcrError } from './errorMessages'
 
 type OcrFormState = Required<PaddleOcrRequestOptions> & {
   endpoint: string
@@ -37,19 +38,11 @@ type LocalSource = {
   sizeLabel: string
 }
 
-function getSharedBaiduToken(config: OpenClawConfig | null): string {
-  const baiduProvider = config?.models?.providers?.['baidu-aistudio'] as
-    | { apiKey?: string; api_key?: string }
-    | undefined
-  return baiduProvider?.apiKey?.trim() || baiduProvider?.api_key?.trim() || ''
-}
-
 function buildInitialForm(config: OpenClawConfig | null): OcrFormState {
   const provider = config?.ocr?.providers?.[PADDLEOCR_PROVIDER_ID]
-  const sharedBaiduToken = getSharedBaiduToken(config)
   return {
     endpoint: provider?.endpoint ?? '',
-    accessToken: provider?.accessToken ?? sharedBaiduToken,
+    accessToken: provider?.accessToken ?? '',
     fileType: provider?.defaultFileType ?? DEFAULT_PADDLEOCR_OPTIONS.fileType,
     useDocOrientationClassify: provider?.useDocOrientationClassify ?? DEFAULT_PADDLEOCR_OPTIONS.useDocOrientationClassify,
     useDocUnwarping: provider?.useDocUnwarping ?? DEFAULT_PADDLEOCR_OPTIONS.useDocUnwarping,
@@ -65,7 +58,7 @@ function buildInitialForm(config: OpenClawConfig | null): OcrFormState {
 
 function hasSavedPaddleOcrConfig(config: OpenClawConfig | null): boolean {
   const provider = config?.ocr?.providers?.[PADDLEOCR_PROVIDER_ID]
-  return Boolean(provider?.endpoint?.trim() && (provider?.accessToken?.trim() || getSharedBaiduToken(config)))
+  return Boolean(provider?.endpoint?.trim() && provider?.accessToken?.trim())
 }
 
 function isSkillInstalled(skills: Awaited<ReturnType<typeof getSkillsResult>>['data'] | null | undefined) {
@@ -249,12 +242,16 @@ export default function OcrPage() {
   }
 
   function updateOption<K extends keyof OcrFormState>(key: K, value: OcrFormState[K]) {
+    setTestError(null)
+    setTestMessage(null)
     setForm((current) => ({ ...current, [key]: value }))
   }
 
   function applyPreset(presetId: string) {
     const preset = PADDLEOCR_PRESETS.find((item) => item.id === presetId)
     if (!preset) return
+    setTestError(null)
+    setTestMessage(null)
     setForm((current) => ({
       ...current,
       ...preset.options,
@@ -284,6 +281,8 @@ export default function OcrPage() {
     setSaving(true)
     setSaveError(null)
     setSaveMessage(null)
+    setTestError(null)
+    setTestMessage(null)
     try {
       const currentConfig = config ?? {}
       const nextConfig = buildSkillEnabledConfig({
@@ -343,7 +342,7 @@ export default function OcrPage() {
       }
       setTestMessage(t('ocr.testSuccess', { pages: result.data?.pageCount ?? 0 }))
     } catch (testErr: unknown) {
-      setTestError(testErr instanceof Error ? testErr.message : String(testErr))
+      setTestError(toUserFacingPaddleOcrError(testErr instanceof Error ? testErr.message : String(testErr), t))
     } finally {
       setTesting(false)
     }
@@ -381,7 +380,7 @@ export default function OcrPage() {
       }
       setParseResult(result.data ?? null)
     } catch (parseErr: unknown) {
-      setParseError(parseErr instanceof Error ? parseErr.message : String(parseErr))
+      setParseError(toUserFacingPaddleOcrError(parseErr instanceof Error ? parseErr.message : String(parseErr), t))
     } finally {
       setParsing(false)
     }
@@ -458,6 +457,7 @@ export default function OcrPage() {
                 placeholder={t('ocr.endpointPlaceholder')}
                 className="input w-full"
               />
+              <p className="text-xs text-muted-foreground">{t('ocr.endpointHint')}</p>
             </label>
             <label className="space-y-2">
               <span className="text-sm font-medium text-foreground">{t('ocr.tokenLabel')}</span>
@@ -468,6 +468,7 @@ export default function OcrPage() {
                 placeholder={t('ocr.tokenPlaceholder')}
                 className="input w-full"
               />
+              <p className="text-xs text-muted-foreground">{t('ocr.tokenHint')}</p>
             </label>
           </div>
 
