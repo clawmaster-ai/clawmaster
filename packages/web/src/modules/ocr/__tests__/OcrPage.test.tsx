@@ -371,7 +371,7 @@ describe('OcrPage', () => {
     expect(await screen.findByDisplayValue(/# Parsed/)).toBeInTheDocument()
   })
 
-  it('prefills the AI Studio token from the saved ERNIE provider when OCR is not configured yet', async () => {
+  it('defaults the hosted endpoint and leaves the OCR token empty when only the models provider is configured', async () => {
     mockGetConfigResult.mockResolvedValue({
       success: true,
       data: {
@@ -388,6 +388,47 @@ describe('OcrPage', () => {
 
     renderPage()
 
-    expect(await screen.findByDisplayValue('shared-baidu-token')).toBeInTheDocument()
+    expect(await screen.findByDisplayValue('https://aistudio.baidu.com/paddleocr/v1/layout-parsing')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Enter Baidu AI Studio token')).toHaveValue('')
   })
+
+  it('clears stale connection errors after the OCR token changes and the config is saved', async () => {
+    mockGetConfigResult.mockResolvedValue({
+      success: true,
+      data: {
+        models: { providers: {} },
+        skills: {
+          entries: { 'paddleocr-doc-parsing': { enabled: true } },
+        },
+        ocr: {
+          providers: {
+            paddleocr: {
+              endpoint: 'https://example.com/layout-parsing',
+              accessToken: 'saved-token',
+            },
+          },
+        },
+      },
+      error: null,
+    })
+    mockTestPaddleOcrResult.mockResolvedValueOnce({
+      success: false,
+      data: null,
+      error: 'HTTP 500: fetch failed',
+    })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Test Connection' }))
+    expect(await screen.findByText('Unable to reach AI Studio PaddleOCR. Check your network and try again.')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('Enter Baidu AI Studio token'), {
+      target: { value: 'fresh-token' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Enable OCR' }))
+
+    expect(await screen.findByText('PaddleOCR saved and ready to use.')).toBeInTheDocument()
+    expect(screen.queryByText('Unable to reach AI Studio PaddleOCR. Check your network and try again.')).not.toBeInTheDocument()
+  })
+
 })
