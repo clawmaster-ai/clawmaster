@@ -29,6 +29,8 @@ export interface WikiLlmContext extends OpenclawProfileContext {
   profileSelection?: OpenclawProfileSelection
 }
 
+export type WikiLlmTransport = 'infer-model' | 'gateway-fetch'
+
 type GatewayChatCompletionResponse = {
   choices?: Array<{
     message?: {
@@ -48,8 +50,9 @@ type InferModelRunResponse = {
 const DEFAULT_GATEWAY_PORT = 18789
 const DEFAULT_MAX_WIKI_LLM_TOKENS = 4096
 const DEFAULT_WIKI_LLM_TIMEOUT_MS = 120_000
-const nativeFetch = globalThis.fetch
+
 let wikiLlmCommandRunnerOverride: typeof execOpenclaw | null = null
+let wikiLlmTransportOverride: WikiLlmTransport | null = null
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -138,20 +141,11 @@ function extractInferModelText(payload: InferModelRunResponse): string {
   return extractContent(outputs.map((item) => item?.text)).trim()
 }
 
-function shouldUseMockedFetchTransport(): boolean {
-  if (useGatewayFetchForTests) return true
-  // Explicit opt-in environment variable takes precedence.
-  if (process.env.WIKI_LLM_USE_GATEWAY !== undefined) {
-    return process.env.WIKI_LLM_USE_GATEWAY === '1'
-  }
-  // Fall back to detecting whether globalThis.fetch has been replaced
-  // (e.g. by test mocks) by comparing against the native reference captured
-  // at module load time.  This preserves the existing behaviour where tests
-  // that mock fetch automatically route through the gateway-fetch path.
-  // Production code that merely wraps fetch (APM agents, polyfills) should
-  // set WIKI_LLM_USE_GATEWAY=1 explicitly instead of relying on this
-  // identity check.
-  return globalThis.fetch !== nativeFetch
+function resolveTransport(): WikiLlmTransport {
+  if (wikiLlmTransportOverride !== null) return wikiLlmTransportOverride
+  const envValue = process.env['WIKI_LLM_USE_GATEWAY']
+  if (envValue === '1') return 'gateway-fetch'
+  return 'infer-model'
 }
 
 function getWikiLlmCommandRunner(): typeof execOpenclaw {
@@ -274,10 +268,15 @@ export async function wikiLlmComplete(
     throw new Error(resolved.disabledReason || 'Wiki LLM is not enabled.')
   }
 
-  if (!wikiLlmCommandRunnerOverride && shouldUseMockedFetchTransport()) {
-    return wikiLlmCompleteViaGatewayFetch(resolved, messages, options)
+  // An explicit command-runner override (used by unit tests targeting the CLI
+  // transport) always takes precedence so the runner is actually exercised.
+  if (wikiLlmCommandRunnerOverride) {
+    return wikiLlmCompleteViaInferModel(resolved, messages)
   }
 
+  if (resolveTransport() === 'gateway-fetch') {
+    return wikiLlmCompleteViaGatewayFetch(resolved, messages, options)
+  }
   return wikiLlmCompleteViaInferModel(resolved, messages)
 }
 
@@ -307,15 +306,24 @@ export async function wikiLlmCompleteStructured<T>(
   }
 }
 
+/** @internal */
 export function setWikiLlmCommandRunnerForTests(
   runner: typeof execOpenclaw | null,
 ): void {
   wikiLlmCommandRunnerOverride = runner
 }
 
-let useGatewayFetchForTests = false
-
-/** @internal Allow tests to force the gateway-fetch transport path. */
-export function setWikiLlmUseGatewayFetchForTests(flag: boolean): void {
-  useGatewayFetchForTests = flag
+/** @internal Force a specific transport for tests. Pass null to restore default resolution. */
+export function setWikiLlmTransportForTests(transport: WikiLlmTransport | null): void {
+  wikiLlmTransportOverride = transport
 }
+
+/**
+ * @deprecated use setWikiLlmTransportForTests('gateway-fetch') instead.
+ * Kept temporarily so existing test files keep compiling during the
+ * wikiLlm transport refactor.
+ */
+export function setWikiLlmUseGatewayFetchForTests(flag: boolean): void {
+  setWikiLlmTransportForTests(flag ? 'gateway-fetch' : null)
+}
+

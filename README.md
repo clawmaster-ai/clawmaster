@@ -124,7 +124,7 @@ Memory is the backbone of the **Save** capability. We build on [**PowerMem**](ht
 - First end-to-end memory-backed skill: a daily package download digest with period-over-period deltas.
 - Memory-adjacent observability — per-session spend, scheduled cost digests, and models.dev pricing.
 
-**Next (v0.4.0)**: full seekdb hybrid retrieval and a self-maintaining LLM Wiki module — persistent wiki pages that compound with every ingest, with Ebbinghaus decay and freshness-weighted ranking keeping content alive. See the [v0.4.0 milestone](https://github.com/openmaster-ai/clawmaster/milestone/1) for tracked work.
+**Next (v0.4.0)**: full seekdb hybrid retrieval and a self-maintaining LLM Knowledge module — persistent knowledge pages that compound with every ingest, with Ebbinghaus decay and freshness-weighted ranking keeping content alive. See the [v0.4.0 milestone](https://github.com/openmaster-ai/clawmaster/milestone/1) for tracked work.
 
 ## Product Tour
 
@@ -182,7 +182,7 @@ Six core capabilities — each moves from infrastructure toward real daily use:
 |---|---|---|---|---|
 | 1 | **Setup** | Available | Guided wizard, 6+ LLM providers with key validation, 6 channel types (Feishu / WeChat / Discord / Slack / Telegram / WhatsApp), profile switching | One-click environment migration ([#1](https://github.com/openmaster-ai/clawmaster/issues/1)), Windows + WSL2 first-class support |
 | 2 | **Observe** | Available | ClawProbe-backed dashboard, per-session cost and token tracking, gateway health monitoring | Historical spend analytics, anomaly alerts, multi-profile comparison |
-| 3 | **Save** | In progress | Managed PowerMem runtime + OpenClaw bridge, local workspace import, first memory-backed skill — see [Memory Highlights](#memory-highlights) | Full seekdb hybrid retrieval, self-maintaining LLM Wiki — see [v0.4.0 milestone](https://github.com/openmaster-ai/clawmaster/milestone/1) |
+| 3 | **Save** | In progress | Managed PowerMem runtime + OpenClaw bridge, local workspace import, first memory-backed skill — see [Memory Highlights](#memory-highlights) | Full seekdb hybrid retrieval, self-maintaining LLM Knowledge module — see [v0.4.0 milestone](https://github.com/openmaster-ai/clawmaster/milestone/1) |
 | 4 | **Apply** | In progress | PaddleOCR pipeline (upload → parse → structured markdown), layout-aware extraction | Photo → flashcard automation, invoice extraction templates, more scenario-first guided workflows |
 | 5 | **Build** | Planned | Plugin/skill install and toggle, MCP server management, skill security auditing | Visual agent composer for skill chaining, LangChain Deep Agents integration, conversational agent builder |
 | 6 | **Guard** | Planned | Skill Guard security scanning (dimension/severity/risk scoring), basic capability gating | API key vault (encrypted at rest), per-profile spend caps, RBAC for team deployments |

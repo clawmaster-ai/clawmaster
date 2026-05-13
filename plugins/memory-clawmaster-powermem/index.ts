@@ -316,7 +316,7 @@ function clipAutoRecallQuery(query: string, maxLength = 96): string {
   return `${normalized.slice(0, maxLength - 3)}...`
 }
 
-export function buildAutoRecallLogForTest(
+export function formatAutoRecallLog(
   query: string,
   summary: { wikiCount: number; memoryCount: number },
 ): string {
@@ -655,6 +655,8 @@ export async function writeWikiMetaFilesForTest(vaultRoot: string, pageId: strin
 }
 
 function resolveWikiVaultRoot(managedContext: ManagedMemoryContext): string {
+  const explicitOverride = process.env['CLAWMASTER_WIKI_ROOT']?.trim()
+  if (explicitOverride) return explicitOverride
   return join(resolveOpenclawWorkspaceDir(managedContext), '..', 'wiki')
 }
 
@@ -1478,7 +1480,7 @@ const plugin = {
             .filter((item) => (item.score ?? 0) >= cfg.recallScoreThreshold)
 
           const recallContext = buildAutoRecallContextForTest(query, results, cfg.recallLimit)
-          api.logger.info(buildAutoRecallLogForTest(query, recallContext))
+          api.logger.info(formatAutoRecallLog(query, recallContext))
           return {
             prependSystemContext: MEMORY_RECALL_GUIDANCE,
             ...(recallContext.prependContext

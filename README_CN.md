@@ -124,7 +124,7 @@ npm run tauri:dev            # 桌面应用
 - 首个端到端记忆驱动技能：每日 npm 包下载摘要，支持周期同比对比。
 - 记忆相关的可观测：按会话花费、定时费用摘要、models.dev 定价。
 
-**下一步（v0.4.0）**：完整的 seekdb 混合检索，以及自维护的 LLM Wiki 模块 —— 每次投入都会让 Wiki 页面自动交叉链接并积累，艾宾浩斯衰减与新鲜度加权让内容保持“活着”。具体进展见 [v0.4.0 里程碑](https://github.com/openmaster-ai/clawmaster/milestone/1)。
+**下一步（v0.4.0）**：完整的 seekdb 混合检索，以及自维护的 LLM 知识库模块 —— 每次写入都会让知识页面自动交叉链接并积累，艾宾浩斯衰减与新鲜度加权让内容保持"活着"。具体进展见 [v0.4.0 里程碑](https://github.com/openmaster-ai/clawmaster/milestone/1)。
 
 ## 产品功能总览
 
@@ -182,7 +182,7 @@ npm run tauri:dev            # 桌面应用
 |---|---|---|---|---|
 | 1 | **能接管** | 可用 | 引导式向导、6+ LLM 供应商并校验 Key、6 种频道（飞书 / 微信 / Discord / Slack / Telegram / WhatsApp）、Profile 切换 | 一键环境迁移、Windows + WSL2 一等支持 |
 | 2 | **能观测** | 可用 | 基于 ClawProbe 的面板、按会话的费用与 Token 追踪、网关健康监控 | 历史花费分析、异常告警、多 Profile 对比 |
-| 3 | **能省钱** | 进行中 | 托管 PowerMem 运行时 + OpenClaw 桥接、本地工作区导入、首个记忆驱动技能 —— 详见[记忆亮点](#记忆亮点) | 完整 seekdb 混合检索、自维护 LLM Wiki —— 详见 [v0.4.0 里程碑](https://github.com/openmaster-ai/clawmaster/milestone/1) |
+| 3 | **能省钱** | 进行中 | 托管 PowerMem 运行时 + OpenClaw 桥接、本地工作区导入、首个记忆驱动技能 —— 详见[记忆亮点](#记忆亮点) | 完整 seekdb 混合检索、自维护 LLM 知识库模块 —— 详见 [v0.4.0 里程碑](https://github.com/openmaster-ai/clawmaster/milestone/1) |
 | 4 | **能应用** | 进行中 | PaddleOCR 流水线（上传 → 解析 → 结构化 Markdown）、版面感知提取 | 拍照 → 闪卡自动生成、发票提取模板、更多场景优先的引导式工作流 |
 | 5 | **能构建** | 规划中 | 插件 / 技能安装与开关、MCP 服务管理、技能安全审计 | 可视化智能体编排器、LangChain Deep Agents 集成、对话式智能体构建 |
 | 6 | **能守护** | 规划中 | Skill Guard 安全扫描（维度 / 严重性 / 风险评分）、基础能力门控 | API Key 加密保险箱、按 Profile 的花费上限、团队部署 RBAC |

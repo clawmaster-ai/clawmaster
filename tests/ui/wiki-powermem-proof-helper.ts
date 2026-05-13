@@ -356,6 +356,21 @@ async function initProfile(options: CliOptions): Promise<void> {
     )
   }
 
+  // Fail fast if the resolved home is inside the real user's home directory.
+  // Running syncManagedMemoryBridge against the real home would write live data
+  // into the user's OpenClaw profile — the isolated root is the whole point.
+  const resolvedHomeNormalized = path.resolve(homeDir)
+  const realHomeNormalized = path.resolve(REAL_HOME)
+  if (
+    resolvedHomeNormalized === realHomeNormalized ||
+    resolvedHomeNormalized.startsWith(realHomeNormalized + path.sep)
+  ) {
+    throw new Error(
+      `Refusing to run bridge sync: resolved home "${resolvedHomeNormalized}" is inside the real user home "${realHomeNormalized}". ` +
+      'Pass --root to an isolated temp directory outside your home.',
+    )
+  }
+
   process.env.HOME = homeDir
 
   let bridgeState = 'skipped'
