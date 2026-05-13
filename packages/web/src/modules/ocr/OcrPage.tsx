@@ -16,7 +16,6 @@ import { useAdapterCall } from '@/shared/hooks/useAdapterCall'
 import { getToolModelRecommendations } from '@/modules/setup/toolModelRecommendations'
 import {
   DEFAULT_PADDLEOCR_OPTIONS,
-  PADDLEOCR_DEFAULT_ENDPOINT,
   PADDLEOCR_DOCS_URL,
   PADDLEOCR_PRESETS,
   PADDLEOCR_PROVIDER_ID,
@@ -42,7 +41,7 @@ type LocalSource = {
 function buildInitialForm(config: OpenClawConfig | null): OcrFormState {
   const provider = config?.ocr?.providers?.[PADDLEOCR_PROVIDER_ID]
   return {
-    endpoint: provider?.endpoint ?? PADDLEOCR_DEFAULT_ENDPOINT,
+    endpoint: provider?.endpoint ?? '',
     accessToken: provider?.accessToken ?? '',
     fileType: provider?.defaultFileType ?? DEFAULT_PADDLEOCR_OPTIONS.fileType,
     useDocOrientationClassify: provider?.useDocOrientationClassify ?? DEFAULT_PADDLEOCR_OPTIONS.useDocOrientationClassify,

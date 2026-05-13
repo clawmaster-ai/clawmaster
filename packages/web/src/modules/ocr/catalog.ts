@@ -5,7 +5,6 @@ export const PADDLEOCR_SKILL_ID = 'paddleocr-doc-parsing'
 export const PADDLEOCR_SKILL_KEY = 'paddleocr-doc-parsing'
 export const PADDLEOCR_DOCS_URL = 'https://aistudio.baidu.com/paddleocr'
 export const PADDLEOCR_TASK_URL = 'https://aistudio.baidu.com/paddleocr/task'
-export const PADDLEOCR_DEFAULT_ENDPOINT = 'https://aistudio.baidu.com/paddleocr/v1/layout-parsing'
 
 export const PADDLEOCR_SAMPLE_ASSETS: PaddleOcrSampleAsset[] = [
   {

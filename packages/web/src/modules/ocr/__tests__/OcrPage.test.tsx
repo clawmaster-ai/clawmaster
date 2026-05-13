@@ -371,7 +371,7 @@ describe('OcrPage', () => {
     expect(await screen.findByDisplayValue(/# Parsed/)).toBeInTheDocument()
   })
 
-  it('defaults the hosted endpoint and leaves the OCR token empty when only the models provider is configured', async () => {
+  it('leaves the OCR endpoint and token empty when only the models provider is configured', async () => {
     mockGetConfigResult.mockResolvedValue({
       success: true,
       data: {
@@ -388,7 +388,7 @@ describe('OcrPage', () => {
 
     renderPage()
 
-    expect(await screen.findByDisplayValue('https://aistudio.baidu.com/paddleocr/v1/layout-parsing')).toBeInTheDocument()
+    expect(await screen.findByPlaceholderText('https://<your-deployment>.aistudio-app.com/layout-parsing')).toHaveValue('')
     expect(screen.getByPlaceholderText('Enter Baidu AI Studio token')).toHaveValue('')
   })
 
