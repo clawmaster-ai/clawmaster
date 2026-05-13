@@ -26,6 +26,7 @@ vi.mock('react-i18next', () => ({
         'settings.checkUpdate': 'Check for updates',
         'settings.checking': 'Checking...',
         'settings.upToDate': 'Up to date',
+        'settings.updateBackendUnavailable': 'Cannot reach the ClawMaster backend. Start the app with npm run dev:web or open the desktop app, then try again.',
         'settings.updateChannel': 'Channel:',
         'settings.targetVersion': 'Version:',
         'settings.updateTo': `Update to ${opts?.version ?? ''}`,
@@ -33,6 +34,16 @@ vi.mock('react-i18next', () => ({
         'settings.updateFailed': 'Update failed',
         'settings.changelog': 'Release Notes',
         'settings.currentLabel': 'current',
+        'settings.clawmasterReleases': 'ClawMaster Releases',
+        'settings.clawmasterReleasesDesc': 'Review app releases and open the right installer for this device.',
+        'settings.clawmasterLatest': 'Latest release',
+        'settings.clawmasterUpdateAvailable': `ClawMaster v${opts?.version ?? ''} is ready to install.`,
+        'settings.clawmasterUpToDate': 'ClawMaster is up to date',
+        'settings.clawmasterSourceGithub': 'Release details loaded from GitHub Releases.',
+        'settings.clawmasterSourceNpm': 'Version detected from npm fallback; GitHub release details are unavailable.',
+        'settings.clawmasterNpmFallbackDesc': 'GitHub release notes could not be loaded. Open the releases page to download the installer and review details.',
+        'settings.clawmasterOpenInstaller': 'Open Installer',
+        'settings.clawmasterOpenReleases': 'Open Releases',
         'settings.acknowledgments': 'Acknowledgments',
         'settings.profileTitle': 'OpenClaw profile',
         'settings.profileDesc': 'Choose which OpenClaw runtime ClawMaster should read, configure, and launch.',
@@ -183,6 +194,8 @@ const mockGetLocalDataStats = vi.fn()
 const mockRebuildLocalData = vi.fn()
 const mockResetLocalData = vi.fn()
 const mockIsTauri = vi.fn()
+const mockCheckClawmasterRelease = vi.fn()
+const mockSelectInstallerAsset = vi.fn()
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -262,6 +275,11 @@ vi.mock('@/shared/adapters/platform', () => ({
   isTauri: (...args: any[]) => mockIsTauri(...args),
 }))
 
+vi.mock('@/shared/adapters/clawmasterReleases', () => ({
+  checkClawmasterReleaseResult: (...args: any[]) => mockCheckClawmasterRelease(...args),
+  selectInstallerAsset: (...args: any[]) => mockSelectInstallerAsset(...args),
+}))
+
 vi.mock('@/adapters', () => ({
   platform: {
     detectSystem: vi.fn().mockResolvedValue(makeSystemInfo()),
@@ -300,6 +318,29 @@ describe('UpdateSection', () => {
     vi.mocked(platform.detectSystem).mockResolvedValue(makeSystemInfo())
     mockIsTauri.mockReturnValue(false)
     mockBootstrap.mockResolvedValue({ success: true })
+    mockSelectInstallerAsset.mockReturnValue({
+      name: 'ClawMaster_0.3.1_x64.msi',
+      url: 'https://example.com/clawmaster.msi',
+    })
+    mockCheckClawmasterRelease.mockResolvedValue({
+      success: true,
+      data: {
+        currentVersion: '0.3.0',
+        latestVersion: '0.3.1',
+        hasUpdate: true,
+        source: 'github',
+        latestRelease: {
+          version: '0.3.1',
+          tagName: 'v0.3.1',
+          name: 'v0.3.1',
+          body: '## Install\n\n### CLI + Web Console\n\n```bash\nnpm install -g clawmaster\nclawmaster\n```',
+          publishedAt: '2026-04-24T00:00:00.000Z',
+          htmlUrl: 'https://github.com/openmaster-ai/clawmaster/releases/tag/v0.3.1',
+          assets: [],
+        },
+        releases: [],
+      },
+    })
     mockGetNpmProxy.mockResolvedValue({
       success: true,
       data: { enabled: false, registryUrl: null },
@@ -391,6 +432,30 @@ describe('UpdateSection', () => {
     expect(screen.getByText('Check for updates')).toBeInTheDocument()
     // Version appears in both system info and update section
     expect(screen.getAllByText(/v2026\.3\.28/).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('shows ClawMaster release details and opens the selected installer', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    renderSettings()
+
+    expect(await screen.findByText('ClawMaster Releases')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(mockCheckClawmasterRelease).toHaveBeenCalled()
+    })
+    expect(await screen.findByText('Install')).toBeInTheDocument()
+    expect(screen.getByText('CLI + Web Console')).toBeInTheDocument()
+    expect(screen.getByText(/npm install -g clawmaster/)).toBeInTheDocument()
+    expect(screen.queryByText('## Install')).not.toBeInTheDocument()
+    expect(screen.queryByText('bash')).not.toBeInTheDocument()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Installer' }))
+
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://example.com/clawmaster.msi',
+      '_blank',
+      'noopener,noreferrer',
+    )
   })
 
   it('auto-checks updates when opened from the update banner hash', async () => {
@@ -816,6 +881,23 @@ describe('UpdateSection', () => {
     })
   })
 
+  it('explains generic browser fetch failures during update checks', async () => {
+    mockListVersions.mockResolvedValue({
+      success: false,
+      error: 'Failed to fetch',
+    })
+    renderSettings()
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          'Cannot reach the ClawMaster backend. Start the app with npm run dev:web or open the desktop app, then try again.'
+        )
+      ).toBeInTheDocument()
+    })
+  })
+
   it('calls reinstallOpenclawGlobal when update clicked', async () => {
     mockListVersions.mockResolvedValue({
       success: true,
@@ -877,6 +959,43 @@ describe('UpdateSection', () => {
       expect(screen.getByText('latest')).toBeInTheDocument()
       expect(screen.getByText('2026.4.1')).toBeInTheDocument()
     })
+  })
+
+  it('renders release note markdown instead of raw markdown text', async () => {
+    mockListVersions.mockResolvedValue({
+      success: true,
+      data: {
+        versions: ['2026.4.1', '2026.3.28'],
+        distTags: { latest: '2026.4.1' },
+      },
+    })
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          {
+            tag_name: 'v2026.4.1',
+            name: 'v2026.4.1',
+            body: '## 2026.4.1\n\n### Highlights\n\n- Voice replies get `tts latest`\n- Plugin startup paths move faster',
+            published_at: '2026-04-27T00:00:00.000Z',
+            html_url: 'https://example.com/releases/2026.4.1',
+          },
+        ]),
+        { status: 200 },
+      ),
+    )
+
+    renderSettings()
+    await waitFor(() => screen.getByText('Check for updates'))
+    fireEvent.click(screen.getByText('Check for updates'))
+    const updateSection = document.querySelector('#settings-update')
+    expect(updateSection).not.toBeNull()
+    const update = within(updateSection as HTMLElement)
+    await waitFor(() => update.getByText('Release Notes'))
+    fireEvent.click(update.getByText('Release Notes'))
+
+    expect(screen.getByRole('heading', { name: 'Highlights' })).toBeInTheDocument()
+    expect(screen.getByText('tts latest')).toBeInTheDocument()
+    expect(screen.queryByText('### Highlights')).not.toBeInTheDocument()
   })
 
   it('saves a named OpenClaw profile from settings', async () => {

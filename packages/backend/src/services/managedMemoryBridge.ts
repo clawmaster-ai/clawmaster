@@ -518,7 +518,19 @@ export async function syncManagedMemoryBridge(
     })
   }
   if (!installed || pathIssue) {
-    await openclawPlugins.installOpenclawPluginFromPath(paths.runtimePluginPath, { link: true })
+    await openclawPlugins.installOpenclawPluginFromPath(paths.runtimePluginPath, {
+      link: true,
+      // memory-clawmaster-powermem imports from openclaw/plugin-sdk directly and
+      // uses resetManagedMemory — a privileged API that OpenClaw's generic
+      // installer considers "unsafe" because it can irrecoverably clear a profile's
+      // managed memory store. As the ClawMaster-managed bridge this is intentional;
+      // ClawMaster owns the lifecycle of this plugin installation.
+      //
+      // If a future OpenClaw release adds a narrower exemption mechanism (e.g. a
+      // trusted-installer allowlist keyed by package name), switch to that instead
+      // of keeping this override.
+      dangerouslyForceUnsafeInstall: true,
+    })
   }
   await updateConfigJson((config) => {
     setConfigAtPath(config, `plugins.slots.${MEMORY_BRIDGE_SLOT_KEY}`, MEMORY_BRIDGE_PLUGIN_ID)

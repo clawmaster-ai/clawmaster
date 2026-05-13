@@ -1,6 +1,6 @@
 {
   "name": "@openclaw-manager/backend",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.38",
+    "@langchain/core": "^1.1.45",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "powermem": "^0.1.0",

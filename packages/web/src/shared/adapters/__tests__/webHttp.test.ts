@@ -48,4 +48,24 @@ describe('webHttp auth helpers', () => {
     expect(headers.get('X-Clawmaster-Danger-Token')).toBe('secret-token')
     expect(headers.get('Content-Type')).toBe('application/json')
   })
+
+  it('uses wss for websocket URLs on https origins', async () => {
+    vi.stubGlobal('window', {
+      location: { href: 'https://clawmaster.test/app' },
+    })
+
+    const { createAuthedWebSocketUrl } = await import('../webHttp')
+
+    expect(createAuthedWebSocketUrl('/api/logs/stream')).toBe('wss://clawmaster.test/api/logs/stream')
+  })
+
+  it('uses ws for websocket URLs on http origins', async () => {
+    vi.stubGlobal('window', {
+      location: { href: 'http://clawmaster.test/app' },
+    })
+
+    const { createAuthedWebSocketUrl } = await import('../webHttp')
+
+    expect(createAuthedWebSocketUrl('/api/logs/stream')).toBe('ws://clawmaster.test/api/logs/stream')
+  })
 })

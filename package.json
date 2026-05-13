@@ -1,6 +1,6 @@
 {
   "name": "clawmaster",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "龙虾管理大师——OpenClaw 生态的六边形战士",
   "bin": {
     "clawmaster": "bin/clawmaster.mjs"
@@ -11,6 +11,7 @@
     "bundled-skills/clawprobe-cost-digest/",
     "bundled-skills/ernie-image/",
     "bundled-skills/models-dev/",
+    "bundled-skills/package-download-tracker/",
     "bundled-skills/paddleocr-doc-parsing/",
     "plugins/memory-clawmaster-powermem/",
     "plugins/openclaw-ernie-image/",
@@ -37,7 +38,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "prepack": "npm run build:backend && npm run build",
-    "test:cli": "node --test bin/*.test.mjs scripts/*.test.mjs tests/desktop/harness.unit.test.mjs",
+    "test:cli": "node --test bin/*.test.mjs tests/desktop/harness.unit.test.mjs",
     "test:plugins": "npx tsx --test plugins/memory-clawmaster-powermem/*.test.ts",
     "test:desktop": "node --test tests/desktop/smoke.test.mjs",
     "test:wizard-smoke": "node tests/install/wizard-install-smoke.mjs",
@@ -57,12 +58,15 @@
     "selenium-webdriver": "^4.34.0"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.38",
+    "@langchain/core": "^1.1.45",
     "@sinclair/typebox": "^0.34.0",
     "@tauri-apps/api": "^2.10.1",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "powermem": "^0.1.0",
     "ws": "^8.18.0"
+  },
+  "overrides": {
+    "langsmith": "^0.6.3"
   }
 }

@@ -2,11 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearchParams } from 'react-router-dom'
+import type { OpenClawConfig } from '@/lib/types'
 import { ExternalLink, Play, RefreshCw, SquarePen, TimerReset, Trash2 } from 'lucide-react'
 import { ActionBanner } from '@/shared/components/ActionBanner'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { LoadingState } from '@/shared/components/LoadingState'
-import { buildCostDigestDraft, isCostDigestPeriod } from '@/shared/cronCostDigests'
+import {
+  buildCostDigestDraft,
+  buildPackageDownloadDraft,
+  isCostDigestPeriod,
+  isPackageDownloadPeriod,
+} from '@/shared/cronCostDigests'
 import { getGatewayStatusResult } from '@/shared/adapters/gateway'
 import { getConfigResult } from '@/shared/adapters/openclaw'
 import {
@@ -69,6 +75,16 @@ function truncateForBanner(value: string, limit = 160): string {
   const firstLine = value.split('\n')[0]?.trim() ?? ''
   if (firstLine.length <= limit) return firstLine
   return `${firstLine.slice(0, limit - 1)}…`
+}
+
+function getConfiguredChannelAccountCount(config?: OpenClawConfig | null): number {
+  const channels = config?.channels
+  if (!channels) return 0
+
+  return Object.values(channels).reduce((count, channel) => {
+    const accounts = channel?.accounts
+    return count + (accounts ? Object.keys(accounts).length : 0)
+  }, 0)
 }
 
 function buildDraftFromJob(job: CronJob): CronJobDraft {
@@ -252,6 +268,10 @@ export default function CronPage() {
 
   const enabledCount = jobs.filter((job) => job.enabled).length
   const disabledCount = jobs.length - enabledCount
+  const configuredChannelAccountCount = useMemo(
+    () => getConfiguredChannelAccountCount(configState.data),
+    [configState.data],
+  )
   const gatewayReady = gatewayState.data?.running === true
   const gatewayResolved = !gatewayState.loading || gatewayState.data !== null
   const gatewayIssue =
@@ -274,7 +294,7 @@ export default function CronPage() {
 
     const template = searchParams.get('template')
     const period = searchParams.get('period')
-    if (template !== 'cost-digest' || !isCostDigestPeriod(period)) {
+    if (template !== 'cost-digest' && template !== 'package-downloads') {
       return
     }
 
@@ -282,16 +302,31 @@ export default function CronPage() {
       return
     }
 
+    const costDigestPeriod = isCostDigestPeriod(period) ? period : null
+    if (template === 'cost-digest' && !costDigestPeriod) {
+      return
+    }
+    const packageDownloadPeriod = isPackageDownloadPeriod(period) ? period : 'week'
+
     templateApplied.current = true
     setEditorMode('create')
     setEditingJobId(null)
-    setDraft(buildCostDigestDraft(period, t))
+    setDraft(
+      template === 'cost-digest'
+        ? buildCostDigestDraft(costDigestPeriod!, t)
+        : buildPackageDownloadDraft(packageDownloadPeriod, t),
+    )
     setEditorError(null)
     setFeedback({
       tone: 'info',
-      message: t('cron.templateLoadedCostDigest', {
-        period: t(`observe.period${period[0].toUpperCase()}${period.slice(1)}`),
-      }),
+      message:
+        template === 'cost-digest'
+          ? t('cron.templateLoadedCostDigest', {
+              period: t(`observe.period${costDigestPeriod![0].toUpperCase()}${costDigestPeriod!.slice(1)}`),
+            })
+          : t('cron.templateLoadedPackageDownloads', {
+              period: t(`observe.period${packageDownloadPeriod[0].toUpperCase()}${packageDownloadPeriod.slice(1)}`),
+            }),
     })
   }, [gatewayReady, gatewayResolved, searchParams, t])
 
@@ -332,6 +367,21 @@ export default function CronPage() {
     setRunsJob(null)
     setRuns([])
     setRunsError(null)
+  }
+
+  async function openRunsPanel(job: CronJob) {
+    setRunsJob(job)
+    setRunsLoading(true)
+    setRunsError(null)
+    const result = await getCronRunsResult(job.id, 20)
+    if (!result.success) {
+      setRuns([])
+      setRunsError(result.error ?? t('common.unknownError'))
+      setRunsLoading(false)
+      return
+    }
+    setRuns(result.data ?? [])
+    setRunsLoading(false)
   }
 
   async function handleSaveJob() {
@@ -386,7 +436,7 @@ export default function CronPage() {
     })
     await Promise.all([jobsState.refetch(), statusState.refetch()])
     if (runsJob?.id === job.id) {
-      await handleLoadRuns(job)
+      await openRunsPanel(job)
     }
     setBusyJobId(null)
   }
@@ -411,18 +461,7 @@ export default function CronPage() {
   }
 
   async function handleLoadRuns(job: CronJob) {
-    setRunsJob(job)
-    setRunsLoading(true)
-    setRunsError(null)
-    const result = await getCronRunsResult(job.id, 20)
-    if (!result.success) {
-      setRuns([])
-      setRunsError(result.error ?? t('common.unknownError'))
-      setRunsLoading(false)
-      return
-    }
-    setRuns(result.data ?? [])
-    setRunsLoading(false)
+    await openRunsPanel(job)
   }
 
   if (jobsState.loading && !jobsState.data) {
@@ -563,9 +602,15 @@ export default function CronPage() {
                         {job.enabled ? t('cron.enabled') : t('cron.disabled')}
                       </span>
                       {job.lastStatus ? (
-                        <span className="rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-xs text-muted-foreground">
+                        <button
+                          type="button"
+                          onClick={() => void openRunsPanel(job)}
+                          className="rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={!gatewayReady}
+                          aria-label={t('cron.viewStatusDetails', { status: job.lastStatus })}
+                        >
                           {job.lastStatus}
-                        </span>
+                        </button>
                       ) : null}
                     </div>
                     <p className="font-mono text-xs text-muted-foreground">{job.id}</p>
@@ -598,7 +643,7 @@ export default function CronPage() {
                           closeRunsPanel()
                           return
                         }
-                        void handleLoadRuns(job)
+                        void openRunsPanel(job)
                       }}
                       className="button-secondary px-3 py-1.5 text-sm"
                       disabled={!gatewayReady}
@@ -876,6 +921,18 @@ export default function CronPage() {
               </div>
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {configuredChannelAccountCount === 0 ? (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100 sm:col-span-2">
+                    <p className="font-medium">{t('cron.noChannelsWarningTitle')}</p>
+                    <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
+                      {t('cron.noChannelsWarningBody')}{' '}
+                      <Link to="/channels#channel-focus" className="font-medium underline underline-offset-2">
+                        {t('cron.openChannels')}
+                      </Link>
+                    </p>
+                  </div>
+                ) : null}
+
                 <label className="grid gap-2">
                   <span className="text-sm font-medium">{t('cron.channel')}</span>
                   <input

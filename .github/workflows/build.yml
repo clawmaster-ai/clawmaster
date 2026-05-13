@@ -354,9 +354,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.checkout_ref || github.ref }}
-          # Custom release-notes script walks the full commit range between
-          # the previous v* tag and the current tag via `git describe` + `git
-          # log`, which needs complete history and tags present.
+          # Generated release notes need complete history and tags so the
+          # workflow can choose the right previous tag for stable/prerelease
+          # comparisons.
           fetch-depth: 0
           fetch-tags: true
 
@@ -399,6 +399,38 @@ jobs:
             exit 1
           fi
 
+      - name: Resolve release notes base tag
+        id: release_notes_base
+        env:
+          TAG: ${{ steps.release_meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          previous_ancestor_tag=""
+          if git rev-parse --verify "${TAG}^{tag}" >/dev/null 2>&1 || git rev-parse --verify "${TAG}^{commit}" >/dev/null 2>&1; then
+            previous_ancestor_tag="$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)"
+          fi
+
+          previous_tag="$previous_ancestor_tag"
+          if printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            previous_stable_tag=""
+            while IFS= read -r candidate; do
+              if [ "$candidate" = "$TAG" ]; then
+                break
+              fi
+              previous_stable_tag="$candidate"
+            done < <(git tag -l 'v*' --sort=v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+
+            first_release_tag="$(git tag -l 'v*' --sort=v:refname | head -n 1 || true)"
+            previous_tag="${previous_stable_tag:-$first_release_tag}"
+          fi
+
+          if [ "$previous_tag" = "$TAG" ]; then
+            previous_tag=""
+          fi
+
+          echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
+
       - name: Collect release assets
         run: |
           set -euo pipefail
@@ -424,26 +456,15 @@ jobs:
             sha256sum * > SHA256SUMS.txt
           )
 
-      - name: Create release notes
+      - name: Create release preface
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.release_meta.outputs.tag }}
         run: |
           set -euo pipefail
 
-          # Custom script groups commits by conventional-commit type into
-          # emoji'd buckets. Beats `gh api .../generate-notes` for git-flow
-          # repos where the tagged branch only sees the release-merge commit.
-          GENERATED_BODY="$(node scripts/release-notes.mjs "$TAG")"
-
           VERSION="${TAG#v}"
-          NPM_TAG="latest"
-          if printf '%s' "$VERSION" | grep -Eq -- '-(rc|beta|alpha)'; then
-            NPM_TAG="rc"
-          fi
 
-          RELEASE_URL="https://github.com/${GH_REPO}/releases/tag/${TAG}"
           RELEASE_DOWNLOAD_BASE="https://github.com/${GH_REPO}/releases/download/${TAG}"
           NPM_PACKAGE_URL="https://www.npmjs.com/package/clawmaster/v/${VERSION}"
           NPM_DIST_URL="https://www.npmjs.com/package/clawmaster?activeTab=versions"
@@ -481,13 +502,11 @@ jobs:
             printf '| macOS Apple Silicon | [dmg](%s) |\n' "$macos_arm64_url"
             printf '| Windows x64 | [msi](%s) · [exe](%s) |\n\n' "$windows_msi_url" "$windows_exe_url"
             printf '> Desktop builds are in beta. The CLI + Web Console is the recommended install method.\n\n'
-            printf "## What's Changed\n\n"
-            printf '%s\n' "$GENERATED_BODY"
-          } > RELEASE_NOTES.md
+          } > RELEASE_PREFACE.md
 
-      - name: Create or update GitHub release
+      - name: Resolve release options
+        id: release_options
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.release_meta.outputs.tag }}
           EVENT_NAME: ${{ github.event_name }}
           INPUT_DRAFT: ${{ inputs.draft_release }}
@@ -495,44 +514,46 @@ jobs:
         run: |
           set -euo pipefail
 
-          DRAFT_FLAG=""
-          PRERELEASE_FLAG=""
+          draft="false"
+          prerelease="false"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             if [ "$INPUT_DRAFT" = "true" ]; then
-              DRAFT_FLAG="--draft"
+              draft="true"
             fi
             if [ "$INPUT_PRERELEASE" = "true" ]; then
-              PRERELEASE_FLAG="--prerelease"
+              prerelease="true"
             fi
           else
             if printf '%s' "$TAG" | grep -Eq -- '-(beta|rc)'; then
-              PRERELEASE_FLAG="--prerelease"
+              prerelease="true"
             fi
           fi
 
-          # Pre-releases must not become the "latest" release on GitHub
-          LATEST_FLAG="--latest"
-          if [ -n "$PRERELEASE_FLAG" ]; then
-            LATEST_FLAG="--latest=false"
+          make_latest="true"
+          if [ "$prerelease" = "true" ]; then
+            make_latest="false"
           fi
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            # Force un-draft so tag re-pushes produce a publicly-visible release
-            gh release edit "$TAG" \
-              --title "ClawMaster $TAG" \
-              --notes-file RELEASE_NOTES.md \
-              --draft=false \
-              $LATEST_FLAG
-            gh release upload "$TAG" release-assets/* --clobber
-          else
-            gh release create "$TAG" release-assets/* \
-              --title "ClawMaster $TAG" \
-              --notes-file RELEASE_NOTES.md \
-              $DRAFT_FLAG \
-              $PRERELEASE_FLAG \
-              $LATEST_FLAG
-          fi
+          echo "draft=$draft" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "make_latest=$make_latest" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.release_meta.outputs.tag }}
+          name: ClawMaster ${{ steps.release_meta.outputs.tag }}
+          bodyFile: RELEASE_PREFACE.md
+          generateReleaseNotes: true
+          generateReleaseNotesPreviousTag: ${{ steps.release_notes_base.outputs.previous_tag }}
+          artifacts: release-assets/*
+          artifactErrorsFailBuild: true
+          allowUpdates: true
+          replacesArtifacts: true
+          draft: ${{ steps.release_options.outputs.draft }}
+          prerelease: ${{ steps.release_options.outputs.prerelease }}
+          makeLatest: ${{ steps.release_options.outputs.make_latest }}
 
       - name: Add workflow summary
         env:

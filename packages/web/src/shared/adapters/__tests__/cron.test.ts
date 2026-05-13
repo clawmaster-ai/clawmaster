@@ -4,6 +4,7 @@ import {
   getCronJobsResult,
   getCronStatusResult,
   getCronRunsResult,
+  runCronJobResult,
   updateCronJobResult,
 } from '../cron'
 
@@ -130,7 +131,7 @@ describe('cron adapter', () => {
     ])
   })
 
-  it('builds create args without forcing no-deliver when announce is off', async () => {
+  it('builds create args with no-deliver when announce is off', async () => {
     await mockExec('')
 
     const result = await createCronJobResult({
@@ -169,6 +170,7 @@ describe('cron adapter', () => {
         'main',
         '--session',
         'isolated',
+        '--no-deliver',
         '--cron',
         '0 8 * * 1',
       ],
@@ -404,6 +406,32 @@ describe('cron adapter', () => {
       durationMs: 28888,
       output: 'ClawMaster cron proof',
     })
+  })
+
+  it('extracts a human-readable message from structured run output', async () => {
+    await mockExec(JSON.stringify({
+      message: 'Queued cron job run.',
+      jobId: 'job-1',
+      accepted: true,
+    }))
+
+    const result = await runCronJobResult('job-1')
+
+    expect(result.success).toBe(true)
+    expect(result.data).toBe('Queued cron job run.')
+  })
+
+  it('drops structured run output that has no user-facing message', async () => {
+    await mockExec(JSON.stringify({
+      accepted: true,
+      jobId: 'job-1',
+      queuedAt: '2026-05-04T19:05:47+08:00',
+    }))
+
+    const result = await runCronJobResult('job-1')
+
+    expect(result.success).toBe(true)
+    expect(result.data).toBe('')
   })
 
   it('rejects invalid create payloads before executing the command', async () => {

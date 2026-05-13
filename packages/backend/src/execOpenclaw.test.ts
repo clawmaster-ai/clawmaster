@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
+import os from 'node:os'
 import test from 'node:test'
 
 import {
   execNpmInstallGlobalFile,
+  getDarwinNodeCandidatePathsForTests,
+  getDarwinNodeHomeRootsForTests,
   needsShellOnWindows,
   resolveExecFileCommand,
   resolveNpmExecFileCommand,
@@ -32,15 +35,21 @@ test('resolveExecFileCommand resolves clawhub to clawhub.cmd on Windows', async 
   })
 })
 
-test('resolveExecFileCommand keeps ollama bare on Windows (native binary)', async () => {
+test('resolveExecFileCommand resolves openclaw to openclaw.cmd on Windows', async () => {
   await withPlatform('win32', () => {
-    assert.equal(resolveExecFileCommand('ollama'), 'ollama')
+    assert.equal(resolveExecFileCommand('openclaw'), 'openclaw.cmd')
   })
 })
 
-test('resolveExecFileCommand keeps openclaw bare on Windows', async () => {
+test('resolveExecFileCommand resolves clawprobe to clawprobe.cmd on Windows', async () => {
   await withPlatform('win32', () => {
-    assert.equal(resolveExecFileCommand('openclaw'), 'openclaw')
+    assert.equal(resolveExecFileCommand('clawprobe'), 'clawprobe.cmd')
+  })
+})
+
+test('resolveExecFileCommand keeps ollama bare on Windows (native binary)', async () => {
+  await withPlatform('win32', () => {
+    assert.equal(resolveExecFileCommand('ollama'), 'ollama')
   })
 })
 
@@ -50,6 +59,7 @@ test('resolveExecFileCommand returns bare command on non-Windows for all command
     assert.equal(resolveExecFileCommand('clawhub'), 'clawhub')
     assert.equal(resolveExecFileCommand('ollama'), 'ollama')
     assert.equal(resolveExecFileCommand('openclaw'), 'openclaw')
+    assert.equal(resolveExecFileCommand('clawprobe'), 'clawprobe')
   })
 })
 
@@ -59,13 +69,14 @@ test('needsShellOnWindows returns true for npm-installed commands on Windows', a
   await withPlatform('win32', () => {
     assert.equal(needsShellOnWindows('npm'), true)
     assert.equal(needsShellOnWindows('clawhub'), true)
+    assert.equal(needsShellOnWindows('openclaw'), true)
+    assert.equal(needsShellOnWindows('clawprobe'), true)
   })
 })
 
 test('needsShellOnWindows returns false for native binaries on Windows', async () => {
   await withPlatform('win32', () => {
     assert.equal(needsShellOnWindows('ollama'), false)
-    assert.equal(needsShellOnWindows('openclaw'), false)
   })
 })
 
@@ -74,6 +85,8 @@ test('needsShellOnWindows returns false for everything on non-Windows', async ()
     assert.equal(needsShellOnWindows('npm'), false)
     assert.equal(needsShellOnWindows('clawhub'), false)
     assert.equal(needsShellOnWindows('ollama'), false)
+    assert.equal(needsShellOnWindows('openclaw'), false)
+    assert.equal(needsShellOnWindows('clawprobe'), false)
   })
 })
 
@@ -104,5 +117,22 @@ test('execNpmInstallGlobalFile keeps non-Windows npm resolution path', async () 
   await withPlatform('linux', async () => {
     const result = await execNpmInstallGlobalFile('/tmp/openclaw-does-not-exist.tgz')
     assert.notEqual(result.code, 0)
+  })
+})
+
+test('Darwin node candidate discovery keeps the real user home when HOME points at an isolated profile', async () => {
+  await withPlatform('darwin', () => {
+    const originalHome = process.env.HOME
+    const actualUserHome = os.userInfo().homedir
+    process.env.HOME = '/tmp/clawmaster-proof-home'
+    try {
+      const homeRoots = getDarwinNodeHomeRootsForTests()
+      assert.ok(homeRoots.includes('/tmp/clawmaster-proof-home'))
+      assert.ok(homeRoots.includes(actualUserHome))
+      assert.ok(getDarwinNodeCandidatePathsForTests().includes(process.execPath))
+    } finally {
+      if (originalHome === undefined) delete process.env.HOME
+      else process.env.HOME = originalHome
+    }
   })
 })

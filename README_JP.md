@@ -17,6 +17,7 @@
   &nbsp;
   <img src="https://img.shields.io/badge/Brand-OpenMaster_Universe-F5A623?style=flat" alt="OpenMaster Universe Brand" />
   <img src="https://img.shields.io/badge/Product-ClawMaster-111111?style=flat" alt="ClawMaster" />
+  <a href="https://github.com/openmaster-ai/clawmaster-workshop"><img src="https://img.shields.io/badge/Workshop-hands--on-0A7EA4?style=flat" alt="Workshop" /></a>
 </p>
 
 <p align="center">
@@ -27,6 +28,7 @@
 
 <p align="center">
   <a href="https://github.com/openmaster-ai/clawmaster/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/openmaster-ai/clawmaster/build.yml?branch=main" alt="Build" /></a>
+  <a href="https://github.com/openmaster-ai/clawmaster/milestone/1"><img src="https://img.shields.io/badge/milestone-v0.4.0-6f42c1" alt="次のマイルストーン: v0.4.0" /></a>
   <a href="https://github.com/openmaster-ai/clawmaster/stargazers"><img src="https://img.shields.io/github/stars/openmaster-ai/clawmaster?style=social" alt="Stars" /></a>
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="Apache 2.0" />
 </p>
@@ -35,8 +37,7 @@
   <a href="https://github.com/openmaster-ai/clawmaster/releases"><strong>📦 Releases</strong></a> &nbsp;·&nbsp;
   <a href="https://github.com/openmaster-ai/clawmaster/discussions"><strong>💬 Discussions</strong></a> &nbsp;·&nbsp;
   <a href="https://github.com/openmaster-ai/clawmaster/issues"><strong>🐛 Issues</strong></a> &nbsp;·&nbsp;
-  <a href="https://deepwiki.com/openmaster-ai/clawmaster"><strong>📘 Ask DeepWiki</strong></a> &nbsp;·&nbsp;
-  <a href="https://discord.gg/openclaw"><strong>Discord</strong></a>
+  <a href="https://deepwiki.com/openmaster-ai/clawmaster"><strong>📘 Ask DeepWiki</strong></a>
   &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="./README.md">English</a> &nbsp;·&nbsp; <a href="./README_CN.md">中文</a> &nbsp;·&nbsp; 日本語
 </p>
@@ -59,7 +60,7 @@ clawmaster doctor            # 環境を確認
 ```
 
 > [!NOTE]
-> 現在のバージョンは **v0.3.0** です。インストール: `npm i -g clawmaster`
+> 現在のバージョンは **v0.3.1** です。次のマイルストーンは [**v0.4.0**](https://github.com/openmaster-ai/clawmaster/milestone/1) —— マージ済みの機能はそこに集約されます。
 
 ### デスクトップアプリ（Beta）
 
@@ -97,57 +98,33 @@ npm run tauri:dev            # デスクトップアプリ
 3. 必要に応じてチャンネル、プラグイン、スキル、MCP サーバーを追加します。
 4. ランタイムの観測が必要な場合は、ゲートウェイまたは可観測機能を有効にします。
 
+### 学び方を選ぶ
+
+- 🧪 **ハンズオン** —— [**clawmaster-workshop**](https://github.com/openmaster-ai/clawmaster-workshop) を順に進めてください。3 言語（EN / 中文 / 日本語）のタスクが 6 つのコア機能に沿ってまとめられ、タスクを連結した日付付きラボもあります。*実際に手を動かす*のに最適。
+- 🖼️ **図示ツアー** —— 下の[プロダクト機能ツアー](#プロダクト機能ツアー)を眺めるだけ。各スクリーンショットが具体的なタスクに対応しているので、インストールしなくても全体像を掴めます。
+
 ## なぜ ClawMaster なのか
 
-多くの OpenClaw ツールは、設定を整えるところで止まります。ClawMaster は**日常で使える OpenClaw の相棒**です — 設定を助けるだけでなく、一般の非技術ユーザーが OpenClaw を日常の仕事や生活で実際に使い始められるようにすることが重要な目的です。
+多くの OpenClaw ツールは設定を整えるところで止まります。ClawMaster は**日常で使える OpenClaw の相棒** —— OpenClaw の強力さと日常での使いやすさをつなぐ橋です。OpenClaw を設定するだけでなく実生活で役立てたい人、JSON やターミナルに触れ続けたくない人、チームや家族のために OpenClaw を管理している人のための製品です。
 
-つまり ClawMaster は、単に：
-- 設定を安全に編集するための UI、
-- モデルやチャンネルを接続するための画面、
-- ランタイムを監視するためのダッシュボード、
+## メモリハイライト
 
-で終わるのではなく、さらに：
-- 初期導入をわかりやすくし、
-- 高度な機能をガイド付きの体験に変え、
-- 今後は、より明確なガイド、学習導線、ワークフロー支援も段階的に加えていきます。
+メモリは**能節約**機能の背骨です。独自実装ではなく [**PowerMem**](https://github.com/oceanbase/powermem)（[Python](https://github.com/oceanbase/powermem) · [TypeScript SDK](https://github.com/ob-labs/powermem-ts) · [OpenClaw プラグイン](https://github.com/ob-labs/memory-powermem)）を基盤に採用しています：
 
-**ひと言で言えば：** ClawMaster は、OpenClaw の強力さと日常での使いやすさをつなぐ橋です。
+- **ネイティブな OpenClaw 市民** —— PowerMem には OpenClaw 向けメモリプラグインが最初から備わっており、エージェントのターンごとに自動 recall / capture が行われます。
+- **チャンク投棄ではなく賢い抽出** —— 会話を持続的な事実に蒸留し、エビングハウス減衰で想起を駆動します。私たちの「作ったら育てる」方向性に合致します。
+- **マルチエージェントの分離が最初から** —— ユーザー / エージェント / ワークスペース単位で自動分離。自分で ID 基盤を再発明する必要はありません。
+- **データベース級の永続性** —— [OceanBase seekdb](https://github.com/oceanbase/seekdb) と組み合わせてベクトル + 全文 + SQL のハイブリッド検索、クロスプラットフォームでは SQLite にフォールバック。
+- **オープンソースで多言語 SDK** —— 特定ランタイムに縛られず、JS から Python、Go まで一貫したセマンティクス。
 
-## ClawMaster vs. CLI のみ
+**実装済み**
 
-| | OpenClaw CLI のみ | ClawMaster |
-|---|---|---|
-| 初期セットアップ | `~/.openclaw/openclaw.json` を手編集 | ガイド付きウィザード |
-| プロバイダー・モデル設定 | JSON を編集して再起動 | フォーム UI とライブバリデーション |
-| チャンネル接続 | ドキュメントを読んで手動設定 | プラットフォームごとのステップガイド |
-| 可観測性 | 主に CLI とログ | ClawProbe ベースのダッシュボードとランタイム表示 |
-| メモリ管理 | `powermem` CLI | 管理 UI |
-| 日常利用の支援 | 基本は自力 | よりガイド付きの体験へ拡張中 |
-| 複数 Profile | ファイルを手動管理 | Profile スイッチャー |
-| デスクトップアプリ | なし | あり — `.dmg` / `.msi` / `.AppImage` を提供 |
-| セルフホスト Web コンソール | なし | あり — Express、Node.js 環境ならどこでも動作 |
+- 管理対象 PowerMem ランタイム + OpenClaw ブリッジを Web・バックエンド・デスクトップに展開 —— エージェントのターンで自動 recall / capture がそのまま動きます。
+- ローカルワークスペースインポート —— markdown / `memory/` を管理対象 PowerMem に取り込み、seekdb が使える場合は seekdb、それ以外は SQLite にフォールバック。
+- 管理対象メモリで動く初のエンドツーエンドスキル：npm ダウンロード日次ダイジェストと期間比較。
+- メモリ近傍の可観測性：セッション単位のコスト、スケジュール済みコストダイジェスト、models.dev 価格情報。
 
-## こんな方に
-
-**「OpenClaw を正しく設定するだけでなく、実生活で役立てたい。」**  
-ClawMaster は、インストール完了から実際の成果までの距離を縮めるための製品です。
-
-**「技術者ではないが、強力な AI パーソナルアシスタントを使いたい。」**  
-JSON、ターミナル、インフラ前提ではなく、ガイド付きセットアップ、ガイド付き活用、成果ベースの学習へ寄せていきます。
-
-**「チームや家族のために OpenClaw を管理している。」**  
-チャンネル設定やランタイム状況の確認を 1 か所で行え、ほかの人にも導入しやすくなります。
-
-**「高度なエージェント運用もしたい。」**  
-モデル管理、可観測性、メモリ、セッション、プラグイン、スキル、MCP を引き続き 1 つの場所で扱えます。
-
-## いまできること
-
-- **セットアップと Profile** — OpenClaw の検出、不足コンポーネントの導入、Profile の作成・切り替え、ローカル環境の初期構築。
-- **モデルとプロバイダー** — OpenAI 互換エンドポイントや各種プロバイダーの設定、API キーの検証、デフォルトモデルの指定。
-- **ゲートウェイとチャンネル** — ゲートウェイの起動、Feishu・WeChat・Discord・Slack・Telegram・WhatsApp のガイド付き接続設定。
-- **プラグイン・スキル・MCP** — 機能の有効化 / 無効化、注目項目のインストール、MCP サーバーの追加、MCP 定義のインポート。
-- **セッション・メモリ・可観測性** — セッションの確認、メモリバックエンドの管理、トークン使用量とコスト見積もりの追跡。
+**次（v0.4.0）**：完全な seekdb ハイブリッド検索と、自己保守する LLM ナレッジモジュール —— 取り込みごとに交差リンクされて積み上がる永続ページ、エビングハウス減衰と新鮮度重み付けで内容を生かし続けます。詳細は [v0.4.0 マイルストーン](https://github.com/openmaster-ai/clawmaster/milestone/1) を参照。
 
 ## プロダクト機能ツアー
 
@@ -177,7 +154,7 @@ JSON、ターミナル、インフラ前提ではなく、ガイド付きセッ�
     </td>
     <td align="center">
       <a href="./docs/screenshots/page-memory.png"><img src="./docs/screenshots/page-memory.png" alt="メモリワークスペース" /></a><br/>
-      <sub><b>メモリ</b> · PowerMem ベースのナレッジワークスペース</sub>
+      <sub><b>メモリ</b> · PowerMem ランタイム + seekdb / SQLite フォールバック</sub>
     </td>
     <td align="center">
       <a href="./docs/screenshots/page-mcp.png"><img src="./docs/screenshots/page-mcp.png" alt="MCP サーバー" /></a><br/>
@@ -190,15 +167,22 @@ JSON、ターミナル、インフラ前提ではなく、ガイド付きセッ�
   </tr>
 </table>
 
+## こんな方に
+
+- **「ただ設定するだけでなく、実生活で使いたい。」** —— インストールから成果までの距離を縮めます。
+- **「技術者ではないが強力な AI アシスタントが欲しい。」** —— ガイド付きセットアップと活用、JSON 知識は不要。
+- **「チームや家族の OpenClaw を管理している。」** —— チャンネル、ランタイム、オンボーディングを 1 か所で。
+- **「高度なエージェント運用もしたい。」** —— モデル管理・可観測・メモリ・セッション・プラグイン・スキル・MCP を 1 か所に。
+
 ## ロードマップ
 
 6 つのコア機能 — それぞれインフラから日常利用へ向かいます：
 
 | # | 機能 | ステータス | 実装済み | 次のステップ |
 |---|---|---|---|---|
-| 1 | **能管理** | 利用可能 | ガイド付きウィザード、6+ LLM プロバイダー（キー検証付き）、6 チャンネル（Feishu / WeChat / Discord / Slack / Telegram / WhatsApp）、Profile 切り替え | ワンクリック環境移行（[#1](https://github.com/openmaster-ai/clawmaster/issues/1)）、Windows + WSL2 ファーストクラスサポート |
+| 1 | **能管理** | 利用可能 | ガイド付きウィザード、6+ LLM プロバイダー（キー検証付き）、6 チャンネル（Feishu / WeChat / Discord / Slack / Telegram / WhatsApp）、Profile 切り替え | ワンクリック環境移行、Windows + WSL2 ファーストクラスサポート |
 | 2 | **能観測** | 利用可能 | ClawProbe ベースのダッシュボード、セッションごとのコスト・トークン追跡、ゲートウェイヘルス監視 | 履歴コスト分析、異常アラート、マルチ Profile 比較 |
-| 3 | **能節約** | 開発中 | PowerMem UI + FTS5 ローカル検索、メモリワークスペース管理、markdown grep への自動フォールバック | 完全な seekdb ベクトル検索（[#12](https://github.com/openmaster-ai/clawmaster/issues/12)）、LLM Wiki — 時間とともに蓄積するナレッジベース（[#49](https://github.com/openmaster-ai/clawmaster/issues/49)） |
+| 3 | **能節約** | 開発中 | 管理対象 PowerMem ランタイム + OpenClaw ブリッジ、ワークスペースインポート、初のメモリ駆動スキル —— 詳細は[メモリハイライト](#メモリハイライト) | 完全な seekdb ハイブリッド検索、自己保守 LLM ナレッジモジュール —— 詳細は [v0.4.0 マイルストーン](https://github.com/openmaster-ai/clawmaster/milestone/1) |
 | 4 | **能活用** | 開発中 | PaddleOCR パイプライン（アップロード → 解析 → 構造化 Markdown）、レイアウト認識抽出 | 写真 → フラッシュカード自動生成、請求書抽出テンプレート、シナリオ優先のガイド付きワークフロー |
 | 5 | **能構築** | 計画中 | プラグイン / スキルのインストール・切り替え、MCP サーバー管理、スキルセキュリティ監査 | ビジュアルエージェントコンポーザー、LangChain Deep Agents 統合、対話型エージェントビルダー |
 | 6 | **能守護** | 計画中 | Skill Guard セキュリティスキャン（次元 / 重大度 / リスクスコア）、基本的な機能ゲーティング | API キー暗号化ボールト、Profile ごとの支出上限、チームデプロイ向け RBAC |
@@ -291,8 +275,8 @@ ClawMaster を一般ユーザーにとってもっと役立つものにしたい
 |---|---|
 | [OpenClaw](https://github.com/openclaw/openclaw) | コアランタイムと設定モデル |
 | [ClawProbe](https://github.com/openclaw/clawprobe) | 可観測デーモン |
-| [PowerMem](https://github.com/openclaw/powermem) | メモリバックエンド |
-| [seekdb](https://github.com/openclaw/seekdb) | 検索・リトリーバルワークフロー |
+| [PowerMem](https://github.com/oceanbase/powermem) · [TS SDK](https://github.com/ob-labs/powermem-ts) | メモリバックエンド |
+| [OceanBase seekdb](https://github.com/oceanbase/seekdb) | 検索・リトリーバルワークフロー |
 | [Tauri](https://tauri.app) | デスクトップアプリフレームワーク |
 | [React](https://react.dev) | フロントエンド UI |
 | [Vite](https://vitejs.dev) | フロントエンドツールチェーン |
