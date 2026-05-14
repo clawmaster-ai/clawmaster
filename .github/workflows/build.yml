@@ -399,38 +399,6 @@ jobs:
             exit 1
           fi
 
-      - name: Resolve release notes base tag
-        id: release_notes_base
-        env:
-          TAG: ${{ steps.release_meta.outputs.tag }}
-        run: |
-          set -euo pipefail
-
-          previous_ancestor_tag=""
-          if git rev-parse --verify "${TAG}^{tag}" >/dev/null 2>&1 || git rev-parse --verify "${TAG}^{commit}" >/dev/null 2>&1; then
-            previous_ancestor_tag="$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)"
-          fi
-
-          previous_tag="$previous_ancestor_tag"
-          if printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            previous_stable_tag=""
-            while IFS= read -r candidate; do
-              if [ "$candidate" = "$TAG" ]; then
-                break
-              fi
-              previous_stable_tag="$candidate"
-            done < <(git tag -l 'v*' --sort=v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
-
-            first_release_tag="$(git tag -l 'v*' --sort=v:refname | head -n 1 || true)"
-            previous_tag="${previous_stable_tag:-$first_release_tag}"
-          fi
-
-          if [ "$previous_tag" = "$TAG" ]; then
-            previous_tag=""
-          fi
-
-          echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
-
       - name: Collect release assets
         run: |
           set -euo pipefail
@@ -504,6 +472,16 @@ jobs:
             printf '> Desktop builds are in beta. The CLI + Web Console is the recommended install method.\n\n'
           } > RELEASE_PREFACE.md
 
+      - name: Generate release notes body
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release_meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node scripts/release-notes.mjs "$TAG" > RELEASE_CHANGES.md
+          cat RELEASE_PREFACE.md RELEASE_CHANGES.md > RELEASE_BODY.md
+
       - name: Resolve release options
         id: release_options
         env:
@@ -544,9 +522,7 @@ jobs:
         with:
           tag: ${{ steps.release_meta.outputs.tag }}
           name: ClawMaster ${{ steps.release_meta.outputs.tag }}
-          bodyFile: RELEASE_PREFACE.md
-          generateReleaseNotes: true
-          generateReleaseNotesPreviousTag: ${{ steps.release_notes_base.outputs.previous_tag }}
+          bodyFile: RELEASE_BODY.md
           artifacts: release-assets/*
           artifactErrorsFailBuild: true
           allowUpdates: true
